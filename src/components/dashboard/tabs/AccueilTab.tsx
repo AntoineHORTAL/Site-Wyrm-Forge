@@ -468,15 +468,15 @@ export default function AccueilTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {matches.map(m => {
               const champ      = champMap[m.championId]
-              const summ1      = spellMap[m.summoner1Id]
-              const summ2      = spellMap[m.summoner2Id]
-              const keystone   = runeMap[m.keystoneId]
-              const secondary  = runeMap[m.secondaryStyleId]
+              const summ1      = m.summoner1Id ? spellMap[m.summoner1Id] : undefined
+              const summ2      = m.summoner2Id ? spellMap[m.summoner2Id] : undefined
+              const keystone   = m.keystoneId ? runeMap[m.keystoneId] : undefined
+              const secondary  = m.secondaryStyleId ? runeMap[m.secondaryStyleId] : undefined
               const csPerMin   = m.duration > 0 ? (m.cs / (m.duration / 60)).toFixed(1) : '0'
-              const kp         = m.teamKills > 0 ? Math.round(((m.kills + m.assists) / m.teamKills) * 100) : null
-              const multiKill  = m.pentaKills > 0 ? 'PENTAKILL' : m.quadraKills > 0 ? 'QUADRA' : m.tripleKills > 0 ? 'TRIPLE' : null
+              const kp         = (m.teamKills ?? 0) > 0 ? Math.round(((m.kills + m.assists) / m.teamKills) * 100) : null
+              const multiKill  = (m.pentaKills ?? 0) > 0 ? 'PENTAKILL' : (m.quadraKills ?? 0) > 0 ? 'QUADRA' : (m.tripleKills ?? 0) > 0 ? 'TRIPLE' : null
               const winColor   = m.win ? '#5DCAA5' : '#E24B4A'
-              const items      = [...m.items, m.trinket]
+              const items      = [...(Array.isArray(m.items) ? m.items : []), m.trinket ?? 0]
 
               return (
                 <div key={m.matchId} style={{
