@@ -233,15 +233,30 @@ export default function BuildsTab() {
           .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
         setAllChamps(champs)
 
-        // Builds depuis Supabase
+        // Builds depuis Supabase — rehydratation slim → DDItem via byId
         const rows = (buildsRes as any).data ?? []
         setSavedBuilds(rows.map((row: any) => ({
-          id:         row.id,
-          name:       row.name,
-          champ:      row.champ,
-          blocks:     row.blocks,
-          totalGold:  row.total_gold,
-          createdAt:  row.created_at,
+          id:        row.id,
+          name:      row.name,
+          champ:     row.champ ?? null,
+          totalGold: row.total_gold,
+          createdAt: row.created_at,
+          blocks: (row.blocks ?? []).map((sb: any) => ({
+            id:   sb.id ?? uid(),
+            name: sb.name ?? 'Bloc',
+            items: (sb.items ?? []).map((si: any) => {
+              const full = byId[si.itemId]
+              return {
+                count: si.count ?? 1,
+                item: full ?? {
+                  id: si.itemId, name: si.name ?? '', image: si.image ?? '',
+                  gold: { total: si.gold ?? 0, purchasable: true },
+                  tags: [], stats: {}, maps: { '11': true },
+                  description: '', from: [], into: [],
+                },
+              }
+            }),
+          })),
         })))
       } catch {
         setApiError('Erreur lors du chargement des données Riot.')
@@ -378,15 +393,38 @@ export default function BuildsTab() {
       total_gold: gold,
     }
 
+    // Format slim pour Supabase (interopérable avec l'app desktop)
+    const slimBlocks = blocks.map(b => ({
+      id:    b.id,
+      name:  b.name,
+      items: b.items.map(({ item, count }) => ({
+        itemId: item.id,
+        name:   item.name,
+        image:  item.image,
+        gold:   item.gold.total,
+        count,
+      })),
+    }))
+
+    const payload = {
+      name:       buildName.trim() || 'Build sans nom',
+      champ:      selectedChamp
+        ? { id: selectedChamp.id, name: selectedChamp.name, image: selectedChamp.image }
+        : null,
+      blocks:     slimBlocks,
+      total_gold: gold,
+    }
+
     if (editingBuildId) {
       // Mise à jour d'un build existant
       await supabase
         .from('item_builds')
         .update(payload)
         .eq('id', editingBuildId)
+      // En mémoire : conserver les blocks complets (pas slim)
       setSavedBuilds(prev => prev.map(b =>
         b.id === editingBuildId
-          ? { ...b, ...payload, totalGold: gold }
+          ? { ...b, name: payload.name, champ: selectedChamp, blocks, totalGold: gold }
           : b
       ))
     } else {
@@ -397,15 +435,14 @@ export default function BuildsTab() {
         .select()
         .single()
       if (!error && data) {
-        const newBuild: SavedBuild = {
+        setSavedBuilds(prev => [{
           id:        data.id,
           name:      data.name,
           champ:     data.champ,
-          blocks:    data.blocks,
-          totalGold: data.total_gold,
-          createdAt: data.created_at,
-        }
-        setSavedBuilds(prev => [newBuild, ...prev])
+          blocks,          // blocks complets en mémoire
+          totalGold:  data.total_gold,
+          createdAt:  data.created_at,
+        }, ...prev])
       }
     }
 
