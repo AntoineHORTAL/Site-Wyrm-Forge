@@ -6,15 +6,33 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
+interface SpellInfo { id: string; name: string; image: string }
+interface RuneInfo  { id: number; name: string; icon: string }
 interface MatchInfo {
   matchId: string; championId: number; championName: string
   queueId: number; queueName: string
   kills: number; deaths: number; assists: number
   cs: number; duration: number; win: boolean; gameCreation: number
+  // Enrichi
+  summoner1Id: number; summoner2Id: number
+  keystoneId: number; secondaryStyleId: number
+  items: number[]; trinket: number
+  position: string
+  visionScore: number; damageDealt: number; goldEarned: number
+  teamKills: number
+  pentaKills: number; quadraKills: number; tripleKills: number
+}
+
+// Mapping position Riot → label court
+const POS: Record<string, string> = {
+  TOP: 'TOP', JUNGLE: 'JGL', MIDDLE: 'MID', BOTTOM: 'ADC', UTILITY: 'SUP',
 }
 
 const DDN      = 'https://ddragon.leagueoflegends.com'
 const champImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/champion/${img}`
+const itemImg  = (v: string, id: number)  => `${DDN}/cdn/${v}/img/item/${id}.png`
+const spellImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/spell/${img}`
+const runeImg  = (path: string)            => `${DDN}/cdn/img/${path}` // path déjà complet dans runesReforged
 
 // Edge Functions Supabase — la clé Riot est stockée côté serveur Supabase, jamais exposée.
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -64,6 +82,8 @@ export default function AccueilTab() {
   // DDragon
   const [version, setVersion]   = useState('')
   const [champMap, setChampMap] = useState<Record<number, ChampInfo>>({}) // numericId → champ
+  const [spellMap, setSpellMap] = useState<Record<number, SpellInfo>>({}) // spellId  → spell
+  const [runeMap,  setRuneMap]  = useState<Record<number, RuneInfo>>({})  // perkId   → rune (keystone + arbres)
 
   // Rotation
   const [rotation, setRotation]       = useState<ChampInfo[]>([])
@@ -98,13 +118,41 @@ export default function AccueilTab() {
       setVersion(v)
 
       // Champion.json → map numericId → ChampInfo
-      const cRes = await fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`)
+      const [cRes, sRes, rRes] = await Promise.all([
+        fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
+        fetch(`${DDN}/cdn/${v}/data/fr_FR/summoner.json`),
+        fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`),
+      ])
       const cData = await cRes.json()
       const map: Record<number, ChampInfo> = {}
       Object.values(cData.data).forEach((ch: any) => {
         map[Number(ch.key)] = { id: ch.id, name: ch.name, image: ch.image.full, numericId: Number(ch.key) }
       })
       setChampMap(map)
+
+      // Summoner spells → map spellId → SpellInfo
+      const sData = await sRes.json()
+      const sm: Record<number, SpellInfo> = {}
+      Object.values(sData.data).forEach((sp: any) => {
+        sm[Number(sp.key)] = { id: sp.id, name: sp.name, image: sp.image.full }
+      })
+      setSpellMap(sm)
+
+      // Runes : on indexe à la fois les keystones (1ère ligne de chaque arbre)
+      // ET les ID de chemins (Domination, Précision, etc.) avec leur icône d'arbre.
+      const rData: any[] = await rRes.json()
+      const rm: Record<number, RuneInfo> = {}
+      rData.forEach(tree => {
+        // Arbre lui-même (utile pour secondaryStyleId)
+        rm[tree.id] = { id: tree.id, name: tree.name, icon: tree.icon }
+        // Toutes les runes de l'arbre
+        tree.slots.forEach((slot: any) => {
+          slot.runes.forEach((rune: any) => {
+            rm[rune.id] = { id: rune.id, name: rune.name, icon: rune.icon }
+          })
+        })
+      })
+      setRuneMap(rm)
 
       // User Supabase + Riot ID sauvegardé
       const { data: { user } } = await supabase.auth.getUser()
@@ -415,60 +463,138 @@ export default function AccueilTab() {
           }}>{matchError}</div>
         )}
 
-        {/* ── Liste des matchs ── */}
+        {/* ── Liste des matchs (style op.gg/blitz : champ + summs + rune + KDA + items + meta) ── */}
         {!loadingMatches && !matchError && matches.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {matches.map(m => {
-              const champ = champMap[m.championId]
+              const champ      = champMap[m.championId]
+              const summ1      = spellMap[m.summoner1Id]
+              const summ2      = spellMap[m.summoner2Id]
+              const keystone   = runeMap[m.keystoneId]
+              const secondary  = runeMap[m.secondaryStyleId]
+              const csPerMin   = m.duration > 0 ? (m.cs / (m.duration / 60)).toFixed(1) : '0'
+              const kp         = m.teamKills > 0 ? Math.round(((m.kills + m.assists) / m.teamKills) * 100) : null
+              const multiKill  = m.pentaKills > 0 ? 'PENTAKILL' : m.quadraKills > 0 ? 'QUADRA' : m.tripleKills > 0 ? 'TRIPLE' : null
+              const winColor   = m.win ? '#5DCAA5' : '#E24B4A'
+              const items      = [...m.items, m.trinket]
+
               return (
                 <div key={m.matchId} style={{
                   display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-                  padding: '12px 16px', borderRadius: 8, background: bg,
-                  border: `1px solid ${border}`,
-                  borderLeft: `3px solid ${m.win ? '#5DCAA5' : '#E24B4A'}`,
+                  padding: '10px 14px', borderRadius: 8, background: bg,
+                  border: `1px solid ${border}`, borderLeft: `3px solid ${winColor}`,
                 }}>
-                  {/* Champion icon */}
-                  {champ && version ? (
-                    <img src={champImg(version, champ.image)} alt={champ.name}
-                      style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-                  ) : (
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 6, flexShrink: 0,
-                      background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 12, fontWeight: 600, color: 'white',
-                    }}>{m.championName.slice(0, 2)}</div>
-                  )}
+                  {/* Bloc 1 — Champion + summs + rune */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {/* Champion */}
+                    {champ && version ? (
+                      <img src={champImg(version, champ.image)} alt={champ.name}
+                        style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 6,
+                        background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 13, fontWeight: 600, color: 'white',
+                      }}>{m.championName.slice(0, 2)}</div>
+                    )}
 
-                  {/* Champion + mode */}
-                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    {/* Sorts d'invocateur */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {summ1 && version && (
+                        <img src={spellImg(version, summ1.image)} title={summ1.name} alt=""
+                          style={{ width: 22, height: 22, borderRadius: 4, background: '#000' }} />
+                      )}
+                      {summ2 && version && (
+                        <img src={spellImg(version, summ2.image)} title={summ2.name} alt=""
+                          style={{ width: 22, height: 22, borderRadius: 4, background: '#000' }} />
+                      )}
+                    </div>
+
+                    {/* Runes (keystone + arbre secondaire) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {keystone && (
+                        <img src={runeImg(keystone.icon)} title={keystone.name} alt=""
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612' }} />
+                      )}
+                      {secondary && (
+                        <img src={runeImg(secondary.icon)} title={secondary.name} alt=""
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612', padding: 2 }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bloc 2 — Champion name + queue + position */}
+                  <div style={{ flex: '0 1 130px', minWidth: 110 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {champ?.name ?? m.championName}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{m.queueName}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span>{m.queueName}</span>
+                      {POS[m.position] && (
+                        <>
+                          <span>·</span>
+                          <span style={{ color: accent, fontWeight: 600 }}>{POS[m.position]}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
 
-                  {/* KDA */}
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
-                    {kda(m.kills, m.deaths, m.assists)}
+                  {/* Bloc 3 — KDA + KP */}
+                  <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 90 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA' }}>
+                      {m.kills} / <span style={{ color: '#E24B4A' }}>{m.deaths}</span> / {m.assists}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      {(m.deaths === 0 ? (m.kills + m.assists) : ((m.kills + m.assists) / m.deaths)).toFixed(2)} KDA
+                      {kp !== null && <> · <span style={{ color: gold }}>{kp}%</span> KP</>}
+                    </div>
                   </div>
 
-                  {/* CS + durée */}
-                  <div style={{ fontSize: 12, color: 'var(--text-dim)', flexShrink: 0 }}>
-                    {m.cs} CS · {fmt(m.duration)}
+                  {/* Bloc 4 — CS + Vision */}
+                  <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 80 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {m.cs} <span style={{ color: 'var(--text-dim)' }}>({csPerMin}/min)</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      Vision {m.visionScore}
+                    </div>
                   </div>
 
-                  {/* Résultat */}
-                  <div style={{
-                    fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
-                    color: m.win ? '#5DCAA5' : '#E24B4A', flexShrink: 0,
-                  }}>
-                    {m.win ? 'Victoire' : 'Défaite'}
+                  {/* Bloc 5 — Items (6 + trinket) */}
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                    {items.map((id, i) => (
+                      <div key={i} style={{
+                        width: 24, height: 24, borderRadius: 4,
+                        background: id ? 'transparent' : 'rgba(255,255,255,0.05)',
+                        border: id ? 'none' : `1px dashed ${border}`,
+                      }}>
+                        {id > 0 && version && (
+                          <img src={itemImg(version, id)} alt=""
+                            style={{ width: 24, height: 24, borderRadius: 4, display: 'block' }}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        )}
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Temps */}
-                  <div style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0, marginLeft: 'auto' }}>
-                    {timeAgo(m.gameCreation)}
+                  {/* Bloc 6 — Résultat + meta (temps / durée / multikill) */}
+                  <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
+                      color: winColor,
+                    }}>
+                      {m.win ? 'Victoire' : 'Défaite'}
+                      {multiKill && (
+                        <span style={{
+                          marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9,
+                          background: gold, color: '#1a0d2e',
+                        }}>{multiKill}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      {fmt(m.duration)} · {timeAgo(m.gameCreation)}
+                    </div>
                   </div>
                 </div>
               )

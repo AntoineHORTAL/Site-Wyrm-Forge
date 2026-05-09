@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
       ),
     )
 
-    // 6. Format slim pour les clients
+    // 6. Format slim pour les clients (champ + KDA + items + summs + runes + KP)
     const matches = matchDetails
       .filter(Boolean)
       // deno-lint-ignore no-explicit-any
@@ -109,7 +109,17 @@ Deno.serve(async (req) => {
         const me = m.info.participants.find((p: any) => p.puuid === puuid)
         if (!me) return null
 
-        const cs = me.totalMinionsKilled + (me.neutralMinionsKilled ?? 0)
+        const cs = (me.totalMinionsKilled ?? 0) + (me.neutralMinionsKilled ?? 0)
+
+        // KP = (kills + assists) / total kills équipe (pour le %)
+        // deno-lint-ignore no-explicit-any
+        const myTeam = m.info.teams.find((t: any) => t.teamId === me.teamId)
+        const teamKills = myTeam?.objectives?.champion?.kills ?? 0
+
+        // Runes : keystone (1ère sélection du style primaire) + arbre secondaire
+        const keystoneId       = me.perks?.styles?.[0]?.selections?.[0]?.perk ?? 0
+        const secondaryStyleId = me.perks?.styles?.[1]?.style ?? 0
+
         return {
           matchId:      m.metadata.matchId,
           championId:   me.championId,
@@ -123,6 +133,21 @@ Deno.serve(async (req) => {
           duration:     m.info.gameDuration,
           win:          me.win,
           gameCreation: m.info.gameCreation,
+          // — Données enrichies —
+          summoner1Id:  me.summoner1Id,
+          summoner2Id:  me.summoner2Id,
+          keystoneId,
+          secondaryStyleId,
+          items:        [me.item0, me.item1, me.item2, me.item3, me.item4, me.item5],
+          trinket:      me.item6,
+          position:     me.teamPosition || me.individualPosition || '',
+          visionScore:  me.visionScore ?? 0,
+          damageDealt:  me.totalDamageDealtToChampions ?? 0,
+          goldEarned:   me.goldEarned ?? 0,
+          teamKills,
+          pentaKills:   me.pentaKills ?? 0,
+          quadraKills:  me.quadraKills ?? 0,
+          tripleKills:  me.tripleKills ?? 0,
         }
       })
       .filter(Boolean)
