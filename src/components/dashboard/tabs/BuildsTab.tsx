@@ -386,13 +386,6 @@ export default function BuildsTab() {
     const gold = blocks.reduce(
       (s, b) => s + b.items.reduce((ss, bi) => ss + bi.item.gold.total * bi.count, 0), 0
     )
-    const payload = {
-      name:       buildName.trim() || 'Build sans nom',
-      champ:      selectedChamp,
-      blocks,
-      total_gold: gold,
-    }
-
     // Format slim pour Supabase (interopérable avec l'app desktop)
     const slimBlocks = blocks.map(b => ({
       id:    b.id,
