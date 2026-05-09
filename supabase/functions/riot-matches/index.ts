@@ -14,6 +14,22 @@ const ROUTING: Record<string, string> = {
   kr: 'asia', jp1: 'asia',
 }
 
+/**
+ * Retire les caractères de contrôle invisibles (zero-width, bidi marks, BOM)
+ * que certains clients (Discord, terminaux, copier-coller HTML) injectent
+ * autour du texte. Sans ce nettoyage, Riot ne reconnaît pas le Riot ID
+ * car le pseudo réel est entouré de U+2066/U+2069 par exemple.
+ */
+function sanitize(s: string): string {
+  // U+200B–U+200F : zero-width, LRM, RLM
+  // U+202A–U+202E : LRE, RLE, PDF, LRO, RLO (bidi anciens)
+  // U+2060–U+206F : word joiner, isolates (U+2066, U+2069), invisibles
+  // U+FEFF       : BOM
+  return s
+    .replace(/[​-‏‪-‮⁠-⁯﻿]/g, '')
+    .trim()
+}
+
 const QUEUES: Record<number, string> = {
   420: 'Classée Solo/Duo', 440: 'Classée Flex',
   400: 'Normale Draft',    430: 'Normale Aveugle',
@@ -31,31 +47,37 @@ Deno.serve(async (req) => {
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Non authentifié.' }, 401)
 
-    // 2. Params
+    // 2. Params (nettoyés des caractères invisibles que certains clients injectent)
     const url = new URL(req.url)
-    const gameName = url.searchParams.get('gameName')
-    const tagLine  = url.searchParams.get('tagLine')
-    const platform = url.searchParams.get('platform') ?? 'euw1'
-    const count    = Math.min(Number(url.searchParams.get('count') ?? '5'), 10)
+    const gameNameRaw = url.searchParams.get('gameName')
+    const tagLineRaw  = url.searchParams.get('tagLine')
+    const platform    = url.searchParams.get('platform') ?? 'euw1'
+    const count       = Math.min(Number(url.searchParams.get('count') ?? '5'), 10)
 
-    if (!gameName || !tagLine) {
+    if (!gameNameRaw || !tagLineRaw) {
       return jsonResponse({ error: 'gameName et tagLine requis.' }, 400)
     }
+    const gameName = sanitize(gameNameRaw)
+    const tagLine  = sanitize(tagLineRaw)
 
     const apiKey  = requireSecret('RIOT_API_KEY')
     const routing = ROUTING[platform] ?? 'europe'
     const headers = { 'X-Riot-Token': apiKey }
 
     // 3. Compte → puuid
-    const acctRes = await fetch(
-      `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
-      { headers },
-    )
+    const acctUrl = `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+    console.log('[riot-matches] Account lookup', { gameName, tagLine, platform, routing, url: acctUrl })
+
+    const acctRes = await fetch(acctUrl, { headers })
+    console.log('[riot-matches] Account response', { status: acctRes.status })
+
     if (!acctRes.ok) {
+      const body = await acctRes.text()
+      console.log('[riot-matches] Account error body', body)
       if (acctRes.status === 404) {
         return jsonResponse({ error: 'Invocateur introuvable. Vérifie ton Riot ID.' }, 404)
       }
-      return jsonResponse({ error: `Riot API ${acctRes.status}` }, acctRes.status)
+      return jsonResponse({ error: `Riot API ${acctRes.status}`, detail: body }, acctRes.status)
     }
     const { puuid } = await acctRes.json()
 

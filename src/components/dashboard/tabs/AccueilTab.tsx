@@ -40,6 +40,12 @@ function kda(k: number, d: number, a: number) {
   return `${k}/${d}/${a} (${ratio})`
 }
 
+// Retire les caractères Unicode invisibles (bidi marks, zero-width, BOM)
+// que certains copier-coller (Discord, terminaux) injectent autour du texte.
+function sanitize(s: string): string {
+  return s.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
+}
+
 function timeAgo(ts: number) {
   const diff = Date.now() - ts
   const h = Math.floor(diff / 3_600_000)
@@ -193,11 +199,12 @@ export default function AccueilTab() {
 
   // ── Sauvegarder le Riot ID ────────────────────────────────────────────────
   async function saveRiotId() {
-    const raw = riotInput.trim()
+    const raw = sanitize(riotInput)
     const match = raw.match(/^(.+)#(.+)$/)
     if (!match) { setRiotError('Format invalide — utilise GameName#TAG'); return }
 
-    const [, gameName, tagLine] = match
+    const gameName = sanitize(match[1])
+    const tagLine  = sanitize(match[2])
     setSavingRiot(true)
     setRiotError('')
 
