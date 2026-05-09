@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import { dashTabs } from '@/components/dashboard/Dashboard'
+import { tabGroups } from '@/components/dashboard/Dashboard'
 import type { DashTab } from '@/app/page'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
@@ -47,9 +47,12 @@ interface NavProps {
   onTabChange?: (tab: DashTab) => void
 }
 
+const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
+
 export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange }: NavProps) {
   const { theme, setTheme } = useTheme()
   const c = theme === 'mythic'
+  const isProTier = TIER_ORDER.indexOf(tier ?? 'apprenti') >= TIER_ORDER.indexOf('maître')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -75,7 +78,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 
   const ThemeToggle = () => (
     <div style={{
-      display: 'flex', alignItems: 'center',
+      display: 'inline-flex', alignItems: 'center', width: 'fit-content',
       background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 100, padding: 3, gap: 2,
     }}>
@@ -270,29 +273,27 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                     <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '6px 16px 8px' }} />
                   </>
                 )}
-                <div style={{ fontSize: 11, color: '#71717A', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 600, padding: '8px 20px 6px' }}>
-                  Navigation
-                </div>
-                {dashTabs.filter(t => !t.locked).map(tab => (
-                  <DrawerTabBtn
-                    key={tab.id} tab={tab}
-                    active={activeTab === tab.id} c={c}
-                    onClick={() => { onTabChange(tab.id); setDrawerOpen(false) }}
-                  />
-                ))}
 
-                <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
-
-                <div style={{ fontSize: 11, color: '#71717A', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 600, padding: '8px 20px 6px' }}>
-                  {isAdmin ? 'Analyse IA' : 'Premium'}
-                </div>
-                {dashTabs.filter(t => t.locked).map(tab => (
-                  <DrawerTabBtn
-                    key={tab.id} tab={tab}
-                    active={activeTab === tab.id} c={c}
-                    onClick={() => { onTabChange(tab.id); setDrawerOpen(false) }}
-                    locked={!isAdmin}
-                  />
+                {tabGroups.map((group, gi) => (
+                  <div key={gi}>
+                    {group.label && (
+                      <div style={{ fontSize: 11, color: '#71717A', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 600, padding: '8px 20px 6px' }}>
+                        {group.label}
+                      </div>
+                    )}
+                    {group.tabs.map(tab => (
+                      <DrawerTabBtn
+                        key={tab.id} tab={tab}
+                        active={activeTab === tab.id} c={c}
+                        onClick={() => { if (!tab.soon) { onTabChange(tab.id); setDrawerOpen(false) } }}
+                        locked={!isAdmin && !isProTier && !!tab.locked}
+                        soon={tab.soon}
+                      />
+                    ))}
+                    {gi < tabGroups.length - 1 && (
+                      <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -355,9 +356,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 }
 
 /* ── Drawer tab button ── */
-function DrawerTabBtn({ tab, active, c, onClick, locked, admin }: {
+function DrawerTabBtn({ tab, active, c, onClick, locked, admin, soon }: {
   tab: { id: DashTab; label: string; shortLabel: string; icon: React.ReactNode }
-  active: boolean; c: boolean; onClick: () => void; locked?: boolean; admin?: boolean
+  active: boolean; c: boolean; onClick: () => void; locked?: boolean; admin?: boolean; soon?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   return (
@@ -371,22 +372,28 @@ function DrawerTabBtn({ tab, active, c, onClick, locked, admin }: {
           ? admin
             ? (c ? 'rgba(186,117,23,0.12)' : 'rgba(226,75,74,0.08)')
             : (c ? 'rgba(127,119,221,0.15)' : 'rgba(127,119,221,0.12)')
-          : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          : hovered && !soon ? 'rgba(255,255,255,0.04)' : 'transparent',
         border: 'none',
         borderLeft: `3px solid ${active
           ? (admin ? (c ? '#EF9F27' : '#E24B4A') : (c ? '#BA7517' : '#7F77DD'))
           : 'transparent'}`,
-        color: locked ? 'var(--text-dim)'
+        color: soon || locked ? 'var(--text-dim)'
           : active ? (c ? '#FAC775' : '#FAFAFA')
           : 'var(--text-muted)',
-        fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+        fontSize: 14, cursor: soon ? 'default' : 'pointer', fontFamily: 'inherit',
         textAlign: 'left', transition: 'background 0.1s, color 0.1s',
+        opacity: soon ? 0.5 : 1,
       }}>
       <span style={{ width: 18, height: 18, flexShrink: 0 }}>{tab.icon}</span>
       {tab.label}
-      {locked && (
+      {locked && !soon && (
         <span style={{ marginLeft: 'auto', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: c ? '#BA7517' : '#7F77DD' }}>
           Pro
+        </span>
+      )}
+      {soon && (
+        <span style={{ marginLeft: 'auto', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-dim)' }}>
+          Bientôt
         </span>
       )}
     </button>

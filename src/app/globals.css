@@ -170,22 +170,22 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 .dash-sidebar { display: flex; flex-direction: column; }
 .dash-main    { padding: 32px 40px; overflow-y: auto; }
 
-.dash-grid-builds  { display: grid; grid-template-columns: 60px 1fr 280px; gap: 14px; min-height: 600px; }
+.dash-grid-builds  { display: grid; grid-template-columns: 72px 3fr 2fr; gap: 14px; height: 640px; align-items: stretch; }
 .dash-grid-jungle  { display: grid; grid-template-columns: 200px 1fr 220px; gap: 14px; }
 .dash-grid-todo    { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
-.dash-items-grid   { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.dash-items-grid   { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 5px; }
 
 @media (max-width: 768px) {
   .dash-layout  { grid-template-columns: 1fr; min-height: unset; }
   .dash-sidebar { display: none !important; }
   .dash-main    { padding: 16px 16px 24px; }
 
-  .dash-grid-builds  { grid-template-columns: 1fr; min-height: unset; }
+  .dash-grid-builds  { grid-template-columns: 1fr; height: auto; }
   .dash-grid-jungle  { grid-template-columns: 1fr; }
   .dash-grid-todo    { grid-template-columns: 1fr; }
-  .dash-items-grid   { grid-template-columns: repeat(4, 1fr); }
+  .dash-items-grid   { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
   .dash-filters-hide { display: none !important; }
-  .dash-edit-panel   { order: -1; }
+  .dash-edit-panel   { order: 1; height: auto !important; }
 }
 
 /* ─── NAV RESPONSIVE ─── */
