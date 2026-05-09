@@ -1,0 +1,11 @@
+# Configuration locale Supabase. Référence : https://supabase.com/docs/guides/cli/config
+# Le project_id correspond au project ref de https://cuscgmgqakxnfwnsrhhv.supabase.co
+project_id = "cuscgmgqakxnfwnsrhhv"
+
+[functions.riot-rotation]
+# Pas d'auth — donnée publique (rotation des champions).
+verify_jwt = false
+
+[functions.riot-matches]
+# Auth requise — historique de partie = donnée personnelle.
+verify_jwt = true

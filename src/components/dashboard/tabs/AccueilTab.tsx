@@ -16,6 +16,12 @@ interface MatchInfo {
 const DDN      = 'https://ddragon.leagueoflegends.com'
 const champImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/champion/${img}`
 
+// Edge Functions Supabase — la clé Riot est stockée côté serveur Supabase, jamais exposée.
+const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const FN_URL   = (name: string, params: Record<string, string>) =>
+  `${SUPA_URL}/functions/v1/${name}?${new URLSearchParams(params).toString()}`
+
 const PLATFORMS = [
   { value: 'euw1', label: 'EUW' }, { value: 'eun1', label: 'EUNE' },
   { value: 'na1',  label: 'NA'  }, { value: 'kr',   label: 'KR'   },
@@ -131,7 +137,10 @@ export default function AccueilTab() {
   async function loadRotation(v: string, map: Record<number, ChampInfo>, plat: string) {
     setLoadingRot(true)
     try {
-      const res = await fetch(`/api/riot/rotation?platform=${plat}`)
+      // Edge Function publique — pas besoin de JWT, juste l'apikey Supabase.
+      const res = await fetch(FN_URL('riot-rotation', { platform: plat }), {
+        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+      })
       const data = await res.json()
       if (!res.ok) { setRotation([]); return }
       const champs = (data.freeChampionIds as number[])
@@ -154,13 +163,24 @@ export default function AccueilTab() {
     setLoadingMatches(true)
     setMatchError('')
     try {
-      const params = new URLSearchParams({
-        gameName: riot.gameName,
-        tagLine:  riot.tagLine,
-        platform: riot.platform,
-        count:    '5',
-      })
-      const res = await fetch(`/api/riot/matches?${params}`)
+      // Edge Function privée — on envoie le JWT du user pour que Supabase valide l'auth.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setMatchError('Connexion requise pour voir l\'historique.'); return }
+
+      const res = await fetch(
+        FN_URL('riot-matches', {
+          gameName: riot.gameName,
+          tagLine:  riot.tagLine,
+          platform: riot.platform,
+          count:    '5',
+        }),
+        {
+          headers: {
+            apikey:        SUPA_KEY,
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        },
+      )
       const data = await res.json()
       if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
       setMatches(data.matches ?? [])
