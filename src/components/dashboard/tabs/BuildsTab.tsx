@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface DDItem {
@@ -113,10 +114,15 @@ function stripHtml(html: string): string {
 export default function BuildsTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const supabase = createClient()
 
   // Navigation
-  const [view, setView]             = useState<'list' | 'editor'>('list')
+  const [view, setView]               = useState<'list' | 'editor'>('list')
   const [savedBuilds, setSavedBuilds] = useState<SavedBuild[]>([])
+  const [buildsLoading, setBuildsLoading] = useState(true)
+  const [savingBuild, setSavingBuild]     = useState(false)
+  const [editingBuildId, setEditingBuildId] = useState<string | null>(null)
+  const [userId, setUserId]           = useState<string | null>(null)
 
   // API
   const [version, setVersion]       = useState('')
@@ -152,19 +158,29 @@ export default function BuildsTab() {
   const champDropRef = useRef<HTMLDivElement>(null)
   const detailRef    = useRef<HTMLDivElement>(null)
 
-  // ── Fetch Data Dragon ────────────────────────────────────────────────────────
+  // ── Fetch Data Dragon + user + builds ───────────────────────────────────────
   useEffect(() => {
     async function load() {
       try {
         setLoading(true)
-        const vRes = await fetch(`${DDN}/api/versions.json`)
+
+        // Récupérer l'utilisateur et ses builds en parallèle avec DDR
+        const [vRes, { data: { user } }] = await Promise.all([
+          fetch(`${DDN}/api/versions.json`),
+          supabase.auth.getUser(),
+        ])
+
         const versions: string[] = await vRes.json()
         const v = versions[0]
         setVersion(v)
+        setUserId(user?.id ?? null)
 
-        const [iRes, cRes] = await Promise.all([
+        const [iRes, cRes, buildsRes] = await Promise.all([
           fetch(`${DDN}/cdn/${v}/data/fr_FR/item.json`),
           fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
+          user
+            ? supabase.from('item_builds').select('*').order('created_at', { ascending: false })
+            : Promise.resolve({ data: [] }),
         ])
         const iData = await iRes.json()
         const cData = await cRes.json()
@@ -199,7 +215,7 @@ export default function BuildsTab() {
             if (raw.requiredChampion)          return false
             return true
           })
-          .map(([id, raw]: [string, any]) => byId[id])
+          .map(([id]: [string, any]) => byId[id])
           .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 
         // Dédoublonner par nom
@@ -209,7 +225,6 @@ export default function BuildsTab() {
           seen.add(item.name)
           return true
         })
-
         setAllItems(items)
 
         // Champions
@@ -217,10 +232,22 @@ export default function BuildsTab() {
           .map(([id, raw]: [string, any]) => ({ id, name: raw.name, image: raw.image.full }))
           .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
         setAllChamps(champs)
+
+        // Builds depuis Supabase
+        const rows = (buildsRes as any).data ?? []
+        setSavedBuilds(rows.map((row: any) => ({
+          id:         row.id,
+          name:       row.name,
+          champ:      row.champ,
+          blocks:     row.blocks,
+          totalGold:  row.total_gold,
+          createdAt:  row.created_at,
+        })))
       } catch {
         setApiError('Erreur lors du chargement des données Riot.')
       } finally {
         setLoading(false)
+        setBuildsLoading(false)
       }
     }
     load()
@@ -320,6 +347,7 @@ export default function BuildsTab() {
   function openNewBuild() {
     setBuildName('')
     setSelectedChamp(null)
+    setEditingBuildId(null)
     setBlocks([
       { id: uid(), name: 'Items de départ', items: [] },
       { id: uid(), name: 'Items cœur',      items: [] },
@@ -331,28 +359,62 @@ export default function BuildsTab() {
   function openEditBuild(build: SavedBuild) {
     setBuildName(build.name)
     setSelectedChamp(build.champ)
+    setEditingBuildId(build.id)
     setBlocks(build.blocks)
     setSelectedItem(null)
     setView('editor')
   }
 
-  function saveBuild() {
+  async function saveBuild() {
+    if (!userId) return
+    setSavingBuild(true)
     const gold = blocks.reduce(
       (s, b) => s + b.items.reduce((ss, bi) => ss + bi.item.gold.total * bi.count, 0), 0
     )
-    const newBuild: SavedBuild = {
-      id: uid(),
-      name: buildName.trim() || 'Build sans nom',
-      champ: selectedChamp,
+    const payload = {
+      name:       buildName.trim() || 'Build sans nom',
+      champ:      selectedChamp,
       blocks,
-      totalGold: gold,
-      createdAt: new Date().toISOString(),
+      total_gold: gold,
     }
-    setSavedBuilds(prev => [newBuild, ...prev])
+
+    if (editingBuildId) {
+      // Mise à jour d'un build existant
+      await supabase
+        .from('item_builds')
+        .update(payload)
+        .eq('id', editingBuildId)
+      setSavedBuilds(prev => prev.map(b =>
+        b.id === editingBuildId
+          ? { ...b, ...payload, totalGold: gold }
+          : b
+      ))
+    } else {
+      // Création d'un nouveau build
+      const { data, error } = await supabase
+        .from('item_builds')
+        .insert({ ...payload, user_id: userId })
+        .select()
+        .single()
+      if (!error && data) {
+        const newBuild: SavedBuild = {
+          id:        data.id,
+          name:      data.name,
+          champ:     data.champ,
+          blocks:    data.blocks,
+          totalGold: data.total_gold,
+          createdAt: data.created_at,
+        }
+        setSavedBuilds(prev => [newBuild, ...prev])
+      }
+    }
+
+    setSavingBuild(false)
     setView('list')
   }
 
-  function deleteBuild(id: string) {
+  async function deleteBuild(id: string) {
+    await supabase.from('item_builds').delete().eq('id', id)
     setSavedBuilds(prev => prev.filter(b => b.id !== id))
   }
 
@@ -415,8 +477,15 @@ export default function BuildsTab() {
         </button>
       </div>
 
+      {/* Chargement */}
+      {buildsLoading && (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 13 }}>
+          Chargement de tes builds…
+        </div>
+      )}
+
       {/* Liste vide */}
-      {savedBuilds.length === 0 && (
+      {!buildsLoading && savedBuilds.length === 0 && (
         <div style={{
           textAlign: 'center', padding: '60px 20px',
           background: c ? 'rgba(20,10,35,0.4)' : '#18181B',
@@ -441,7 +510,7 @@ export default function BuildsTab() {
       )}
 
       {/* Grille de cards */}
-      {savedBuilds.length > 0 && (
+      {!buildsLoading && savedBuilds.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {savedBuilds.map(build => {
             // Tous les items du build (preview)
@@ -627,11 +696,12 @@ export default function BuildsTab() {
         </button>
 
         {/* Sauver */}
-        <button onClick={saveBuild} style={{
-          padding: '5px 14px', background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
+        <button onClick={saveBuild} disabled={savingBuild} style={{
+          padding: '5px 14px', background: savingBuild ? 'rgba(127,119,221,0.4)' : 'linear-gradient(135deg,#7F77DD,#534AB7)',
           border: 'none', borderRadius: 4, color: 'white', fontSize: 12,
-          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-        }}>Sauver</button>
+          fontWeight: 600, cursor: savingBuild ? 'default' : 'pointer', fontFamily: 'inherit',
+          transition: 'background 0.15s',
+        }}>{savingBuild ? 'Sauvegarde…' : 'Sauver'}</button>
       </div>
 
       {/* ══ Main grid ═══════════════════════════════════════════════════════ */}
