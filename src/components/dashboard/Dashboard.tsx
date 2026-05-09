@@ -107,9 +107,15 @@ interface DashboardProps {
   profile?: UserProfile | null
 }
 
-export default function Dashboard({ activeTab, onTabChange, isAdmin = false }: DashboardProps) {
+const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
+
+export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile }: DashboardProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+
+  // Tiers qui débloquent les fonctionnalités Pro (maître et au-dessus)
+  const userTierIndex = TIER_ORDER.indexOf(profile?.tier ?? 'apprenti')
+  const isProTier = userTierIndex >= TIER_ORDER.indexOf('maître')
 
   return (
     <div className="dash-layout">
@@ -145,7 +151,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false }: D
                 key={tab.id} tab={tab}
                 active={activeTab === tab.id} c={c}
                 onClick={() => !tab.soon && onTabChange(tab.id)}
-                unlocked={isAdmin}
+                unlocked={isAdmin || isProTier}
               />
             ))}
           </div>
@@ -178,9 +184,9 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false }: D
         {activeTab === 'workshop-builds'  && <WorkshopBuildsTab />}
         {activeTab === 'workshop-jungle'  && <WorkshopJungleTab />}
 
-        {/* Locked: Analyse IA — déverrouillé pour admin */}
+        {/* Locked: Analyse IA — déverrouillé pour admin et tiers maître+ */}
         {(activeTab === 'matchup' || activeTab === 'postgame') && (
-          isAdmin
+          (isAdmin || isProTier)
             ? <DevPreviewScreen title={tabTitles[activeTab].title} c={c} />
             : <LockedScreen title={tabTitles[activeTab].title} subtitle={tabTitles[activeTab].subtitle} c={c} badge="Analyse IA" />
         )}
