@@ -94,7 +94,7 @@ export default function WorkshopBuildsTab() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
               <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>par {b.author}</div>
-              <div style={{ display: 'flex', align: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 12, color: c ? '#BA7517' : '#EF9F27', fontWeight: 600 }}>★ {b.rating}</span>
                 <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{b.votes} votes</span>
               </div>
