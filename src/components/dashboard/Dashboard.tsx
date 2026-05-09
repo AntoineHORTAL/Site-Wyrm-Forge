@@ -187,7 +187,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {/* Locked: Analyse IA — déverrouillé pour admin et tiers maître+ */}
         {(activeTab === 'matchup' || activeTab === 'postgame') && (
           (isAdmin || isProTier)
-            ? <DevPreviewScreen title={tabTitles[activeTab].title} c={c} />
+            ? <DevPreviewScreen title={tabTitles[activeTab].title} c={c} isAdmin={isAdmin} />
             : <LockedScreen title={tabTitles[activeTab].title} subtitle={tabTitles[activeTab].subtitle} c={c} badge="Analyse IA" />
         )}
 
@@ -272,8 +272,8 @@ function LockedScreen({ title, subtitle, c, badge }: { title: string; subtitle: 
   )
 }
 
-/* ── Dev preview screen (admin only) ── */
-function DevPreviewScreen({ title, c }: { title: string; c: boolean }) {
+/* ── Dev preview screen ── */
+function DevPreviewScreen({ title, c, isAdmin }: { title: string; c: boolean; isAdmin: boolean }) {
   return (
     <div style={{
       textAlign: 'center', padding: '60px 32px', borderRadius: 12,
@@ -285,11 +285,11 @@ function DevPreviewScreen({ title, c }: { title: string; c: boolean }) {
         background: c ? 'rgba(186,117,23,0.12)' : 'rgba(93,202,165,0.1)',
         border: `1px solid ${c ? 'rgba(186,117,23,0.4)' : 'rgba(93,202,165,0.35)'}`,
         color: c ? '#BA7517' : '#5DCAA5',
-      }}>Accès Admin</div>
+      }}>{isAdmin ? 'Accès Admin' : 'Analyse IA'}</div>
       <div style={{ fontSize: 32, marginBottom: 12 }}>🔬</div>
-      <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>{title} — Dev Preview</h3>
+      <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>{title} — En développement</h3>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 420, margin: '0 auto' }}>
-        Cette fonctionnalité est en cours de développement. En tant qu'admin tu y as accès en avant-première dès qu'une version de test sera disponible.
+        Cette fonctionnalité est en cours de développement et sera disponible prochainement.
       </p>
     </div>
   )
