@@ -44,12 +44,24 @@ interface Participant {
   kills: number; deaths: number; assists: number
   cs: number; visionScore: number; level: number
   damageDealt: number; damageTaken: number; damageMitigated: number; goldEarned: number
+  // Stats supplémentaires
+  damageObjectives?: number; damageTurrets?: number; damageBuildings?: number
+  totalHeal?: number; healOnTeammates?: number
+  timeCcOthers?: number; longestLife?: number
   summoner1Id: number; summoner2Id: number
   keystoneId: number; secondaryStyleId: number
   items: number[]; trinket: number
   pentaKills: number; quadraKills: number; tripleKills: number; doubleKills: number
   wardsPlaced: number; wardsKilled: number; controlWards: number
   win: boolean
+}
+interface TimelineFrame {
+  ts: number
+  teamGold:    [number, number]
+  teamXp:      [number, number]
+  teamCs:      [number, number]
+  playerGold:  number[]
+  playerLevel: number[]
 }
 interface Team {
   teamId: number; win: boolean; bans: number[]
@@ -60,6 +72,7 @@ interface MatchDetail {
   matchId: string; gameCreation: number; gameDuration: number; queueId: number; gameVersion: string
   participants: Participant[]
   teams: Team[]
+  timeline?: TimelineFrame[]
 }
 
 function fmt(secs: number) {
@@ -595,8 +608,13 @@ function MatchDetailView({
         <VsBar label="Vision"          blue={blue.vision} red={red.vision} highlight={myTeamId} />
       </div>
 
-      {/* ── Graphique global multi-métriques ── */}
+      {/* ── Graphique global multi-métriques (classement) ── */}
       <MetricChart detail={detail} champMap={champMap} version={version} />
+
+      {/* ── Graphique sur la durée de la partie ── */}
+      {detail.timeline && detail.timeline.length > 1 && (
+        <TimelineChart detail={detail} champMap={champMap} version={version} />
+      )}
     </div>
   )
 }
@@ -643,26 +661,78 @@ function VsBar({ label, blue, red, highlight, format }: {
 // Graphique global : barres horizontales pour les 10 joueurs, métrique sélectionnable
 // (boutons en haut). Les couleurs reflètent l'équipe (bleu/rouge).
 // ────────────────────────────────────────────────────────────────────────────────
-type MetricKey = 'damageDealt' | 'damageTaken' | 'goldEarned' | 'cs' | 'visionScore' | 'wardsPlaced' | 'wardsKilled'
-const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[] = [
-  { key: 'damageDealt', label: 'Dégâts infligés', format: v => `${(v / 1000).toFixed(1)}K` },
-  { key: 'damageTaken', label: 'Dégâts subis',    format: v => `${(v / 1000).toFixed(1)}K` },
-  { key: 'goldEarned',  label: 'Or',              format: v => `${(v / 1000).toFixed(1)}K` },
-  { key: 'cs',          label: 'CS',              format: v => v.toString() },
-  { key: 'visionScore', label: 'Vision',          format: v => v.toString() },
-  { key: 'wardsPlaced', label: 'Wards posées',    format: v => v.toString() },
-  { key: 'wardsKilled', label: 'Wards détruites', format: v => v.toString() },
+// Métriques disponibles dans le graphique de classement.
+// Une métrique peut être un champ direct du Participant OU dérivée
+// (calcul à la volée — ex: "Dégâts/min" = damageDealt / duration)
+type MetricCategory = 'Combat' | 'Économie' | 'Vision' | 'Spécial'
+interface Metric {
+  key: string
+  label: string
+  category: MetricCategory
+  // Soit `field` direct sur Participant, soit `compute` calculé.
+  field?: keyof Participant
+  compute?: (p: Participant, durationSec: number, teamKills: number) => number
+  format: (v: number) => string
+}
+const METRICS: Metric[] = [
+  // — Combat —
+  { key: 'kills',          label: 'Kills',           category: 'Combat',   field: 'kills',          format: v => v.toString() },
+  { key: 'deaths',         label: 'Morts',           category: 'Combat',   field: 'deaths',         format: v => v.toString() },
+  { key: 'assists',        label: 'Assistances',     category: 'Combat',   field: 'assists',        format: v => v.toString() },
+  { key: 'kda',            label: 'Ratio KDA',       category: 'Combat',   compute: (p) => p.deaths === 0 ? p.kills + p.assists : (p.kills + p.assists) / p.deaths, format: v => v.toFixed(2) },
+  { key: 'kp',             label: 'KP %',            category: 'Combat',   compute: (p, _, tk) => tk === 0 ? 0 : ((p.kills + p.assists) / tk) * 100, format: v => `${Math.round(v)}%` },
+  { key: 'damageDealt',    label: 'Dégâts infligés', category: 'Combat',   field: 'damageDealt',    format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'damageTaken',    label: 'Dégâts subis',    category: 'Combat',   field: 'damageTaken',    format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'damageMitigated',label: 'Dégâts esquivés', category: 'Combat',   field: 'damageMitigated',format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'damageTurrets',  label: 'Dégâts tours',    category: 'Combat',   field: 'damageTurrets',  format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'damageObjectives',label:'Dégâts objectifs',category: 'Combat',   field: 'damageObjectives',format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'totalHeal',      label: 'Soins',           category: 'Combat',   field: 'totalHeal',      format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'healOnTeammates',label: 'Soins alliés',    category: 'Combat',   field: 'healOnTeammates',format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'timeCcOthers',   label: 'Temps CC',        category: 'Combat',   field: 'timeCcOthers',   format: v => `${v}s` },
+  { key: 'dpm',            label: 'Dégâts/min',      category: 'Combat',   compute: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60), format: v => Math.round(v).toString() },
+
+  // — Économie —
+  { key: 'goldEarned',     label: 'Or total',        category: 'Économie', field: 'goldEarned',     format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'gpm',            label: 'Or/min',          category: 'Économie', compute: (p, d) => d === 0 ? 0 : p.goldEarned / (d / 60), format: v => Math.round(v).toString() },
+  { key: 'cs',             label: 'CS',              category: 'Économie', field: 'cs',             format: v => v.toString() },
+  { key: 'cspm',           label: 'CS/min',          category: 'Économie', compute: (p, d) => d === 0 ? 0 : p.cs / (d / 60), format: v => v.toFixed(1) },
+  { key: 'level',          label: 'Niveau final',    category: 'Économie', field: 'level',          format: v => v.toString() },
+
+  // — Vision —
+  { key: 'visionScore',    label: 'Score vision',    category: 'Vision',   field: 'visionScore',    format: v => v.toString() },
+  { key: 'wardsPlaced',    label: 'Wards posées',    category: 'Vision',   field: 'wardsPlaced',    format: v => v.toString() },
+  { key: 'wardsKilled',    label: 'Wards détruites', category: 'Vision',   field: 'wardsKilled',    format: v => v.toString() },
+  { key: 'controlWards',   label: 'Wards contrôle',  category: 'Vision',   field: 'controlWards',   format: v => v.toString() },
+
+  // — Spécial —
+  { key: 'longestLife',    label: 'Plus longue vie', category: 'Spécial',  field: 'longestLife',    format: v => `${Math.round(v)}s` },
+  { key: 'doubleKills',    label: 'Doublekills',     category: 'Spécial',  field: 'doubleKills',    format: v => v.toString() },
+  { key: 'tripleKills',    label: 'Triplekills',     category: 'Spécial',  field: 'tripleKills',    format: v => v.toString() },
 ]
 
 function MetricChart({ detail, champMap, version }: {
   detail: MatchDetail; champMap: Record<number, ChampInfo>; version: string
 }) {
-  const [active, setActive] = useState<MetricKey>('damageDealt')
-  const metric = METRICS.find(m => m.key === active)!
-  const sorted = [...detail.participants].sort((a, b) =>
-    (b[active] as number) - (a[active] as number),
-  )
-  const max = (sorted[0]?.[active] as number) || 1
+  const [active, setActive] = useState<string>('damageDealt')
+  const metric = METRICS.find(m => m.key === active) ?? METRICS[0]
+
+  // Total kills par équipe (pour calcul KP%)
+  const teamKills = (id: 100 | 200) =>
+    detail.participants.filter(p => p.teamId === id).reduce((s, p) => s + p.kills, 0)
+  const blueK = teamKills(100), redK = teamKills(200)
+  const totalForKp = (p: Participant) => p.teamId === 100 ? blueK : redK
+
+  // Helper d'extraction de valeur (champ direct ou compute)
+  const valueOf = (p: Participant, m: Metric) =>
+    m.compute
+      ? m.compute(p, detail.gameDuration, totalForKp(p))
+      : ((p[m.field as keyof Participant] as number) ?? 0)
+
+  const sorted = [...detail.participants].sort((a, b) => valueOf(b, metric) - valueOf(a, metric))
+  const max    = valueOf(sorted[0], metric) || 1
+
+  // Groupes de catégories pour les boutons
+  const categories: MetricCategory[] = ['Combat', 'Économie', 'Vision', 'Spécial']
 
   return (
     <section style={{
@@ -671,55 +741,322 @@ function MetricChart({ detail, champMap, version }: {
       borderTop: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)',
       borderBottom: '1px solid rgba(255,255,255,0.06)', borderLeft: '1px solid rgba(255,255,255,0.06)',
     }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: 12, gap: 10, flexWrap: 'wrap',
-      }}>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Classement par {metric.label.toLowerCase()}
-        </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {METRICS.map(m => {
-            const isActive = m.key === active
-            return (
-              <button key={m.key} onClick={() => setActive(m.key)} style={{
-                padding: '4px 10px', borderRadius: 6, fontSize: 11,
-                cursor: 'pointer', transition: 'all 120ms',
-                background: isActive ? 'rgba(127,119,221,0.20)' : 'rgba(255,255,255,0.03)',
-                border: isActive ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
-                color: isActive ? '#F5F2FA' : 'var(--text-muted)',
-                fontWeight: isActive ? 600 : 400,
-              }}>{m.label}</button>
-            )
-          })}
-        </div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Classement — {metric.label}
       </div>
 
-      {sorted.map((p, i) => {
-        const champ = champMap[p.championId]
-        const v     = p[active] as number
-        const pct   = max > 0 ? (v / max) * 100 : 0
-        const color = p.teamId === 100 ? '#3A8AC9' : '#E24B4A'
-        return (
-          <div key={p.puuid} style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12,
-          }}>
-            <span style={{ width: 22, color: 'var(--text-dim)', fontSize: 11 }}>#{i + 1}</span>
-            {champ
-              ? <img src={champImg(version, champ.image)} alt="" style={{ width: 22, height: 22, borderRadius: 3 }} />
-              : <div style={{ width: 22, height: 22, borderRadius: 3, background: '#222' }} />}
-            <span style={{ flex: '0 0 140px', color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {p.riotIdGameName || p.championName}
-            </span>
-            <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
-            </div>
-            <span style={{ minWidth: 60, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
-              {metric.format(v)}
-            </span>
+      {/* Boutons groupés par catégorie */}
+      {categories.map(cat => (
+        <div key={cat} style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' }}>
+            {cat}
           </div>
-        )
-      })}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {METRICS.filter(m => m.category === cat).map(m => {
+              const isActive = m.key === active
+              return (
+                <button key={m.key} onClick={() => setActive(m.key)} style={{
+                  padding: '3px 9px', borderRadius: 5, fontSize: 11,
+                  cursor: 'pointer', transition: 'all 120ms',
+                  background: isActive ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.03)',
+                  border: isActive ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
+                  color: isActive ? '#F5F2FA' : 'var(--text-muted)',
+                  fontWeight: isActive ? 600 : 400,
+                }}>{m.label}</button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Classement des 10 joueurs */}
+      <div style={{ marginTop: 12 }}>
+        {sorted.map((p, i) => {
+          const champ = champMap[p.championId]
+          const v     = valueOf(p, metric)
+          const pct   = max > 0 ? (v / max) * 100 : 0
+          const color = p.teamId === 100 ? '#3A8AC9' : '#E24B4A'
+          return (
+            <div key={p.puuid} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12,
+            }}>
+              <span style={{ width: 22, color: 'var(--text-dim)', fontSize: 11 }}>#{i + 1}</span>
+              {champ
+                ? <img src={champImg(version, champ.image)} alt="" style={{ width: 22, height: 22, borderRadius: 3 }} />
+                : <div style={{ width: 22, height: 22, borderRadius: 3, background: '#222' }} />}
+              <span style={{ flex: '0 0 140px', color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {p.riotIdGameName || p.championName}
+              </span>
+              <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
+              </div>
+              <span style={{ minWidth: 60, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
+                {metric.format(v)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Graphique d'évolution sur la durée de la partie (basé sur les frames timeline).
+// Plusieurs vues sélectionnables :
+//  - Différentiel d'or, d'XP, de CS entre les 2 équipes (courbes diff bleu/rouge)
+//  - Or par joueur (10 courbes filtrables par camp / rôle)
+//  - Niveau par joueur
+// Tracé en SVG manuel (pas de dépendance à recharts).
+// ────────────────────────────────────────────────────────────────────────────────
+type TimelineMode =
+  | 'goldDiff' | 'xpDiff' | 'csDiff'
+  | 'goldBlue' | 'goldRed' | 'levelAll'
+
+const TIMELINE_MODES: { key: TimelineMode; label: string; group: string }[] = [
+  { key: 'goldDiff',  label: 'Diff. or',     group: 'Différentiel' },
+  { key: 'xpDiff',    label: 'Diff. XP',     group: 'Différentiel' },
+  { key: 'csDiff',    label: 'Diff. CS',     group: 'Différentiel' },
+  { key: 'goldBlue',  label: 'Or équipe bleue',  group: 'Par joueur' },
+  { key: 'goldRed',   label: 'Or équipe rouge',  group: 'Par joueur' },
+  { key: 'levelAll',  label: 'Niveau (10 joueurs)', group: 'Par joueur' },
+]
+
+function TimelineChart({ detail, champMap, version }: {
+  detail: MatchDetail; champMap: Record<number, ChampInfo>; version: string
+}) {
+  const [mode, setMode] = useState<TimelineMode>('goldDiff')
+  const [hover, setHover] = useState<number | null>(null) // index de la frame survolée
+
+  const frames = detail.timeline ?? []
+  if (frames.length === 0) return null
+
+  // ── Géométrie ──
+  const W = 800, H = 220
+  const PADL = 50, PADR = 18, PADT = 16, PADB = 28
+  const innerW = W - PADL - PADR
+  const innerH = H - PADT - PADB
+
+  // X = temps (minutes) de 0 à dernière frame
+  const lastTs   = frames[frames.length - 1].ts
+  const xForFrame = (i: number) => PADL + (frames[i].ts / lastTs) * innerW
+
+  // Construction des séries selon le mode
+  type Series = { values: number[]; color: string; label: string; champId?: number }
+  const series: Series[] = []
+
+  if (mode === 'goldDiff' || mode === 'xpDiff' || mode === 'csDiff') {
+    // 1 série : différentiel bleu - rouge
+    const key = mode === 'goldDiff' ? 'teamGold' : mode === 'xpDiff' ? 'teamXp' : 'teamCs'
+    const values = frames.map(f => {
+      const arr = (f as unknown as Record<string, [number, number]>)[key]
+      return arr[0] - arr[1]
+    })
+    series.push({ values, color: '#7F77DD', label: 'Diff bleu - rouge' })
+  } else if (mode === 'goldBlue' || mode === 'goldRed') {
+    const teamId = mode === 'goldBlue' ? 100 : 200
+    detail.participants.forEach((p, idx) => {
+      if (p.teamId !== teamId) return
+      // Indice participant = position dans m.info.participants (1-10) → on retrouve via puuid
+      // Le `idx` ici suffit car detail.participants suit l'ordre Riot 0..9
+      const values = frames.map(f => f.playerGold[idx] ?? 0)
+      series.push({
+        values,
+        color: teamId === 100 ? '#3A8AC9' : '#E24B4A',
+        label: p.riotIdGameName || p.championName,
+        champId: p.championId,
+      })
+    })
+  } else if (mode === 'levelAll') {
+    detail.participants.forEach((p, idx) => {
+      const values = frames.map(f => f.playerLevel[idx] ?? 1)
+      series.push({
+        values,
+        color: p.teamId === 100 ? '#3A8AC9' : '#E24B4A',
+        label: p.riotIdGameName || p.championName,
+        champId: p.championId,
+      })
+    })
+  }
+
+  // Min/Max global pour normaliser Y
+  const allValues = series.flatMap(s => s.values)
+  const minV = Math.min(...allValues, mode.includes('Diff') ? 0 : Infinity)
+  const maxV = Math.max(...allValues, mode.includes('Diff') ? 0 : -Infinity)
+  const range = maxV - minV || 1
+
+  const yForValue = (v: number) => PADT + innerH - ((v - minV) / range) * innerH
+  const xForIndex = (i: number) => xForFrame(i)
+  const zeroY     = yForValue(0)
+
+  // Format pour tooltip
+  const fmt = (v: number) => {
+    if (mode.startsWith('gold') || mode.startsWith('xp')) return `${(v / 1000).toFixed(1)}K`
+    if (mode.startsWith('cs')) return v.toString()
+    if (mode === 'levelAll') return Math.round(v).toString()
+    return v.toLocaleString('fr-FR')
+  }
+
+  // Construction des paths SVG
+  const pathFor = (s: Series) =>
+    s.values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xForIndex(i).toFixed(1)} ${yForValue(v).toFixed(1)}`).join(' ')
+
+  // Pour les diff : zone d'aire colorée selon le signe
+  const areaPath = mode.includes('Diff') && series[0]
+    ? series[0].values.map((v, i) => {
+        const x = xForIndex(i)
+        const y = yForValue(v)
+        return `${i === 0 ? `M ${x} ${zeroY} L ${x} ${y}` : `L ${x} ${y}`}`
+      }).join(' ') + ` L ${xForIndex(series[0].values.length - 1)} ${zeroY} Z`
+    : null
+
+  // Graduations X (toutes les 5 minutes)
+  const totalMin = Math.ceil(lastTs / 60000)
+  const xTicks: number[] = []
+  for (let m = 0; m <= totalMin; m += 5) xTicks.push(m)
+
+  return (
+    <section style={{
+      marginTop: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.02)',
+      borderTop: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)',
+      borderBottom: '1px solid rgba(255,255,255,0.06)', borderLeft: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Évolution sur la durée — {TIMELINE_MODES.find(m => m.key === mode)?.label}
+      </div>
+
+      {/* Boutons par groupe */}
+      {['Différentiel', 'Par joueur'].map(group => (
+        <div key={group} style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' }}>
+            {group}
+          </div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {TIMELINE_MODES.filter(m => m.group === group).map(m => {
+              const isActive = m.key === mode
+              return (
+                <button key={m.key} onClick={() => setMode(m.key)} style={{
+                  padding: '3px 9px', borderRadius: 5, fontSize: 11,
+                  cursor: 'pointer', transition: 'all 120ms',
+                  background: isActive ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.03)',
+                  border: isActive ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
+                  color: isActive ? '#F5F2FA' : 'var(--text-muted)',
+                  fontWeight: isActive ? 600 : 400,
+                }}>{m.label}</button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* SVG */}
+      <div style={{ position: 'relative', marginTop: 8 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          style={{ width: '100%', height: 220, display: 'block' }}
+          onMouseLeave={() => setHover(null)}
+        >
+          {/* Grille horizontale */}
+          {[0.25, 0.5, 0.75].map(p => (
+            <line key={p}
+              x1={PADL} y1={PADT + innerH * p}
+              x2={W - PADR} y2={PADT + innerH * p}
+              stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+          ))}
+          {/* Axe Y zéro pour les diff */}
+          {mode.includes('Diff') && (
+            <line x1={PADL} y1={zeroY} x2={W - PADR} y2={zeroY}
+              stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="3,3" />
+          )}
+          {/* Aire colorée pour la diff */}
+          {areaPath && series[0] && (
+            <path d={areaPath} fill={
+              series[0].values[series[0].values.length - 1] >= 0 ? 'rgba(58,138,201,0.18)' : 'rgba(226,75,74,0.18)'
+            } />
+          )}
+
+          {/* Courbes */}
+          {series.map((s, i) => (
+            <path key={i} d={pathFor(s)}
+              fill="none" stroke={s.color} strokeWidth={mode.includes('Diff') ? 2 : 1.4}
+              strokeLinecap="round" strokeLinejoin="round" opacity={hover === null || mode.includes('Diff') ? 0.95 : 0.4} />
+          ))}
+
+          {/* Hover line + dots */}
+          {hover !== null && (
+            <>
+              <line x1={xForIndex(hover)} y1={PADT} x2={xForIndex(hover)} y2={PADT + innerH}
+                stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+              {series.map((s, i) => (
+                <circle key={i} cx={xForIndex(hover)} cy={yForValue(s.values[hover])}
+                  r="3" fill={s.color} stroke="#0a0612" strokeWidth="1.5" />
+              ))}
+            </>
+          )}
+
+          {/* Zone hit pour le hover (overlay invisible par minute) */}
+          {frames.map((_, i) => {
+            const x1 = i === 0 ? PADL : (xForIndex(i - 1) + xForIndex(i)) / 2
+            const x2 = i === frames.length - 1 ? W - PADR : (xForIndex(i) + xForIndex(i + 1)) / 2
+            return (
+              <rect key={i} x={x1} y={PADT} width={x2 - x1} height={innerH}
+                fill="transparent" onMouseEnter={() => setHover(i)} />
+            )
+          })}
+
+          {/* Graduations X (minutes) */}
+          {xTicks.map(min => {
+            const x = PADL + (min * 60000 / lastTs) * innerW
+            if (x > W - PADR) return null
+            return (
+              <g key={min}>
+                <line x1={x} y1={PADT + innerH} x2={x} y2={PADT + innerH + 4} stroke="rgba(255,255,255,0.2)" />
+                <text x={x} y={PADT + innerH + 16} textAnchor="middle"
+                  fill="var(--text-dim)" fontSize="10">{min}m</text>
+              </g>
+            )
+          })}
+
+          {/* Graduations Y (3 valeurs) */}
+          {[0, 0.5, 1].map(p => {
+            const v = minV + range * (1 - p)
+            return (
+              <text key={p} x={PADL - 6} y={PADT + innerH * p + 3}
+                textAnchor="end" fill="var(--text-dim)" fontSize="10">
+                {fmt(v)}
+              </text>
+            )
+          })}
+        </svg>
+
+        {/* Tooltip flottant */}
+        {hover !== null && (
+          <div style={{
+            position: 'absolute', top: 6, right: 8, padding: '6px 10px',
+            background: 'rgba(8,5,18,0.95)', border: '1px solid rgba(127,119,221,0.4)',
+            borderRadius: 5, fontSize: 11, color: '#F5F2FA',
+            pointerEvents: 'none', minWidth: 140,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>
+              {Math.floor((frames[hover].ts) / 60000)}m{Math.floor(((frames[hover].ts) / 1000) % 60).toString().padStart(2,'0')}
+            </div>
+            {series.slice(0, 5).map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                {s.champId && champMap[s.champId] && (
+                  <img src={champImg(version, champMap[s.champId].image)} alt=""
+                    style={{ width: 12, height: 12, borderRadius: 2 }} />
+                )}
+                <span style={{ width: 10, height: 2, background: s.color, display: 'inline-block' }} />
+                <span style={{ flex: 1, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {s.label}
+                </span>
+                <span style={{ fontWeight: 600 }}>{fmt(s.values[hover])}</span>
+              </div>
+            ))}
+            {series.length > 5 && <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>+ {series.length - 5} autres</div>}
+          </div>
+        )}
+      </div>
     </section>
   )
 }

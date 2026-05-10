@@ -66,9 +66,25 @@ Deno.serve(async (req) => {
     m.info.participants.forEach((p: any, i: number) => { participantTeam[i + 1] = p.teamId })
 
     const drakesByTeam: Record<number, string[]> = { 100: [], 200: [] }
+
+    // ── Agrégation des frames timeline (1 frame ≈ 1 minute) ──
+    // Pour chaque frame, on calcule les totaux par équipe (or, xp, cs)
+    // ainsi que les valeurs par joueur (or, level) pour pouvoir tracer
+    // les courbes côté client.
+    type TimelineFrame = {
+      ts: number
+      teamGold:    [number, number]   // [bleu, rouge]
+      teamXp:      [number, number]
+      teamCs:      [number, number]
+      playerGold:  number[]           // index 0..9 (participantId-1)
+      playerLevel: number[]
+    }
+    const timelineFrames: TimelineFrame[] = []
+
     if (tl?.info?.frames) {
       // deno-lint-ignore no-explicit-any
       tl.info.frames.forEach((frame: any) => {
+        // 1. Drakes typés via events
         // deno-lint-ignore no-explicit-any
         (frame.events ?? []).forEach((ev: any) => {
           if (ev.type === 'ELITE_MONSTER_KILL' && ev.monsterType === 'DRAGON') {
@@ -76,6 +92,31 @@ Deno.serve(async (req) => {
             const kind   = DRAKE_KIND[ev.monsterSubType] ?? 'dragon'
             if (teamId === 100 || teamId === 200) drakesByTeam[teamId].push(kind)
           }
+        })
+
+        // 2. Snapshot par équipe + par joueur
+        const teamGold: [number, number] = [0, 0]
+        const teamXp:   [number, number] = [0, 0]
+        const teamCs:   [number, number] = [0, 0]
+        const playerGold:  number[] = new Array(10).fill(0)
+        const playerLevel: number[] = new Array(10).fill(1)
+
+        // deno-lint-ignore no-explicit-any
+        Object.entries(frame.participantFrames ?? {}).forEach(([pid, pf]: [string, any]) => {
+          const idx    = Number(pid) - 1
+          const teamId = participantTeam[Number(pid)]
+          const teamIdx = teamId === 100 ? 0 : 1
+          const cs = (pf.minionsKilled ?? 0) + (pf.jungleMinionsKilled ?? 0)
+          teamGold[teamIdx] += pf.totalGold ?? 0
+          teamXp[teamIdx]   += pf.xp ?? 0
+          teamCs[teamIdx]   += cs
+          playerGold[idx]    = pf.totalGold ?? 0
+          playerLevel[idx]   = pf.level ?? 1
+        })
+
+        timelineFrames.push({
+          ts: frame.timestamp ?? 0,
+          teamGold, teamXp, teamCs, playerGold, playerLevel,
         })
       })
     }
@@ -97,6 +138,14 @@ Deno.serve(async (req) => {
       damageDealt:     p.totalDamageDealtToChampions ?? 0,
       damageTaken:     p.totalDamageTaken ?? 0,
       damageMitigated: p.damageSelfMitigated ?? 0,
+      // Stats supplémentaires
+      damageObjectives: p.damageDealtToObjectives ?? 0,
+      damageTurrets:    p.damageDealtToTurrets ?? 0,
+      damageBuildings:  p.damageDealtToBuildings ?? 0,
+      totalHeal:        p.totalHeal ?? 0,
+      healOnTeammates:  p.totalHealsOnTeammates ?? 0,
+      timeCcOthers:     p.timeCCingOthers ?? 0,
+      longestLife:      p.longestTimeSpentLiving ?? 0,
       goldEarned:      p.goldEarned ?? 0,
       level:           p.champLevel ?? 1,
       summoner1Id:     p.summoner1Id,
@@ -141,6 +190,7 @@ Deno.serve(async (req) => {
       gameVersion:   m.info.gameVersion,
       participants,
       teams,
+      timeline:      timelineFrames,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur inconnue'
