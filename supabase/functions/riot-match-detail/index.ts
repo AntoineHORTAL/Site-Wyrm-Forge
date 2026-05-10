@@ -81,16 +81,41 @@ Deno.serve(async (req) => {
     }
     const timelineFrames: TimelineFrame[] = []
 
+    // Achats d'items et levels-up de sorts par participantId
+    type ItemEvent  = { ts: number; itemId: number; type: 'PURCHASED' | 'SOLD' | 'UNDONE' }
+    type SkillEvent = { ts: number; slot: number /* 1=Q 2=W 3=E 4=R */ }
+    const itemEvents:  Record<number, ItemEvent[]>  = {}
+    const skillEvents: Record<number, SkillEvent[]> = {}
+
     if (tl?.info?.frames) {
       // deno-lint-ignore no-explicit-any
       tl.info.frames.forEach((frame: any) => {
-        // 1. Drakes typés via events
+        // 1. Events : drakes, items, skills
         // deno-lint-ignore no-explicit-any
         (frame.events ?? []).forEach((ev: any) => {
+          // Drakes typés
           if (ev.type === 'ELITE_MONSTER_KILL' && ev.monsterType === 'DRAGON') {
             const teamId = ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0
             const kind   = DRAKE_KIND[ev.monsterSubType] ?? 'dragon'
             if (teamId === 100 || teamId === 200) drakesByTeam[teamId].push(kind)
+          }
+          // Items
+          if (ev.type === 'ITEM_PURCHASED' && ev.participantId && ev.itemId) {
+            if (!itemEvents[ev.participantId]) itemEvents[ev.participantId] = []
+            itemEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, itemId: ev.itemId, type: 'PURCHASED' })
+          }
+          if (ev.type === 'ITEM_SOLD' && ev.participantId && ev.itemId) {
+            if (!itemEvents[ev.participantId]) itemEvents[ev.participantId] = []
+            itemEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, itemId: ev.itemId, type: 'SOLD' })
+          }
+          if (ev.type === 'ITEM_UNDO' && ev.participantId && ev.beforeId) {
+            if (!itemEvents[ev.participantId]) itemEvents[ev.participantId] = []
+            itemEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, itemId: ev.beforeId, type: 'UNDONE' })
+          }
+          // Skills
+          if (ev.type === 'SKILL_LEVEL_UP' && ev.participantId && ev.skillSlot) {
+            if (!skillEvents[ev.participantId]) skillEvents[ev.participantId] = []
+            skillEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, slot: ev.skillSlot })
           }
         })
 
@@ -122,7 +147,10 @@ Deno.serve(async (req) => {
     }
 
     // deno-lint-ignore no-explicit-any
-    const participants = m.info.participants.map((p: any) => ({
+    const participants = m.info.participants.map((p: any, idx: number) => ({
+      // participantId Riot = idx+1 — on récupère les events timeline associés.
+      itemEvents:  itemEvents[idx + 1]  ?? [],
+      skillEvents: skillEvents[idx + 1] ?? [],
       puuid:           p.puuid,
       riotIdGameName:  p.riotIdGameName ?? p.summonerName ?? '',
       riotIdTagline:   p.riotIdTagline ?? '',

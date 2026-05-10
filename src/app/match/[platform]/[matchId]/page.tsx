@@ -8,7 +8,7 @@
  * et les ressources DDragon (champions, items, summs, runes), puis affiche
  * les 2 équipes avec tous les joueurs et leurs stats complètes.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -38,6 +38,9 @@ interface ChampInfo { id: string; name: string; image: string }
 interface SpellInfo { id: string; name: string; image: string }
 interface RuneInfo  { id: number; name: string; icon: string }
 
+interface ItemEvent  { ts: number; itemId: number; type: 'PURCHASED' | 'SOLD' | 'UNDONE' }
+interface SkillEvent { ts: number; slot: number /* 1=Q 2=W 3=E 4=R */ }
+
 interface Participant {
   puuid: string; riotIdGameName: string; riotIdTagline: string
   championId: number; championName: string; teamId: number; teamPosition: string
@@ -54,6 +57,9 @@ interface Participant {
   pentaKills: number; quadraKills: number; tripleKills: number; doubleKills: number
   wardsPlaced: number; wardsKilled: number; controlWards: number
   win: boolean
+  // Timeline events
+  itemEvents?: ItemEvent[]
+  skillEvents?: SkillEvent[]
 }
 interface TimelineFrame {
   ts: number
@@ -588,6 +594,14 @@ function MatchDetailView({
       {/* ── Cartes par rôle (matchups) AU-DESSUS du scoreboard ── */}
       <RoleCards detail={detail} champMap={champMap} version={version} myTeamId={myTeamId} />
 
+      {/* ── Section perso (visible uniquement si on a identifié le user) ── */}
+      {me && (
+        <PersonalSection
+          me={me} detail={detail}
+          champMap={champMap} spellMap={spellMap} version={version}
+        />
+      )}
+
       {/* ── Scoreboard des équipes ── */}
       {renderTeam(100, 'ÉQUIPE BLEUE')}
       {renderTeam(200, 'ÉQUIPE ROUGE')}
@@ -798,6 +812,496 @@ function MetricChart({ detail, champMap, version }: {
         })}
       </div>
     </section>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SECTION PERSO : tout ce qui concerne le joueur connecté
+//   - Cartes de stats comparées à la moyenne du match
+//   - Graphique de progression personnelle
+//   - Build pendant la game (items achetés en timeline)
+//   - Ordre de sorts (Q/W/E/R)
+//   - Stats des sorts du champion (DDragon)
+// ════════════════════════════════════════════════════════════════════════════════
+
+interface ChampionAbility { id: string; name: string; description: string; image: string; cooldown: string; cost: string; range: string }
+interface ChampionFull    { passive: { name: string; description: string; image: string }; abilities: ChampionAbility[] }
+
+function PersonalSection({ me, detail, champMap, spellMap, version }: {
+  me: Participant; detail: MatchDetail
+  champMap: Record<number, ChampInfo>; spellMap: Record<number, SpellInfo>
+  version: string
+}) {
+  const accent = '#7F77DD'
+  const gold   = '#EF9F27'
+  const border = 'rgba(255,255,255,0.06)'
+  const bg     = 'rgba(255,255,255,0.02)'
+  const myChamp = champMap[me.championId]
+
+  return (
+    <div style={{
+      marginBottom: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'linear-gradient(180deg, rgba(127,119,221,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+      borderTop: `1px solid ${accent}55`, borderRight: `1px solid ${border}`,
+      borderBottom: `1px solid ${border}`, borderLeft: `4px solid ${accent}`,
+    }}>
+      <div style={{
+        fontSize: 14, fontWeight: 700, letterSpacing: 1.5,
+        color: gold, marginBottom: 12,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        {myChamp && <img src={champImg(version, myChamp.image)} alt=""
+          style={{ width: 26, height: 26, borderRadius: 4 }} />}
+        TES STATS · {me.riotIdGameName}{me.riotIdTagline ? `#${me.riotIdTagline}` : ''}
+      </div>
+
+      <PersonalStatsCards me={me} detail={detail} />
+
+      <div style={{ marginTop: 14 }}>
+        <PersonalProgressionChart me={me} detail={detail} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <BuildTimeline me={me} detail={detail} version={version} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <SkillOrderGrid me={me} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <ChampionAbilities me={me} champMap={champMap} version={version} spellMap={spellMap} />
+      </div>
+    </div>
+  )
+}
+
+// ── Cartes de stats : ma valeur vs moyenne du match ──
+function PersonalStatsCards({ me, detail }: { me: Participant; detail: MatchDetail }) {
+  const dur = detail.gameDuration
+  const teamKills = detail.participants.filter(p => p.teamId === me.teamId).reduce((s, p) => s + p.kills, 0)
+  const myKp = teamKills > 0 ? ((me.kills + me.assists) / teamKills) * 100 : 0
+  const myKda = me.deaths === 0 ? me.kills + me.assists : (me.kills + me.assists) / me.deaths
+
+  // Moyenne du match (les 10 joueurs)
+  const avg = (fn: (p: Participant) => number) =>
+    detail.participants.reduce((s, p) => s + fn(p), 0) / detail.participants.length
+
+  const stats: { label: string; me: number; avg: number; format: (v: number) => string; betterIfHigher?: boolean }[] = [
+    { label: 'Ratio KDA',     me: myKda,                 avg: avg(p => p.deaths === 0 ? p.kills + p.assists : (p.kills + p.assists) / p.deaths), format: v => v.toFixed(2), betterIfHigher: true },
+    { label: 'KP %',          me: myKp,                  avg: avg(p => {
+      const tk = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + q.kills, 0)
+      return tk === 0 ? 0 : ((p.kills + p.assists) / tk) * 100
+    }), format: v => `${Math.round(v)}%`, betterIfHigher: true },
+    { label: 'Dégâts/min',    me: dur === 0 ? 0 : me.damageDealt / (dur / 60), avg: avg(p => dur === 0 ? 0 : p.damageDealt / (dur / 60)), format: v => Math.round(v).toString(), betterIfHigher: true },
+    { label: 'Or/min',        me: dur === 0 ? 0 : me.goldEarned / (dur / 60), avg: avg(p => dur === 0 ? 0 : p.goldEarned / (dur / 60)), format: v => Math.round(v).toString(), betterIfHigher: true },
+    { label: 'CS/min',        me: dur === 0 ? 0 : me.cs / (dur / 60), avg: avg(p => dur === 0 ? 0 : p.cs / (dur / 60)), format: v => v.toFixed(1), betterIfHigher: true },
+    { label: 'Score vision',  me: me.visionScore,        avg: avg(p => p.visionScore), format: v => Math.round(v).toString(), betterIfHigher: true },
+    { label: 'Dégâts subis',  me: me.damageTaken,        avg: avg(p => p.damageTaken), format: v => `${(v/1000).toFixed(1)}K`, betterIfHigher: true },
+    { label: 'Wards posées',  me: me.wardsPlaced,        avg: avg(p => p.wardsPlaced), format: v => Math.round(v).toString(), betterIfHigher: true },
+  ]
+
+  return (
+    <div style={{
+      display: 'grid', gap: 8,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    }}>
+      {stats.map(s => {
+        const diff    = s.avg === 0 ? 0 : ((s.me - s.avg) / s.avg) * 100
+        const better  = (s.betterIfHigher ?? true) ? s.me >= s.avg : s.me <= s.avg
+        const color   = Math.abs(diff) < 5 ? '#A1A1AA' : (better ? '#5DCAA5' : '#E24B4A')
+        return (
+          <div key={s.label} style={{
+            padding: '10px 12px', borderRadius: 6,
+            background: 'rgba(0,0,0,0.2)',
+            borderTop: '1px solid rgba(255,255,255,0.04)',
+            borderRight: '1px solid rgba(255,255,255,0.04)',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            borderLeft: `2px solid ${color}`,
+          }}>
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+              {s.label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: '#F5F2FA' }}>
+                {s.format(s.me)}
+              </span>
+              <span style={{ fontSize: 10, color }}>
+                {diff >= 0 ? '+' : ''}{diff.toFixed(0)}%
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+              moy. {s.format(s.avg)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Graphique de progression personnelle (mes valeurs sur la durée) ──
+type PersoMode = 'gold' | 'xp' | 'level' | 'cs'
+const PERSO_MODES: { key: PersoMode; label: string }[] = [
+  { key: 'gold',  label: 'Mon or' },
+  { key: 'xp',    label: 'Mon XP' },
+  { key: 'level', label: 'Mon niveau' },
+  { key: 'cs',    label: 'Mon CS' },
+]
+
+function PersonalProgressionChart({ me, detail }: { me: Participant; detail: MatchDetail }) {
+  const [mode, setMode] = useState<PersoMode>('gold')
+  const frames = detail.timeline ?? []
+  if (frames.length === 0) {
+    return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Données timeline non disponibles.</div>
+  }
+
+  // Trouver mon index dans participants[]
+  const myIdx = detail.participants.findIndex(p => p.puuid === me.puuid)
+  if (myIdx < 0) return null
+
+  // Géométrie
+  const W = 800, H = 200
+  const PADL = 50, PADR = 18, PADT = 10, PADB = 26
+  const innerW = W - PADL - PADR
+  const innerH = H - PADT - PADB
+  const lastTs = frames[frames.length - 1].ts
+
+  // Valeurs selon le mode
+  const myValues: number[] = frames.map(f => {
+    if (mode === 'gold')  return f.playerGold[myIdx] ?? 0
+    if (mode === 'level') return f.playerLevel[myIdx] ?? 1
+    // XP et CS ne sont pas exposés par joueur ; on prend le total équipe / 5 comme approximation visuelle
+    if (mode === 'xp')    return (f.teamXp[me.teamId === 100 ? 0 : 1] ?? 0) / 5
+    if (mode === 'cs')    return (f.teamCs[me.teamId === 100 ? 0 : 1] ?? 0) / 5
+    return 0
+  })
+
+  // Moyenne de l'équipe (hors moi) pour comparer
+  const teamAvgValues: number[] = frames.map(f => {
+    const teammates = detail.participants
+      .map((p, i) => ({ p, i }))
+      .filter(x => x.p.teamId === me.teamId && x.i !== myIdx)
+    if (teammates.length === 0) return 0
+    if (mode === 'gold')  return teammates.reduce((s, x) => s + (f.playerGold[x.i] ?? 0), 0) / teammates.length
+    if (mode === 'level') return teammates.reduce((s, x) => s + (f.playerLevel[x.i] ?? 1), 0) / teammates.length
+    if (mode === 'xp')    return (f.teamXp[me.teamId === 100 ? 0 : 1] ?? 0) / 5
+    if (mode === 'cs')    return (f.teamCs[me.teamId === 100 ? 0 : 1] ?? 0) / 5
+    return 0
+  })
+
+  const allValues = [...myValues, ...teamAvgValues]
+  const minV = Math.min(...allValues, 0)
+  const maxV = Math.max(...allValues, 1)
+  const range = maxV - minV || 1
+  const yForValue = (v: number) => PADT + innerH - ((v - minV) / range) * innerH
+  const xForIndex = (i: number) => PADL + (frames[i].ts / lastTs) * innerW
+  const pathFor = (vals: number[]) =>
+    vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xForIndex(i).toFixed(1)} ${yForValue(v).toFixed(1)}`).join(' ')
+
+  const fmt = (v: number) => {
+    if (mode === 'gold' || mode === 'xp') return `${(v / 1000).toFixed(1)}K`
+    if (mode === 'level') return Math.round(v).toString()
+    return Math.round(v).toString()
+  }
+
+  // Graduations X
+  const totalMin = Math.ceil(lastTs / 60000)
+  const xTicks: number[] = []
+  for (let m = 0; m <= totalMin; m += 5) xTicks.push(m)
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Ma progression dans la partie
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+        {PERSO_MODES.map(m => {
+          const isActive = m.key === mode
+          return (
+            <button key={m.key} onClick={() => setMode(m.key)} style={{
+              padding: '3px 9px', borderRadius: 5, fontSize: 11,
+              cursor: 'pointer', transition: 'all 120ms',
+              background: isActive ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.03)',
+              border: isActive ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
+              color: isActive ? '#F5F2FA' : 'var(--text-muted)',
+              fontWeight: isActive ? 600 : 400,
+            }}>{m.label}</button>
+          )
+        })}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ width: '100%', height: 200, display: 'block' }}>
+        {/* Grille */}
+        {[0.25, 0.5, 0.75].map(p => (
+          <line key={p}
+            x1={PADL} y1={PADT + innerH * p}
+            x2={W - 18} y2={PADT + innerH * p}
+            stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+        ))}
+        {/* Moyenne équipe (gris pointillé) */}
+        <path d={pathFor(teamAvgValues)} fill="none" stroke="rgba(161,161,170,0.5)"
+          strokeWidth="1.5" strokeDasharray="4,3" />
+        {/* Mes valeurs (or, plein) */}
+        <path d={pathFor(myValues)} fill="none" stroke="#EF9F27" strokeWidth="2.5" strokeLinecap="round" />
+
+        {/* Graduations X */}
+        {xTicks.map(min => {
+          const x = PADL + (min * 60000 / lastTs) * innerW
+          if (x > W - 18) return null
+          return (
+            <g key={min}>
+              <line x1={x} y1={PADT + innerH} x2={x} y2={PADT + innerH + 3} stroke="rgba(255,255,255,0.2)" />
+              <text x={x} y={PADT + innerH + 14} textAnchor="middle" fill="var(--text-dim)" fontSize="10">{min}m</text>
+            </g>
+          )
+        })}
+        {/* Graduations Y */}
+        {[0, 0.5, 1].map(p => {
+          const v = minV + range * (1 - p)
+          return (
+            <text key={p} x={PADL - 6} y={PADT + innerH * p + 3}
+              textAnchor="end" fill="var(--text-dim)" fontSize="10">{fmt(v)}</text>
+          )
+        })}
+      </svg>
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', marginTop: 4 }}>
+        <span style={{ color: '#EF9F27', fontWeight: 600 }}>━ Moi</span>{' · '}
+        <span>┄ Moyenne équipe</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Build pendant la partie : timeline d'items achetés ──
+function BuildTimeline({ me, detail, version }: {
+  me: Participant; detail: MatchDetail; version: string
+}) {
+  const events = me.itemEvents ?? []
+  if (events.length === 0) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          Mon build dans la partie
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+          Données build non disponibles.
+        </div>
+      </div>
+    )
+  }
+
+  // Filtrer pour ne garder que les achats nets (PURCHASED moins UNDONE consécutifs)
+  // et ignorer les SOLD pour la lisibilité
+  const cleaned: ItemEvent[] = []
+  events.forEach(ev => {
+    if (ev.type === 'UNDONE') {
+      // Annuler le dernier PURCHASED de même itemId
+      for (let i = cleaned.length - 1; i >= 0; i--) {
+        if (cleaned[i].type === 'PURCHASED' && cleaned[i].itemId === ev.itemId) {
+          cleaned.splice(i, 1); break
+        }
+      }
+    } else if (ev.type === 'PURCHASED') {
+      cleaned.push(ev)
+    }
+  })
+
+  // Grouper en "trips" : achats < 30s d'écart
+  const trips: ItemEvent[][] = []
+  cleaned.forEach(ev => {
+    const last = trips[trips.length - 1]
+    if (last && ev.ts - last[last.length - 1].ts < 30000) last.push(ev)
+    else trips.push([ev])
+  })
+
+  const fmtTs = (ts: number) => {
+    const m = Math.floor(ts / 60000)
+    const s = Math.floor((ts / 1000) % 60).toString().padStart(2, '0')
+    return `${m}:${s}`
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Mon build dans la partie ({cleaned.length} achats)
+      </div>
+      <div style={{
+        display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+        padding: 10, borderRadius: 6, background: 'rgba(0,0,0,0.2)',
+      }}>
+        {trips.map((trip, ti) => (
+          <div key={ti} style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '4px 8px', borderRadius: 4,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            <span style={{ fontSize: 9, color: 'var(--text-dim)', marginRight: 2 }}>
+              {fmtTs(trip[0].ts)}
+            </span>
+            {trip.map((ev, i) => (
+              <img key={i} src={itemImg(version, ev.itemId)} alt=""
+                title={`${ev.itemId} @ ${fmtTs(ev.ts)}`}
+                style={{ width: 28, height: 28, borderRadius: 3 }}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Ordre de sorts (Q/W/E/R) ──
+function SkillOrderGrid({ me }: { me: Participant }) {
+  const events = me.skillEvents ?? []
+  if (events.length === 0) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          Ordre de sorts
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+          Données skill order non disponibles.
+        </div>
+      </div>
+    )
+  }
+
+  const SLOT_LABELS = ['Q', 'W', 'E', 'R']
+  const SLOT_COLORS = ['#3A8AC9', '#5DCAA5', '#EF9F27', '#E24B4A']
+  const totalLevels = events.length
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Ordre de sorts (niveau 1 → {totalLevels})
+      </div>
+      <div style={{
+        display: 'grid', gap: 2,
+        gridTemplateColumns: `42px repeat(${totalLevels}, minmax(22px, 1fr))`,
+        padding: 10, borderRadius: 6, background: 'rgba(0,0,0,0.2)',
+        fontSize: 10,
+      }}>
+        {/* Header niveaux */}
+        <div></div>
+        {events.map((_, i) => (
+          <div key={i} style={{ textAlign: 'center', color: 'var(--text-dim)' }}>{i + 1}</div>
+        ))}
+        {/* Lignes Q/W/E/R */}
+        {SLOT_LABELS.map((label, slotIdx) => (
+          <Fragment key={label}>
+            <div style={{ color: SLOT_COLORS[slotIdx], fontWeight: 700, textAlign: 'center' }}>{label}</div>
+            {events.map((ev, lvl) => (
+              <div key={lvl} style={{
+                width: '100%', height: 22, borderRadius: 3,
+                background: ev.slot === slotIdx + 1 ? SLOT_COLORS[slotIdx] : 'rgba(255,255,255,0.03)',
+                border: ev.slot === slotIdx + 1 ? 'none' : '1px solid rgba(255,255,255,0.04)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: ev.slot === slotIdx + 1 ? '#0a0612' : 'transparent',
+                fontWeight: 700, fontSize: 9,
+              }}>
+                {ev.slot === slotIdx + 1 ? lvl + 1 : ''}
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Stats des sorts du champion (fetch DDragon) ──
+function ChampionAbilities({ me, champMap, version }: {
+  me: Participant; champMap: Record<number, ChampInfo>
+  spellMap: Record<number, SpellInfo>; version: string
+}) {
+  const champ = champMap[me.championId]
+  const [data, setData] = useState<ChampionFull | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!champ || !version) return
+    let cancelled = false
+    fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion/${champ.id}.json`)
+      .then(r => r.json())
+      .then((j: { data: Record<string, { passive: { name: string; description: string; image: { full: string } }; spells: { id: string; name: string; description: string; image: { full: string }; cooldownBurn: string; costBurn: string; rangeBurn: string }[] }> }) => {
+        if (cancelled) return
+        const d = j.data[champ.id]
+        if (!d) { setError('Champion introuvable'); return }
+        setData({
+          passive: { name: d.passive.name, description: d.passive.description, image: d.passive.image.full },
+          abilities: d.spells.map(sp => ({
+            id: sp.id, name: sp.name, description: sp.description, image: sp.image.full,
+            cooldown: sp.cooldownBurn, cost: sp.costBurn, range: sp.rangeBurn,
+          })),
+        })
+      })
+      .catch(() => { if (!cancelled) setError('Impossible de charger les sorts.') })
+    return () => { cancelled = true }
+  }, [champ, version])
+
+  if (!champ) return null
+  if (error) return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{error}</div>
+  if (!data) return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Chargement des sorts…</div>
+
+  // HTML descriptions de Riot — on supprime juste les balises XML simples pour rendre le texte
+  const cleanHtml = (s: string) => s
+    .replace(/<br\s*\/?>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+
+  const SLOTS = ['P', 'Q', 'W', 'E', 'R']
+  const all = [
+    { ...data.passive, slot: 'P', cooldown: '', cost: '', range: '' },
+    ...data.abilities.map((a, i) => ({ ...a, slot: SLOTS[i + 1] ?? '?' })),
+  ]
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Sorts de {champ.name}
+      </div>
+      <div style={{
+        display: 'grid', gap: 6,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      }}>
+        {all.map((ab, i) => (
+          <div key={i} style={{
+            display: 'flex', gap: 8, padding: 8, borderRadius: 6,
+            background: 'rgba(0,0,0,0.2)',
+            border: '1px solid rgba(255,255,255,0.04)',
+          }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <img src={
+                ab.slot === 'P'
+                  ? `https://ddragon.leagueoflegends.com/cdn/${version}/img/passive/${ab.image}`
+                  : `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${ab.image}`
+              } alt="" style={{ width: 42, height: 42, borderRadius: 4 }} />
+              <span style={{
+                position: 'absolute', bottom: -3, left: -3, fontSize: 9, fontWeight: 700,
+                padding: '0 4px', borderRadius: 2, background: '#7F77DD', color: '#fff',
+              }}>{ab.slot}</span>
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F2FA', marginBottom: 2 }}>
+                {ab.name}
+              </div>
+              {ab.slot !== 'P' && (
+                <div style={{ fontSize: 9, color: 'var(--text-dim)', marginBottom: 4, display: 'flex', gap: 8 }}>
+                  {ab.cooldown && <span>⏱ {ab.cooldown}s</span>}
+                  {ab.cost     && <span>💧 {ab.cost}</span>}
+                  {ab.range    && <span>📏 {ab.range}</span>}
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4, whiteSpace: 'pre-wrap', maxHeight: 80, overflowY: 'auto' }}>
+                {cleanHtml(ab.description)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
