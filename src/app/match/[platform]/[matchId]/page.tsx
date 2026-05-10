@@ -835,8 +835,10 @@ function PersonalSection({ me, detail, champMap, spellMap, version }: {
   const accent = '#7F77DD'
   const gold   = '#EF9F27'
   const border = 'rgba(255,255,255,0.06)'
-  const bg     = 'rgba(255,255,255,0.02)'
   const myChamp = champMap[me.championId]
+
+  // Replié par défaut — n'affiche que les cartes de stats. Clic pour révéler progression/build/skills/sorts.
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div style={{
@@ -852,26 +854,57 @@ function PersonalSection({ me, detail, champMap, spellMap, version }: {
       }}>
         {myChamp && <img src={champImg(version, myChamp.image)} alt=""
           style={{ width: 26, height: 26, borderRadius: 4 }} />}
-        TES STATS · {me.riotIdGameName}{me.riotIdTagline ? `#${me.riotIdTagline}` : ''}
+        <span style={{ flex: 1 }}>
+          TES STATS · {me.riotIdGameName}{me.riotIdTagline ? `#${me.riotIdTagline}` : ''}
+        </span>
       </div>
 
+      {/* Cartes de stats : TOUJOURS visibles */}
       <PersonalStatsCards me={me} detail={detail} />
 
-      <div style={{ marginTop: 14 }}>
-        <PersonalProgressionChart me={me} detail={detail} />
-      </div>
+      {/* Bouton dérouler / replier */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          marginTop: 12, width: '100%', padding: '8px 12px',
+          borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: 1,
+          cursor: 'pointer', transition: 'all 120ms',
+          background: expanded ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(127,119,221,0.3)',
+          color: expanded ? '#F5F2FA' : 'var(--text-muted)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}
+      >
+        <span style={{
+          display: 'inline-block',
+          transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 150ms', fontSize: 9,
+        }}>▶</span>
+        {expanded
+          ? 'REPLIER LES DÉTAILS'
+          : 'DÉROULER : PROGRESSION · BUILD · SKILL ORDER · SORTS'}
+      </button>
 
-      <div style={{ marginTop: 14 }}>
-        <BuildTimeline me={me} detail={detail} version={version} />
-      </div>
+      {/* Section dépliable */}
+      {expanded && (
+        <>
+          <div style={{ marginTop: 14 }}>
+            <PersonalProgressionChart me={me} detail={detail} />
+          </div>
 
-      <div style={{ marginTop: 14 }}>
-        <SkillOrderGrid me={me} />
-      </div>
+          <div style={{ marginTop: 14 }}>
+            <BuildTimeline me={me} detail={detail} version={version} />
+          </div>
 
-      <div style={{ marginTop: 14 }}>
-        <ChampionAbilities me={me} champMap={champMap} version={version} spellMap={spellMap} />
-      </div>
+          <div style={{ marginTop: 14 }}>
+            <SkillOrderGrid me={me} />
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <ChampionAbilities me={me} champMap={champMap} version={version} spellMap={spellMap} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
