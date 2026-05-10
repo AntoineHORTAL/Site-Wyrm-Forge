@@ -274,11 +274,11 @@ function MatchDetailView({
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {totalKills} kills · {Math.round(totalGold / 1000)}K or
           </span>
-          <ObjStat icon="tower"     count={team.objectives.tower}     label="Tours" />
-          <ObjStat icon="dragon"    count={team.objectives.dragon}    label="Dragons" />
-          <ObjStat icon="baron"     count={team.objectives.baron}     label="Barons" />
-          <ObjStat icon="herald"    count={team.objectives.herald}    label="Hérauts" />
-          <ObjStat icon="inhibitor" count={team.objectives.inhibitor} label="Inhibs" />
+          <ObjStat src="/icons/objectives/_tower.png"      fallback="🏯" count={team.objectives.tower}     label="Tours" />
+          <ObjStat src="/icons/objectives/_dragon.png"     fallback="🐉" count={team.objectives.dragon}    label="Dragons" />
+          <ObjStat src="/icons/objectives/_baronnashor.png" fallback="🦇" count={team.objectives.baron}     label="Barons" />
+          <ObjStat src="/icons/objectives/_riftherald.png" fallback="🦅" count={team.objectives.herald}    label="Hérauts" />
+          <ObjStat src="/icons/objectives/_inhibitor.png"  fallback="🟣" count={team.objectives.inhibitor} label="Inhibs" />
           {team.bans.length > 0 && (
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>BANS</span>
@@ -441,11 +441,11 @@ function MatchDetailView({
 }
 
 // Petit composant pour un objectif (icône + chiffre).
-// Cherche d'abord /icons/objectives/{name}.svg, fallback sur emoji si introuvable.
-function ObjStat({ icon, count, label }: { icon: string; count: number; label: string }) {
-  const fallback: Record<string, string> = {
-    tower: '🏯', dragon: '🐉', baron: '🦇', herald: '🦅', inhibitor: '🟣',
-  }
+// Affiche l'image au chemin `src` ; si l'image ne charge pas (404, fichier absent),
+// fallback automatique sur l'emoji `fallback`.
+function ObjStat({ src, fallback, count, label }: {
+  src: string; fallback: string; count: number; label: string
+}) {
   const [imgFailed, setImgFailed] = useState(false)
   return (
     <span title={label} style={{
@@ -453,10 +453,10 @@ function ObjStat({ icon, count, label }: { icon: string; count: number; label: s
       fontSize: 12, color: 'var(--text-muted)',
     }}>
       {imgFailed
-        ? <span>{fallback[icon] ?? '•'}</span>
-        : <img src={`/icons/objectives/${icon}.svg`} alt="" width={16} height={16}
+        ? <span style={{ fontSize: 14 }}>{fallback}</span>
+        : <img src={src} alt="" width={18} height={18}
             onError={() => setImgFailed(true)}
-            style={{ display: 'block' }} />
+            style={{ display: 'block', objectFit: 'contain' }} />
       }
       {count}
     </span>
