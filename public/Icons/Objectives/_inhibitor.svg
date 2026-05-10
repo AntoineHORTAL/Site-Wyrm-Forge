@@ -1,0 +1,13 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <!-- Halo extérieur -->
+  <circle cx="12" cy="12" r="10" fill="#A855F7" opacity="0.18"/>
+  <!-- Halo moyen -->
+  <circle cx="12" cy="12" r="7"  fill="#A855F7" opacity="0.40"/>
+  <!-- Cristal hexagonal central -->
+  <path d="M12 4 L19 8.5 L19 15.5 L12 20 L5 15.5 L5 8.5 Z"
+        fill="#C084FC" stroke="#7C3AED" stroke-width="0.6"/>
+  <!-- Reflet lumineux -->
+  <path d="M12 4 L19 8.5 L12 12 Z" fill="#E9D5FF" opacity="0.55"/>
+  <!-- Cœur lumineux -->
+  <circle cx="12" cy="12" r="2" fill="#F5F3FF"/>
+</svg>

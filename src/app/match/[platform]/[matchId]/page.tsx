@@ -277,8 +277,8 @@ function MatchDetailView({
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {totalKills} kills · {Math.round(totalGold / 1000)}K or
           </span>
-          <ObjStat src="/icons/objectives/_tower.png"       fallback="🏯" count={team.objectives.tower}     label="Tours" />
-          <ObjStat src="/icons/objectives/_inhibitor.png"   fallback="◆"  count={team.objectives.inhibitor} label="Inhibs" />
+          <ObjStat src="/icons/objectives/_tower.svg"       fallback="🏯" count={team.objectives.tower}     label="Tours" />
+          <ObjStat src="/icons/objectives/_inhibitor.svg"   fallback="◆"  count={team.objectives.inhibitor} label="Inhibs" />
           <ObjStat src="/icons/objectives/_dragon.png"      fallback="🐉" count={team.objectives.dragon}    label="Dragons" />
           <ObjStat src="/icons/objectives/_baronnashor.png" fallback="🦇" count={team.objectives.baron}     label="Barons" />
           <ObjStat src="/icons/objectives/_riftherald.png"  fallback="🦅" count={team.objectives.herald}    label="Hérauts" />
