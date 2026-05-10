@@ -9,3 +9,7 @@ verify_jwt = false
 [functions.riot-matches]
 # Auth requise — historique de partie = donnée personnelle.
 verify_jwt = true
+
+[functions.riot-match-detail]
+# Auth requise — détail complet d'un match (10 joueurs, items, runes).
+verify_jwt = true

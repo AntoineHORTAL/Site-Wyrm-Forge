@@ -8,6 +8,35 @@ import { createClient } from '@/lib/supabase/client'
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
 interface SpellInfo { id: string; name: string; image: string }
 interface RuneInfo  { id: number; name: string; icon: string }
+// Détail complet d'une partie (chargé à la demande quand on déplie)
+interface MatchParticipant {
+  puuid: string
+  riotIdGameName: string
+  riotIdTagline: string
+  championId: number
+  championName: string
+  teamId: number
+  teamPosition: string
+  kills: number; deaths: number; assists: number
+  cs: number; visionScore: number; level: number
+  damageDealt: number; damageTaken: number; damageMitigated: number; goldEarned: number
+  summoner1Id: number; summoner2Id: number
+  keystoneId: number; secondaryStyleId: number
+  items: number[]; trinket: number
+  pentaKills: number; quadraKills: number; tripleKills: number; doubleKills: number
+  wardsPlaced: number; wardsKilled: number; controlWards: number
+  win: boolean
+}
+interface MatchTeam {
+  teamId: number; win: boolean; bans: number[]
+  objectives: { baron: number; dragon: number; herald: number; tower: number; inhibitor: number; champion: number }
+}
+interface MatchDetail {
+  matchId: string; gameCreation: number; gameDuration: number; queueId: number; gameVersion: string
+  participants: MatchParticipant[]
+  teams: MatchTeam[]
+}
+
 interface MatchInfo {
   matchId: string; championId: number; championName: string
   queueId: number; queueName: string
@@ -78,6 +107,15 @@ export default function AccueilTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+
+  // PUUID du joueur connecté (pour highlight dans le détail)
+  const [puuid, setPuuid] = useState<string>('')
+
+  // Détail des matchs (chargé à la demande)
+  const [expandedId, setExpandedId]   = useState<string | null>(null)
+  const [detailCache, setDetailCache] = useState<Record<string, MatchDetail>>({})
+  const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({})
+  const [detailError, setDetailError]   = useState<Record<string, string>>({})
 
   // DDragon
   const [version, setVersion]   = useState('')
@@ -213,6 +251,37 @@ export default function AccueilTab() {
     if (savedRiot && version) loadMatches(savedRiot)
   }, [savedRiot])
 
+  // Toggle l'affichage détaillé d'une partie (charge à la 1ère ouverture, cache ensuite).
+  async function toggleDetail(matchId: string, platform: string) {
+    if (expandedId === matchId) { setExpandedId(null); return }
+    setExpandedId(matchId)
+    if (detailCache[matchId]) return // déjà chargé
+
+    setDetailLoading(prev => ({ ...prev, [matchId]: true }))
+    setDetailError(prev => ({ ...prev, [matchId]: '' }))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setDetailError(prev => ({ ...prev, [matchId]: 'Connexion requise.' }))
+        return
+      }
+      const res = await fetch(
+        FN_URL('riot-match-detail', { matchId, platform }),
+        { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setDetailError(prev => ({ ...prev, [matchId]: data.error ?? 'Erreur Riot API' }))
+        return
+      }
+      setDetailCache(prev => ({ ...prev, [matchId]: data }))
+    } catch {
+      setDetailError(prev => ({ ...prev, [matchId]: 'Impossible de charger le détail.' }))
+    } finally {
+      setDetailLoading(prev => ({ ...prev, [matchId]: false }))
+    }
+  }
+
   async function loadMatches(riot: { gameName: string; tagLine: string; platform: string }) {
     setLoadingMatches(true)
     setMatchError('')
@@ -238,6 +307,7 @@ export default function AccueilTab() {
       const data = await res.json()
       if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
       setMatches(data.matches ?? [])
+      if (data.puuid) setPuuid(data.puuid)
     } catch {
       setMatchError('Impossible de joindre l\'API Riot.')
     } finally {
@@ -478,12 +548,36 @@ export default function AccueilTab() {
               const winColor   = m.win ? '#5DCAA5' : '#E24B4A'
               const items      = [...(Array.isArray(m.items) ? m.items : []), m.trinket ?? 0]
 
+              const isExpanded = expandedId === m.matchId
+              const detail     = detailCache[m.matchId]
+              const dLoading   = !!detailLoading[m.matchId]
+              const dError     = detailError[m.matchId]
+
               return (
                 <div key={m.matchId} style={{
-                  display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-                  padding: '10px 14px', borderRadius: 8, background: bg,
+                  borderRadius: 8, background: bg,
                   border: `1px solid ${border}`, borderLeft: `3px solid ${winColor}`,
+                  overflow: 'hidden',
                 }}>
+                <div
+                  onClick={() => savedRiot && toggleDetail(m.matchId, savedRiot.platform)}
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+                    padding: '10px 14px', cursor: 'pointer',
+                    transition: 'background 120ms',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                >
+                  {/* Chevron indicateur */}
+                  <div style={{
+                    fontSize: 11, color: 'var(--text-dim)', flexShrink: 0, width: 12,
+                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 150ms',
+                  }}>▶</div>
+
                   {/* Bloc 1 — Champion + summs + rune */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                     {/* Champion */}
@@ -554,7 +648,7 @@ export default function AccueilTab() {
                   {/* Bloc 4 — CS + Vision */}
                   <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 80 }}>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {m.cs} <span style={{ color: 'var(--text-dim)' }}>({csPerMin}/min)</span>
+                      {m.cs} CS <span style={{ color: 'var(--text-dim)' }}>({csPerMin}/min)</span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
                       Vision {m.visionScore}
@@ -597,6 +691,38 @@ export default function AccueilTab() {
                     </div>
                   </div>
                 </div>
+
+                {/* ── Panneau détail (visible si déplié) ── */}
+                {isExpanded && (
+                  <div style={{
+                    borderTop: `1px solid ${border}`,
+                    background: 'rgba(0,0,0,0.15)',
+                    padding: '14px 16px',
+                  }}>
+                    {dLoading && (
+                      <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 12, padding: '20px 0' }}>
+                        Chargement du détail…
+                      </div>
+                    )}
+                    {dError && (
+                      <div style={{ color: '#E24B4A', fontSize: 12 }}>{dError}</div>
+                    )}
+                    {detail && version && (
+                      <MatchDetailPanel
+                        detail={detail}
+                        version={version}
+                        champMap={champMap}
+                        spellMap={spellMap}
+                        runeMap={runeMap}
+                        myPuuid={puuid}
+                        accent={accent}
+                        gold={gold}
+                        border={border}
+                      />
+                    )}
+                  </div>
+                )}
+                </div>
               )
             })}
           </div>
@@ -609,6 +735,189 @@ export default function AccueilTab() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Composant MatchDetailPanel
+// Affiche les 10 joueurs (2 équipes) + bans + objectifs + dégâts.
+// Highlight la ligne du joueur connecté.
+// ────────────────────────────────────────────────────────────────────────────────
+function MatchDetailPanel({
+  detail, version, champMap, spellMap, runeMap, myPuuid, accent, gold, border,
+}: {
+  detail: MatchDetail; version: string
+  champMap: Record<number, ChampInfo>
+  spellMap: Record<number, SpellInfo>
+  runeMap:  Record<number, RuneInfo>
+  myPuuid: string
+  accent: string; gold: string; border: string
+}) {
+  // Damage max pour normaliser la barre
+  const maxDmg = Math.max(...detail.participants.map(p => p.damageDealt), 1)
+
+  // Rendu d'une équipe (5 joueurs)
+  const renderTeam = (teamId: number, label: string) => {
+    const team    = detail.teams.find(t => t.teamId === teamId)
+    const players = detail.participants.filter(p => p.teamId === teamId)
+    if (!team) return null
+
+    const totalKills = players.reduce((s, p) => s + p.kills, 0)
+    const totalGold  = players.reduce((s, p) => s + p.goldEarned, 0)
+    const teamColor  = team.win ? '#5DCAA5' : '#E24B4A'
+
+    return (
+      <div style={{ marginBottom: 16 }}>
+        {/* Header équipe : résultat + bans + objectifs + total kills/gold */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          marginBottom: 6, padding: '6px 10px', borderRadius: 6,
+          background: 'rgba(255,255,255,0.03)',
+        }}>
+          <span style={{ fontWeight: 700, color: teamColor, fontSize: 12, letterSpacing: 1 }}>
+            {label} · {team.win ? 'VICTOIRE' : 'DÉFAITE'}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+            {totalKills} kills · {Math.round(totalGold / 1000)}K or
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+            🏯 {team.objectives.tower} · 🐉 {team.objectives.dragon} ·
+            🦇 {team.objectives.baron} · 🦅 {team.objectives.herald}
+          </span>
+          {team.bans.length > 0 && (
+            <div style={{ display: 'flex', gap: 3, marginLeft: 'auto', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', marginRight: 4 }}>BANS</span>
+              {team.bans.map((banId, i) => {
+                const c = champMap[banId]
+                return c
+                  ? <img key={i} src={`https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${c.image}`}
+                      title={c.name} alt=""
+                      style={{ width: 22, height: 22, borderRadius: 3, opacity: 0.6, filter: 'grayscale(0.6)' }} />
+                  : <div key={i} style={{ width: 22, height: 22, borderRadius: 3, background: 'rgba(255,255,255,0.05)' }} />
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Lignes joueurs */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {players.map(p => {
+            const champ      = champMap[p.championId]
+            const summ1      = p.summoner1Id ? spellMap[p.summoner1Id] : undefined
+            const summ2      = p.summoner2Id ? spellMap[p.summoner2Id] : undefined
+            const keystone   = p.keystoneId ? runeMap[p.keystoneId] : undefined
+            const isMe       = p.puuid === myPuuid
+            const dmgPct     = (p.damageDealt / maxDmg) * 100
+            const items      = [...p.items, p.trinket]
+
+            return (
+              <div key={p.puuid} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 8px', borderRadius: 4,
+                background: isMe ? 'rgba(127,119,221,0.10)' : 'transparent',
+                border: isMe ? `1px solid ${accent}55` : '1px solid transparent',
+                fontSize: 12,
+              }}>
+                {/* Champion + level */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  {champ
+                    ? <img src={`https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${champ.image}`}
+                        alt="" style={{ width: 32, height: 32, borderRadius: 4 }} />
+                    : <div style={{ width: 32, height: 32, borderRadius: 4, background: '#222' }} />
+                  }
+                  <div style={{
+                    position: 'absolute', bottom: -2, right: -2, fontSize: 9, fontWeight: 700,
+                    background: 'rgba(0,0,0,0.85)', padding: '0 3px', borderRadius: 2,
+                    color: '#F5F2FA', border: `1px solid ${border}`, lineHeight: '12px',
+                  }}>{p.level}</div>
+                </div>
+
+                {/* Summs */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
+                  {summ1 && <img src={`https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${summ1.image}`} alt="" title={summ1.name}
+                    style={{ width: 15, height: 15, borderRadius: 2 }} />}
+                  {summ2 && <img src={`https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${summ2.image}`} alt="" title={summ2.name}
+                    style={{ width: 15, height: 15, borderRadius: 2 }} />}
+                </div>
+
+                {/* Keystone */}
+                {keystone && (
+                  <img src={`https://ddragon.leagueoflegends.com/cdn/img/${keystone.icon}`}
+                    alt="" title={keystone.name}
+                    style={{ width: 24, height: 24, flexShrink: 0 }} />
+                )}
+
+                {/* Pseudo + champ name */}
+                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                  <div style={{
+                    color: isMe ? gold : '#F5F2FA', fontWeight: isMe ? 700 : 500,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {p.riotIdGameName || champ?.name || p.championName}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                    {champ?.name ?? p.championName}
+                  </div>
+                </div>
+
+                {/* KDA */}
+                <div style={{ minWidth: 70, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  {p.kills}/<span style={{ color: '#E24B4A' }}>{p.deaths}</span>/{p.assists}
+                </div>
+
+                {/* CS */}
+                <div style={{ minWidth: 50, textAlign: 'right', color: 'var(--text-dim)' }}>
+                  {p.cs} CS
+                </div>
+
+                {/* Or */}
+                <div style={{ minWidth: 55, textAlign: 'right', color: gold }}>
+                  {(p.goldEarned / 1000).toFixed(1)}K
+                </div>
+
+                {/* Damage bar */}
+                <div style={{ flex: '0 0 110px', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${dmgPct}%`, height: '100%', background: '#E24B4A' }} />
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)', minWidth: 36, textAlign: 'right' }}>
+                    {(p.damageDealt / 1000).toFixed(1)}K
+                  </span>
+                </div>
+
+                {/* Vision */}
+                <div style={{ minWidth: 60, textAlign: 'right', color: 'var(--text-dim)', fontSize: 11 }}>
+                  Vis {p.visionScore}
+                </div>
+
+                {/* Items */}
+                <div style={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+                  {items.map((id, i) => (
+                    <div key={i} style={{
+                      width: 18, height: 18, borderRadius: 2,
+                      background: id ? 'transparent' : 'rgba(255,255,255,0.04)',
+                    }}>
+                      {id > 0 && (
+                        <img src={`https://ddragon.leagueoflegends.com/cdn/${version}/img/item/${id}.png`}
+                          alt="" style={{ width: 18, height: 18, borderRadius: 2, display: 'block' }}
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {renderTeam(100, 'ÉQUIPE BLEUE')}
+      {renderTeam(200, 'ÉQUIPE ROUGE')}
     </div>
   )
 }
