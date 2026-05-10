@@ -68,6 +68,8 @@ interface TimelineFrame {
   teamCs:      [number, number]
   playerGold:  number[]
   playerLevel: number[]
+  playerXp?:   number[]
+  playerCs?:   number[]
 }
 interface Team {
   teamId: number; win: boolean; bans: number[]
@@ -1347,16 +1349,41 @@ function ChampionAbilities({ me, champMap, version }: {
 // Tracé en SVG manuel (pas de dépendance à recharts).
 // ────────────────────────────────────────────────────────────────────────────────
 type TimelineMode =
+  // Différentiel équipes
   | 'goldDiff' | 'xpDiff' | 'csDiff'
-  | 'goldBlue' | 'goldRed' | 'levelAll'
+  // Cumul équipe (2 courbes : bleu vs rouge)
+  | 'teamGold' | 'teamXp' | 'teamCs'
+  // 10 courbes par joueur
+  | 'goldAll' | 'xpAll' | 'csAll' | 'levelAll'
+  // 5 courbes équipe bleue
+  | 'goldBlue' | 'xpBlue' | 'csBlue' | 'levelBlue'
+  // 5 courbes équipe rouge
+  | 'goldRed'  | 'xpRed'  | 'csRed'  | 'levelRed'
 
 const TIMELINE_MODES: { key: TimelineMode; label: string; group: string }[] = [
-  { key: 'goldDiff',  label: 'Diff. or',     group: 'Différentiel' },
-  { key: 'xpDiff',    label: 'Diff. XP',     group: 'Différentiel' },
-  { key: 'csDiff',    label: 'Diff. CS',     group: 'Différentiel' },
-  { key: 'goldBlue',  label: 'Or équipe bleue',  group: 'Par joueur' },
-  { key: 'goldRed',   label: 'Or équipe rouge',  group: 'Par joueur' },
-  { key: 'levelAll',  label: 'Niveau (10 joueurs)', group: 'Par joueur' },
+  // — Différentiel —
+  { key: 'goldDiff',  label: 'Diff. or',  group: 'Différentiel' },
+  { key: 'xpDiff',    label: 'Diff. XP',  group: 'Différentiel' },
+  { key: 'csDiff',    label: 'Diff. CS',  group: 'Différentiel' },
+  // — Cumul équipe —
+  { key: 'teamGold',  label: 'Or équipes', group: 'Cumul équipe' },
+  { key: 'teamXp',    label: 'XP équipes', group: 'Cumul équipe' },
+  { key: 'teamCs',    label: 'CS équipes', group: 'Cumul équipe' },
+  // — Tous les joueurs —
+  { key: 'goldAll',   label: 'Or',     group: 'Les 10 joueurs' },
+  { key: 'xpAll',     label: 'XP',     group: 'Les 10 joueurs' },
+  { key: 'csAll',     label: 'CS',     group: 'Les 10 joueurs' },
+  { key: 'levelAll',  label: 'Niveau', group: 'Les 10 joueurs' },
+  // — Équipe bleue —
+  { key: 'goldBlue',  label: 'Or',     group: 'Équipe bleue' },
+  { key: 'xpBlue',    label: 'XP',     group: 'Équipe bleue' },
+  { key: 'csBlue',    label: 'CS',     group: 'Équipe bleue' },
+  { key: 'levelBlue', label: 'Niveau', group: 'Équipe bleue' },
+  // — Équipe rouge —
+  { key: 'goldRed',   label: 'Or',     group: 'Équipe rouge' },
+  { key: 'xpRed',     label: 'XP',     group: 'Équipe rouge' },
+  { key: 'csRed',     label: 'CS',     group: 'Équipe rouge' },
+  { key: 'levelRed',  label: 'Niveau', group: 'Équipe rouge' },
 ]
 
 function TimelineChart({ detail, champMap, version }: {
@@ -1382,31 +1409,21 @@ function TimelineChart({ detail, champMap, version }: {
   type Series = { values: number[]; color: string; label: string; champId?: number }
   const series: Series[] = []
 
-  if (mode === 'goldDiff' || mode === 'xpDiff' || mode === 'csDiff') {
-    // 1 série : différentiel bleu - rouge
-    const key = mode === 'goldDiff' ? 'teamGold' : mode === 'xpDiff' ? 'teamXp' : 'teamCs'
-    const values = frames.map(f => {
-      const arr = (f as unknown as Record<string, [number, number]>)[key]
-      return arr[0] - arr[1]
-    })
-    series.push({ values, color: '#7F77DD', label: 'Diff bleu - rouge' })
-  } else if (mode === 'goldBlue' || mode === 'goldRed') {
-    const teamId = mode === 'goldBlue' ? 100 : 200
+  // Helper : récupère la valeur d'un joueur sur une frame, selon la métrique
+  type PlayerKey = 'gold' | 'xp' | 'cs' | 'level'
+  const playerValue = (f: TimelineFrame, idx: number, key: PlayerKey): number => {
+    if (key === 'gold')  return f.playerGold[idx] ?? 0
+    if (key === 'level') return f.playerLevel[idx] ?? 1
+    if (key === 'xp')    return f.playerXp?.[idx] ?? 0
+    if (key === 'cs')    return f.playerCs?.[idx] ?? 0
+    return 0
+  }
+
+  // Helper : ajoute des courbes pour un sous-ensemble de joueurs
+  const pushPlayers = (filter: (p: Participant) => boolean, key: PlayerKey) => {
     detail.participants.forEach((p, idx) => {
-      if (p.teamId !== teamId) return
-      // Indice participant = position dans m.info.participants (1-10) → on retrouve via puuid
-      // Le `idx` ici suffit car detail.participants suit l'ordre Riot 0..9
-      const values = frames.map(f => f.playerGold[idx] ?? 0)
-      series.push({
-        values,
-        color: teamId === 100 ? '#3A8AC9' : '#E24B4A',
-        label: p.riotIdGameName || p.championName,
-        champId: p.championId,
-      })
-    })
-  } else if (mode === 'levelAll') {
-    detail.participants.forEach((p, idx) => {
-      const values = frames.map(f => f.playerLevel[idx] ?? 1)
+      if (!filter(p)) return
+      const values = frames.map(f => playerValue(f, idx, key))
       series.push({
         values,
         color: p.teamId === 100 ? '#3A8AC9' : '#E24B4A',
@@ -1416,10 +1433,43 @@ function TimelineChart({ detail, champMap, version }: {
     })
   }
 
+  if (mode === 'goldDiff' || mode === 'xpDiff' || mode === 'csDiff') {
+    // 1 série : différentiel bleu - rouge
+    const key = mode === 'goldDiff' ? 'teamGold' : mode === 'xpDiff' ? 'teamXp' : 'teamCs'
+    const values = frames.map(f => {
+      const arr = (f as unknown as Record<string, [number, number]>)[key]
+      return arr[0] - arr[1]
+    })
+    series.push({ values, color: '#7F77DD', label: 'Diff bleu - rouge' })
+  } else if (mode === 'teamGold' || mode === 'teamXp' || mode === 'teamCs') {
+    // 2 courbes : équipe bleue vs équipe rouge (cumul)
+    const key = mode === 'teamGold' ? 'teamGold' : mode === 'teamXp' ? 'teamXp' : 'teamCs'
+    series.push({
+      values: frames.map(f => (f as unknown as Record<string, [number, number]>)[key][0]),
+      color: '#3A8AC9', label: 'Équipe bleue',
+    })
+    series.push({
+      values: frames.map(f => (f as unknown as Record<string, [number, number]>)[key][1]),
+      color: '#E24B4A', label: 'Équipe rouge',
+    })
+  } else if (mode === 'goldAll')   pushPlayers(() => true, 'gold')
+  else   if (mode === 'xpAll')     pushPlayers(() => true, 'xp')
+  else   if (mode === 'csAll')     pushPlayers(() => true, 'cs')
+  else   if (mode === 'levelAll')  pushPlayers(() => true, 'level')
+  else   if (mode === 'goldBlue')  pushPlayers(p => p.teamId === 100, 'gold')
+  else   if (mode === 'xpBlue')    pushPlayers(p => p.teamId === 100, 'xp')
+  else   if (mode === 'csBlue')    pushPlayers(p => p.teamId === 100, 'cs')
+  else   if (mode === 'levelBlue') pushPlayers(p => p.teamId === 100, 'level')
+  else   if (mode === 'goldRed')   pushPlayers(p => p.teamId === 200, 'gold')
+  else   if (mode === 'xpRed')     pushPlayers(p => p.teamId === 200, 'xp')
+  else   if (mode === 'csRed')     pushPlayers(p => p.teamId === 200, 'cs')
+  else   if (mode === 'levelRed')  pushPlayers(p => p.teamId === 200, 'level')
+
   // Min/Max global pour normaliser Y
+  const isDiff = mode.endsWith('Diff')
   const allValues = series.flatMap(s => s.values)
-  const minV = Math.min(...allValues, mode.includes('Diff') ? 0 : Infinity)
-  const maxV = Math.max(...allValues, mode.includes('Diff') ? 0 : -Infinity)
+  const minV = Math.min(...allValues, isDiff ? 0 : Infinity)
+  const maxV = Math.max(...allValues, isDiff ? 0 : -Infinity)
   const range = maxV - minV || 1
 
   const yForValue = (v: number) => PADT + innerH - ((v - minV) / range) * innerH
@@ -1428,9 +1478,18 @@ function TimelineChart({ detail, champMap, version }: {
 
   // Format pour tooltip
   const fmt = (v: number) => {
-    if (mode.startsWith('gold') || mode.startsWith('xp')) return `${(v / 1000).toFixed(1)}K`
-    if (mode.startsWith('cs')) return v.toString()
-    if (mode === 'levelAll') return Math.round(v).toString()
+    // Niveau : entier
+    if (mode === 'levelAll' || mode === 'levelBlue' || mode === 'levelRed') {
+      return Math.round(v).toString()
+    }
+    // Or, XP : K€
+    if (mode.startsWith('gold') || mode.startsWith('xp') || mode === 'teamGold' || mode === 'teamXp') {
+      return `${(v / 1000).toFixed(1)}K`
+    }
+    // CS : entier (mais peut être différentiel)
+    if (mode.startsWith('cs') || mode === 'teamCs') {
+      return Math.round(v).toString()
+    }
     return v.toLocaleString('fr-FR')
   }
 
@@ -1439,7 +1498,7 @@ function TimelineChart({ detail, champMap, version }: {
     s.values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xForIndex(i).toFixed(1)} ${yForValue(v).toFixed(1)}`).join(' ')
 
   // Pour les diff : zone d'aire colorée selon le signe
-  const areaPath = mode.includes('Diff') && series[0]
+  const areaPath = isDiff && series[0]
     ? series[0].values.map((v, i) => {
         const x = xForIndex(i)
         const y = yForValue(v)
@@ -1463,8 +1522,8 @@ function TimelineChart({ detail, champMap, version }: {
         Évolution sur la durée — {TIMELINE_MODES.find(m => m.key === mode)?.label}
       </div>
 
-      {/* Boutons par groupe */}
-      {['Différentiel', 'Par joueur'].map(group => (
+      {/* Boutons par groupe (déduit dynamiquement de TIMELINE_MODES) */}
+      {Array.from(new Set(TIMELINE_MODES.map(m => m.group))).map(group => (
         <div key={group} style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' }}>
             {group}
@@ -1501,7 +1560,7 @@ function TimelineChart({ detail, champMap, version }: {
               stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
           ))}
           {/* Axe Y zéro pour les diff */}
-          {mode.includes('Diff') && (
+          {isDiff && (
             <line x1={PADL} y1={zeroY} x2={W - PADR} y2={zeroY}
               stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="3,3" />
           )}
@@ -1515,8 +1574,8 @@ function TimelineChart({ detail, champMap, version }: {
           {/* Courbes */}
           {series.map((s, i) => (
             <path key={i} d={pathFor(s)}
-              fill="none" stroke={s.color} strokeWidth={mode.includes('Diff') ? 2 : 1.4}
-              strokeLinecap="round" strokeLinejoin="round" opacity={hover === null || mode.includes('Diff') ? 0.95 : 0.4} />
+              fill="none" stroke={s.color} strokeWidth={isDiff ? 2 : 1.4}
+              strokeLinecap="round" strokeLinejoin="round" opacity={hover === null || isDiff ? 0.95 : 0.4} />
           ))}
 
           {/* Hover line + dots */}

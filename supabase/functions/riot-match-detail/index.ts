@@ -78,6 +78,8 @@ Deno.serve(async (req) => {
       teamCs:      [number, number]
       playerGold:  number[]           // index 0..9 (participantId-1)
       playerLevel: number[]
+      playerXp:    number[]
+      playerCs:    number[]
     }
     const timelineFrames: TimelineFrame[] = []
 
@@ -125,6 +127,8 @@ Deno.serve(async (req) => {
         const teamCs:   [number, number] = [0, 0]
         const playerGold:  number[] = new Array(10).fill(0)
         const playerLevel: number[] = new Array(10).fill(1)
+        const playerXp:    number[] = new Array(10).fill(0)
+        const playerCs:    number[] = new Array(10).fill(0)
 
         // deno-lint-ignore no-explicit-any
         Object.entries(frame.participantFrames ?? {}).forEach(([pid, pf]: [string, any]) => {
@@ -137,11 +141,14 @@ Deno.serve(async (req) => {
           teamCs[teamIdx]   += cs
           playerGold[idx]    = pf.totalGold ?? 0
           playerLevel[idx]   = pf.level ?? 1
+          playerXp[idx]      = pf.xp ?? 0
+          playerCs[idx]      = cs
         })
 
         timelineFrames.push({
           ts: frame.timestamp ?? 0,
-          teamGold, teamXp, teamCs, playerGold, playerLevel,
+          teamGold, teamXp, teamCs,
+          playerGold, playerLevel, playerXp, playerCs,
         })
       })
     }
