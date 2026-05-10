@@ -8,7 +8,7 @@
  * et les ressources DDragon (champions, items, summs, runes), puis affiche
  * les 2 équipes avec tous les joueurs et leurs stats complètes.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -54,6 +54,7 @@ interface Participant {
 interface Team {
   teamId: number; win: boolean; bans: number[]
   objectives: { baron: number; dragon: number; herald: number; tower: number; inhibitor: number; voidgrub: number; champion: number }
+  drakes?: string[] // ex: ['infernaldrake', 'oceandrake', 'elderdrake']
 }
 interface MatchDetail {
   matchId: string; gameCreation: number; gameDuration: number; queueId: number; gameVersion: string
@@ -229,6 +230,66 @@ export default function MatchPage() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
+// Compute des badges par joueur (façon Blitz mais en plus complet).
+// Retourne un dict puuid → liste de badges. Un même joueur peut en cumuler plusieurs.
+// ────────────────────────────────────────────────────────────────────────────────
+interface BadgeInfo { label: string; color: string; bg?: string }
+function computeBadges(detail: MatchDetail): Record<string, BadgeInfo[]> {
+  const out: Record<string, BadgeInfo[]> = {}
+  const add = (puuid: string, b: BadgeInfo) => {
+    if (!out[puuid]) out[puuid] = []
+    out[puuid].push(b)
+  }
+  const ps = detail.participants
+
+  // Multikills (priorité au plus haut)
+  ps.forEach(p => {
+    if      (p.pentaKills  > 0) add(p.puuid, { label: 'PENTAKILL',   color: '#1a0d2e', bg: '#EF9F27' })
+    else if (p.quadraKills > 0) add(p.puuid, { label: 'QUADRA',      color: '#1a0d2e', bg: '#EF9F27' })
+    else if (p.tripleKills > 0) add(p.puuid, { label: 'TRIPLE',      color: '#fff',    bg: '#A855F7' })
+  })
+
+  // MVP / ACE (meilleur KDA dans chaque équipe gagnante/perdante)
+  const kdaScore = (p: Participant) =>
+    p.deaths === 0 ? p.kills + p.assists + 5 : (p.kills + p.assists) / p.deaths
+  const winners = ps.filter(p => p.win)
+  const losers  = ps.filter(p => !p.win)
+  if (winners.length > 0) {
+    const mvp = winners.reduce((b, p) => kdaScore(p) > kdaScore(b) ? p : b)
+    add(mvp.puuid, { label: 'MVP', color: '#1a0d2e', bg: '#EF9F27' })
+  }
+  if (losers.length > 0) {
+    const ace = losers.reduce((b, p) => kdaScore(p) > kdaScore(b) ? p : b)
+    add(ace.puuid, { label: 'ACE', color: '#fff', bg: '#7F77DD' })
+  }
+
+  // Stat leaders globaux (parmi les 10)
+  const topBy = (key: keyof Participant, label: string, color: string, bg: string) => {
+    const winner = ps.reduce((b, p) => (p[key] as number) > (b[key] as number) ? p : b)
+    if ((winner[key] as number) > 0) add(winner.puuid, { label, color, bg })
+  }
+  topBy('kills',        'TOP KILLS',  '#fff', '#E24B4A')
+  topBy('damageDealt',  'TOP DMG',    '#fff', '#C02E2D')
+  topBy('damageTaken',  'TANK',       '#fff', '#7F77DD')
+  topBy('visionScore',  'VISION',     '#fff', '#3A8AC9')
+  topBy('goldEarned',   'OR',         '#1a0d2e', '#EF9F27')
+  topBy('cs',           'FARM',       '#1a0d2e', '#5DCAA5')
+  topBy('wardsKilled',  'NETTOYEUR',  '#fff', '#475569')
+
+  // Spéciaux
+  ps.forEach(p => {
+    if (p.deaths === 0 && (p.kills + p.assists) >= 5) {
+      add(p.puuid, { label: 'INTOUCHABLE', color: '#1a0d2e', bg: '#5DCAA5' })
+    }
+    if (p.kills >= 15) {
+      add(p.puuid, { label: '15+ KILLS', color: '#fff', bg: '#E24B4A' })
+    }
+  })
+
+  return out
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
 function MatchDetailView({
   detail, version, champMap, spellMap, runeMap, myPuuid,
 }: {
@@ -243,6 +304,9 @@ function MatchDetailView({
   const border = 'rgba(255,255,255,0.06)'
   const bg     = 'rgba(255,255,255,0.02)'
   const queue  = QUEUES[detail.queueId] ?? 'Partie'
+
+  // Badges par joueur (recalcul mémoïsé)
+  const badges = useMemo(() => computeBadges(detail), [detail])
 
   // Damage max pour la barre
   const maxDmg = Math.max(...detail.participants.map(p => p.damageDealt), 1)
@@ -279,10 +343,26 @@ function MatchDetailView({
           </span>
           <ObjStat src="/icons/objectives/_tower.svg"       fallback="🏯" count={team.objectives.tower}     label="Tours" />
           <ObjStat src="/icons/objectives/_inhibitor.svg"   fallback="◆"  count={team.objectives.inhibitor} label="Inhibs" />
-          <ObjStat src="/icons/objectives/_dragon.png"      fallback="🐉" count={team.objectives.dragon}    label="Dragons" />
           <ObjStat src="/icons/objectives/_baronnashor.png" fallback="🦇" count={team.objectives.baron}     label="Barons" />
           <ObjStat src="/icons/objectives/_riftherald.png"  fallback="🦅" count={team.objectives.herald}    label="Hérauts" />
           <ObjStat src="/icons/objectives/_voidgrub.png"    fallback="🟣" count={team.objectives.voidgrub}  label="Larves du Néant" />
+
+          {/* Drakes typés (avec gros gap pour les détacher) */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            marginLeft: 18, paddingLeft: 18,
+            borderLeft: `1px solid ${border}`,
+          }}>
+            {(team.drakes && team.drakes.length > 0)
+              ? team.drakes.map((kind, i) => (
+                  <DrakeIcon key={i} kind={kind} fallbackCount={0} />
+                ))
+              : Array.from({ length: team.objectives.dragon }).map((_, i) => (
+                  <DrakeIcon key={i} kind="dragon" fallbackCount={0} />
+                ))
+            }
+          </div>
+
           {team.bans.length > 0 && (
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>BANS</span>
@@ -343,16 +423,28 @@ function MatchDetailView({
                     style={{ width: 28, height: 28, flexShrink: 0 }} />
                 )}
 
-                {/* Pseudo + champion */}
+                {/* Pseudo + champion + badges */}
                 <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                   <div style={{
-                    color: isMe ? gold : '#F5F2FA', fontWeight: isMe ? 700 : 500,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13,
+                    display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+                    color: isMe ? gold : '#F5F2FA', fontWeight: isMe ? 700 : 500, fontSize: 13,
                   }}>
-                    {p.riotIdGameName || champ?.name || p.championName}
-                    {p.riotIdTagline && (
-                      <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>#{p.riotIdTagline}</span>
-                    )}
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                      {p.riotIdGameName || champ?.name || p.championName}
+                      {p.riotIdTagline && (
+                        <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>#{p.riotIdTagline}</span>
+                      )}
+                    </span>
+                    {/* Badges */}
+                    {(badges[p.puuid] ?? []).map((b, i) => (
+                      <span key={i} style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+                        padding: '1px 5px', borderRadius: 3,
+                        background: b.bg ?? 'transparent',
+                        color: b.color,
+                        whiteSpace: 'nowrap',
+                      }}>{b.label}</span>
+                    ))}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 6 }}>
                     <span>{champ?.name ?? p.championName}</span>
@@ -486,7 +578,14 @@ function MatchDetailView({
         </header>
       )}
 
-      {/* ── Comparaison équipes (graphiques) ── */}
+      {/* ── Cartes par rôle (matchups) AU-DESSUS du scoreboard ── */}
+      <RoleCards detail={detail} champMap={champMap} version={version} myTeamId={myTeamId} />
+
+      {/* ── Scoreboard des équipes ── */}
+      {renderTeam(100, 'ÉQUIPE BLEUE')}
+      {renderTeam(200, 'ÉQUIPE ROUGE')}
+
+      {/* ── Comparaison équipes (sous le scoreboard) ── */}
       <div style={{
         marginBottom: 18, padding: '14px 18px', borderRadius: 10, background: bg,
         borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
@@ -495,18 +594,15 @@ function MatchDetailView({
         <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
           Comparaison équipes
         </div>
-        <VsBar label="Kills"        blue={blue.kills}  red={red.kills}  highlight={myTeamId} />
-        <VsBar label="Or total"     blue={blue.gold}   red={red.gold}   highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+        <VsBar label="Kills"           blue={blue.kills}  red={red.kills}  highlight={myTeamId} />
+        <VsBar label="Or total"        blue={blue.gold}   red={red.gold}   highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
         <VsBar label="Dégâts infligés" blue={blue.damage} red={red.damage} highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
-        <VsBar label="Dégâts subis" blue={blue.taken}  red={red.taken}  highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
-        <VsBar label="Vision"       blue={blue.vision} red={red.vision} highlight={myTeamId} />
+        <VsBar label="Dégâts subis"    blue={blue.taken}  red={red.taken}  highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+        <VsBar label="Vision"          blue={blue.vision} red={red.vision} highlight={myTeamId} />
       </div>
 
-      {renderTeam(100, 'ÉQUIPE BLEUE')}
-      {renderTeam(200, 'ÉQUIPE ROUGE')}
-
-      {/* ── Distribution dégâts par joueur ── */}
-      <DamageBreakdown detail={detail} champMap={champMap} version={version} />
+      {/* ── Graphique global multi-métriques ── */}
+      <MetricChart detail={detail} champMap={champMap} version={version} />
     </div>
   )
 }
@@ -549,47 +645,248 @@ function VsBar({ label, blue, red, highlight, format }: {
   )
 }
 
-// ── Breakdown dégâts infligés par joueur (les 10) ──
-function DamageBreakdown({ detail, champMap, version }: {
+// ────────────────────────────────────────────────────────────────────────────────
+// Graphique global : barres horizontales pour les 10 joueurs, métrique sélectionnable
+// (boutons en haut). Les couleurs reflètent l'équipe (bleu/rouge).
+// ────────────────────────────────────────────────────────────────────────────────
+type MetricKey = 'damageDealt' | 'damageTaken' | 'goldEarned' | 'cs' | 'visionScore' | 'wardsPlaced' | 'wardsKilled'
+const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[] = [
+  { key: 'damageDealt', label: 'Dégâts infligés', format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'damageTaken', label: 'Dégâts subis',    format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'goldEarned',  label: 'Or',              format: v => `${(v / 1000).toFixed(1)}K` },
+  { key: 'cs',          label: 'CS',              format: v => v.toString() },
+  { key: 'visionScore', label: 'Vision',          format: v => v.toString() },
+  { key: 'wardsPlaced', label: 'Wards posées',    format: v => v.toString() },
+  { key: 'wardsKilled', label: 'Wards détruites', format: v => v.toString() },
+]
+
+function MetricChart({ detail, champMap, version }: {
   detail: MatchDetail; champMap: Record<number, ChampInfo>; version: string
 }) {
-  const sorted = [...detail.participants].sort((a, b) => b.damageDealt - a.damageDealt)
-  const max    = sorted[0]?.damageDealt ?? 1
+  const [active, setActive] = useState<MetricKey>('damageDealt')
+  const metric = METRICS.find(m => m.key === active)!
+  const sorted = [...detail.participants].sort((a, b) =>
+    (b[active] as number) - (a[active] as number),
+  )
+  const max = (sorted[0]?.[active] as number) || 1
+
   return (
     <section style={{
-      padding: '14px 18px', borderRadius: 10,
+      marginTop: 18, padding: '14px 18px', borderRadius: 10,
       background: 'rgba(255,255,255,0.02)',
       borderTop: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)',
       borderBottom: '1px solid rgba(255,255,255,0.06)', borderLeft: '1px solid rgba(255,255,255,0.06)',
     }}>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-        Dégâts infligés aux champions (classement)
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 12, gap: 10, flexWrap: 'wrap',
+      }}>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Classement par {metric.label.toLowerCase()}
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {METRICS.map(m => {
+            const isActive = m.key === active
+            return (
+              <button key={m.key} onClick={() => setActive(m.key)} style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 11,
+                cursor: 'pointer', transition: 'all 120ms',
+                background: isActive ? 'rgba(127,119,221,0.20)' : 'rgba(255,255,255,0.03)',
+                border: isActive ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
+                color: isActive ? '#F5F2FA' : 'var(--text-muted)',
+                fontWeight: isActive ? 600 : 400,
+              }}>{m.label}</button>
+            )
+          })}
+        </div>
       </div>
+
       {sorted.map((p, i) => {
         const champ = champMap[p.championId]
-        const pct   = (p.damageDealt / max) * 100
+        const v     = p[active] as number
+        const pct   = max > 0 ? (v / max) * 100 : 0
         const color = p.teamId === 100 ? '#3A8AC9' : '#E24B4A'
         return (
           <div key={p.puuid} style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12,
           }}>
-            <span style={{ width: 18, color: 'var(--text-dim)', fontSize: 11 }}>#{i + 1}</span>
+            <span style={{ width: 22, color: 'var(--text-dim)', fontSize: 11 }}>#{i + 1}</span>
             {champ
               ? <img src={champImg(version, champ.image)} alt="" style={{ width: 22, height: 22, borderRadius: 3 }} />
               : <div style={{ width: 22, height: 22, borderRadius: 3, background: '#222' }} />}
-            <span style={{ flex: '0 0 130px', color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ flex: '0 0 140px', color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {p.riotIdGameName || p.championName}
             </span>
             <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
             </div>
             <span style={{ minWidth: 60, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
-              {(p.damageDealt / 1000).toFixed(1)}K
+              {metric.format(v)}
             </span>
           </div>
         )
       })}
     </section>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Cartes par rôle (TOP/JGL/MID/ADC/SUP) — matchups blue vs red avec 3 stats clés.
+// ────────────────────────────────────────────────────────────────────────────────
+const ROLE_ORDER: { riot: string; label: string }[] = [
+  { riot: 'TOP',     label: 'TOP' },
+  { riot: 'JUNGLE',  label: 'JUNGLE' },
+  { riot: 'MIDDLE',  label: 'MID' },
+  { riot: 'BOTTOM',  label: 'ADC' },
+  { riot: 'UTILITY', label: 'SUPPORT' },
+]
+
+function RoleCards({ detail, champMap, version, myTeamId }: {
+  detail: MatchDetail; champMap: Record<number, ChampInfo>; version: string
+  myTeamId?: number
+}) {
+  const border = 'rgba(255,255,255,0.06)'
+  return (
+    <div style={{
+      marginBottom: 18,
+      display: 'grid', gap: 8,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    }}>
+      {ROLE_ORDER.map(role => {
+        const blue = detail.participants.find(p => p.teamId === 100 && p.teamPosition === role.riot)
+        const red  = detail.participants.find(p => p.teamId === 200 && p.teamPosition === role.riot)
+        if (!blue && !red) return null
+
+        // Choix des 3 stats à afficher selon le rôle
+        type Stat = { label: string; blueVal: number; redVal: number; format?: (v: number) => string }
+        const baseStats: Record<string, Stat[]> = {
+          TOP: [
+            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+          ],
+          JUNGLE: [
+            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
+            { label: 'VISION', blueVal: blue?.visionScore ?? 0, redVal: red?.visionScore ?? 0 },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
+          ],
+          MIDDLE: [
+            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+          ],
+          BOTTOM: [
+            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+          ],
+          UTILITY: [
+            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
+            { label: 'VISION', blueVal: blue?.visionScore ?? 0, redVal: red?.visionScore ?? 0 },
+            { label: 'WARDS',  blueVal: blue?.wardsPlaced ?? 0, redVal: red?.wardsPlaced ?? 0 },
+          ],
+        }
+        const stats = baseStats[role.riot] ?? []
+
+        return (
+          <div key={role.riot} style={{
+            padding: 10, borderRadius: 8,
+            background: 'rgba(255,255,255,0.02)',
+            borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+            borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+          }}>
+            {/* Header rôle + 2 champs face à face */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ flex: 1, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'var(--text-muted)' }}>
+                {role.label}
+              </span>
+              <PlayerHead p={blue} side="blue" champMap={champMap} version={version} highlight={myTeamId === 100} />
+              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>vs</span>
+              <PlayerHead p={red}  side="red"  champMap={champMap} version={version} highlight={myTeamId === 200} />
+            </div>
+
+            {/* Stats comparées */}
+            {stats.map(s => {
+              const fmt   = s.format ?? ((v: number) => v.toLocaleString('fr-FR'))
+              const blueWin = s.blueVal >= s.redVal
+              return (
+                <div key={s.label} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
+                  padding: '2px 0',
+                }}>
+                  <span style={{
+                    flex: 1, textAlign: 'right',
+                    color: blueWin ? '#3A8AC9' : 'var(--text-dim)',
+                    fontWeight: blueWin ? 700 : 400,
+                  }}>
+                    {fmt(s.blueVal)}
+                  </span>
+                  <span style={{
+                    fontSize: 9, color: 'var(--text-dim)',
+                    textTransform: 'uppercase', letterSpacing: 1, minWidth: 50, textAlign: 'center',
+                  }}>{s.label}</span>
+                  <span style={{
+                    flex: 1, textAlign: 'left',
+                    color: !blueWin ? '#E24B4A' : 'var(--text-dim)',
+                    fontWeight: !blueWin ? 700 : 400,
+                  }}>
+                    {fmt(s.redVal)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PlayerHead({ p, side, champMap, version, highlight }: {
+  p?: Participant; side: 'blue' | 'red'
+  champMap: Record<number, ChampInfo>; version: string
+  highlight?: boolean
+}) {
+  if (!p) return <div style={{ width: 32, height: 32, borderRadius: 4, background: '#222' }} />
+  const champ = champMap[p.championId]
+  const ring  = side === 'blue' ? '#3A8AC9' : '#E24B4A'
+  return (
+    <div title={p.riotIdGameName || champ?.name || p.championName} style={{
+      width: 32, height: 32, borderRadius: 4, overflow: 'hidden',
+      border: `2px solid ${ring}`,
+      boxShadow: highlight ? `0 0 0 2px #EF9F27` : undefined,
+    }}>
+      {champ
+        ? <img src={champImg(version, champ.image)} alt="" style={{ width: '100%', height: '100%', display: 'block' }} />
+        : <div style={{ width: '100%', height: '100%', background: '#222' }} />}
+    </div>
+  )
+}
+
+function kdaScore(p?: Participant) {
+  if (!p) return 0
+  return p.deaths === 0 ? p.kills + p.assists + 5 : (p.kills + p.assists) / p.deaths
+}
+function kdaFmt(b?: Participant, r?: Participant) {
+  return (v: number) => {
+    // Affiche 'K/D/A' si applicable, sinon le ratio
+    const target = v === kdaScore(b) ? b : v === kdaScore(r) ? r : null
+    if (target) return `${target.kills}/${target.deaths}/${target.assists}`
+    return v.toFixed(2)
+  }
+}
+
+// ── Petite icône de drake typé (avec fallback emoji) ──
+function DrakeIcon({ kind }: { kind: string; fallbackCount: number }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return <span title={kind} style={{ fontSize: 14 }}>🐉</span>
+  }
+  return (
+    <img src={`/icons/objectives/_${kind}.png`} title={kind}
+      width={20} height={20} alt=""
+      onError={() => setFailed(true)}
+      style={{ display: 'block', objectFit: 'contain' }} />
   )
 }
 

@@ -32,16 +32,53 @@ Deno.serve(async (req) => {
 
     const apiKey  = requireSecret('RIOT_API_KEY')
     const routing = ROUTING[platform] ?? 'europe'
+    const headers = { 'X-Riot-Token': apiKey }
 
-    const res = await fetch(
-      `https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`,
-      { headers: { 'X-Riot-Token': apiKey } },
-    )
+    // 1. Match (détails)  +  2. Timeline (pour les types de drakes) en parallèle
+    const [res, tlRes] = await Promise.all([
+      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`,           { headers }),
+      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline`, { headers }),
+    ])
     if (!res.ok) {
       return jsonResponse({ error: `Riot API ${res.status}` }, res.status)
     }
     // deno-lint-ignore no-explicit-any
     const m: any = await res.json()
+    // Timeline est facultative — si elle échoue on poursuit sans drakes typés.
+    // deno-lint-ignore no-explicit-any
+    const tl: any = tlRes.ok ? await tlRes.json() : null
+
+    // ── Extraction des drakes typés par équipe depuis la timeline ──
+    // Mapping monsterSubType (Riot) → nom court (matche les noms de fichiers _xxx.png).
+    const DRAKE_KIND: Record<string, string> = {
+      WATER_DRAGON:    'oceandrake',
+      FIRE_DRAGON:     'infernaldrake',
+      EARTH_DRAGON:    'mountaindrake',
+      AIR_DRAGON:      'clouddrake',
+      HEXTECH_DRAGON:  'hextechdrake',
+      CHEMTECH_DRAGON: 'chemtechdrake',
+      ELDER_DRAGON:    'elderdrake',
+    }
+    // Indexation participantId → teamId pour résoudre killerTeamId si absent
+    // deno-lint-ignore no-explicit-any
+    const participantTeam: Record<number, number> = {}
+    // deno-lint-ignore no-explicit-any
+    m.info.participants.forEach((p: any, i: number) => { participantTeam[i + 1] = p.teamId })
+
+    const drakesByTeam: Record<number, string[]> = { 100: [], 200: [] }
+    if (tl?.info?.frames) {
+      // deno-lint-ignore no-explicit-any
+      tl.info.frames.forEach((frame: any) => {
+        // deno-lint-ignore no-explicit-any
+        (frame.events ?? []).forEach((ev: any) => {
+          if (ev.type === 'ELITE_MONSTER_KILL' && ev.monsterType === 'DRAGON') {
+            const teamId = ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0
+            const kind   = DRAKE_KIND[ev.monsterSubType] ?? 'dragon'
+            if (teamId === 100 || teamId === 200) drakesByTeam[teamId].push(kind)
+          }
+        })
+      })
+    }
 
     // deno-lint-ignore no-explicit-any
     const participants = m.info.participants.map((p: any) => ({
@@ -89,9 +126,11 @@ Deno.serve(async (req) => {
         herald:     t.objectives?.riftHerald?.kills ?? 0,
         tower:      t.objectives?.tower?.kills      ?? 0,
         inhibitor:  t.objectives?.inhibitor?.kills  ?? 0,
-        voidgrub:   t.objectives?.horde?.kills      ?? 0, // Void Grubs (Larves du Néant)
+        voidgrub:   t.objectives?.horde?.kills      ?? 0,
         champion:   t.objectives?.champion?.kills   ?? 0,
       },
+      // Liste des drakes pris dans l'ordre, typés (ex: ['infernaldrake', 'oceandrake', 'elderdrake'])
+      drakes: drakesByTeam[t.teamId] ?? [],
     }))
 
     return jsonResponse({
