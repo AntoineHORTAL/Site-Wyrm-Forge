@@ -1636,20 +1636,23 @@ function TimelineChart({ detail, champMap, version }: {
             <div style={{ fontWeight: 700, marginBottom: 4 }}>
               {Math.floor((frames[hover].ts) / 60000)}m{Math.floor(((frames[hover].ts) / 1000) % 60).toString().padStart(2,'0')}
             </div>
-            {series.slice(0, 5).map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                {s.champId && champMap[s.champId] && (
-                  <img src={champImg(version, champMap[s.champId].image)} alt=""
-                    style={{ width: 12, height: 12, borderRadius: 2 }} />
-                )}
-                <span style={{ width: 10, height: 2, background: s.color, display: 'inline-block' }} />
-                <span style={{ flex: 1, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {s.label}
-                </span>
-                <span style={{ fontWeight: 600 }}>{fmt(s.values[hover])}</span>
-              </div>
-            ))}
-            {series.length > 5 && <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>+ {series.length - 5} autres</div>}
+            {/* Toutes les courbes triées par valeur décroissante au point survolé */}
+            {series
+              .map((s, i) => ({ s, idx: i, v: s.values[hover] }))
+              .sort((a, b) => b.v - a.v)
+              .map(({ s, idx, v }) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {s.champId && champMap[s.champId] && (
+                    <img src={champImg(version, champMap[s.champId].image)} alt=""
+                      style={{ width: 12, height: 12, borderRadius: 2 }} />
+                  )}
+                  <span style={{ width: 10, height: 2, background: s.color, display: 'inline-block' }} />
+                  <span style={{ flex: 1, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.label}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{fmt(v)}</span>
+                </div>
+              ))}
           </div>
         )}
       </div>
