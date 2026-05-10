@@ -233,7 +233,7 @@ export default function MatchPage() {
 // Compute des badges par joueur (façon Blitz mais en plus complet).
 // Retourne un dict puuid → liste de badges. Un même joueur peut en cumuler plusieurs.
 // ────────────────────────────────────────────────────────────────────────────────
-interface BadgeInfo { label: string; color: string; bg?: string }
+interface BadgeInfo { label: string; color: string; bg?: string; desc: string }
 function computeBadges(detail: MatchDetail): Record<string, BadgeInfo[]> {
   const out: Record<string, BadgeInfo[]> = {}
   const add = (puuid: string, b: BadgeInfo) => {
@@ -244,9 +244,9 @@ function computeBadges(detail: MatchDetail): Record<string, BadgeInfo[]> {
 
   // Multikills (priorité au plus haut)
   ps.forEach(p => {
-    if      (p.pentaKills  > 0) add(p.puuid, { label: 'PENTAKILL',   color: '#1a0d2e', bg: '#EF9F27' })
-    else if (p.quadraKills > 0) add(p.puuid, { label: 'QUADRA',      color: '#1a0d2e', bg: '#EF9F27' })
-    else if (p.tripleKills > 0) add(p.puuid, { label: 'TRIPLE',      color: '#fff',    bg: '#A855F7' })
+    if      (p.pentaKills  > 0) add(p.puuid, { label: 'PENTAKILL', color: '#1a0d2e', bg: '#EF9F27', desc: 'A réalisé un pentakill (5 kills d\'affilée).' })
+    else if (p.quadraKills > 0) add(p.puuid, { label: 'QUADRA',    color: '#1a0d2e', bg: '#EF9F27', desc: 'A réalisé un quadrakill (4 kills d\'affilée).' })
+    else if (p.tripleKills > 0) add(p.puuid, { label: 'TRIPLE',    color: '#fff',    bg: '#A855F7', desc: 'A réalisé un triplekill (3 kills d\'affilée).' })
   })
 
   // MVP / ACE (meilleur KDA dans chaque équipe gagnante/perdante)
@@ -256,33 +256,33 @@ function computeBadges(detail: MatchDetail): Record<string, BadgeInfo[]> {
   const losers  = ps.filter(p => !p.win)
   if (winners.length > 0) {
     const mvp = winners.reduce((b, p) => kdaScore(p) > kdaScore(b) ? p : b)
-    add(mvp.puuid, { label: 'MVP', color: '#1a0d2e', bg: '#EF9F27' })
+    add(mvp.puuid, { label: 'MVP', color: '#1a0d2e', bg: '#EF9F27', desc: 'Meilleur KDA de l\'équipe victorieuse.' })
   }
   if (losers.length > 0) {
     const ace = losers.reduce((b, p) => kdaScore(p) > kdaScore(b) ? p : b)
-    add(ace.puuid, { label: 'ACE', color: '#fff', bg: '#7F77DD' })
+    add(ace.puuid, { label: 'ACE', color: '#fff', bg: '#7F77DD', desc: 'Meilleur KDA de l\'équipe perdante.' })
   }
 
   // Stat leaders globaux (parmi les 10)
-  const topBy = (key: keyof Participant, label: string, color: string, bg: string) => {
+  const topBy = (key: keyof Participant, label: string, color: string, bg: string, desc: string) => {
     const winner = ps.reduce((b, p) => (p[key] as number) > (b[key] as number) ? p : b)
-    if ((winner[key] as number) > 0) add(winner.puuid, { label, color, bg })
+    if ((winner[key] as number) > 0) add(winner.puuid, { label, color, bg, desc })
   }
-  topBy('kills',        'TOP KILLS',  '#fff', '#E24B4A')
-  topBy('damageDealt',  'TOP DMG',    '#fff', '#C02E2D')
-  topBy('damageTaken',  'TANK',       '#fff', '#7F77DD')
-  topBy('visionScore',  'VISION',     '#fff', '#3A8AC9')
-  topBy('goldEarned',   'OR',         '#1a0d2e', '#EF9F27')
-  topBy('cs',           'FARM',       '#1a0d2e', '#5DCAA5')
-  topBy('wardsKilled',  'NETTOYEUR',  '#fff', '#475569')
+  topBy('kills',        'TOP KILLS', '#fff',     '#E24B4A', 'Plus de kills de la partie.')
+  topBy('damageDealt',  'TOP DMG',   '#fff',     '#C02E2D', 'Plus de dégâts infligés aux champions.')
+  topBy('damageTaken',  'TANK',      '#fff',     '#7F77DD', 'Plus de dégâts encaissés (tank).')
+  topBy('visionScore',  'VISION',    '#fff',     '#3A8AC9', 'Meilleur score de vision de la partie.')
+  topBy('goldEarned',   'OR',        '#1a0d2e',  '#EF9F27', 'Plus d\'or gagné de la partie.')
+  topBy('cs',           'FARM',      '#1a0d2e',  '#5DCAA5', 'Plus de creep score (CS).')
+  topBy('wardsKilled',  'NETTOYEUR', '#fff',     '#475569', 'Plus de wards adverses détruites.')
 
   // Spéciaux
   ps.forEach(p => {
     if (p.deaths === 0 && (p.kills + p.assists) >= 5) {
-      add(p.puuid, { label: 'INTOUCHABLE', color: '#1a0d2e', bg: '#5DCAA5' })
+      add(p.puuid, { label: 'INTOUCHABLE', color: '#1a0d2e', bg: '#5DCAA5', desc: 'Aucune mort + au moins 5 kills/assists.' })
     }
     if (p.kills >= 15) {
-      add(p.puuid, { label: '15+ KILLS', color: '#fff', bg: '#E24B4A' })
+      add(p.puuid, { label: '15+ KILLS', color: '#fff', bg: '#E24B4A', desc: 'A fait 15 kills ou plus.' })
     }
   })
 
@@ -435,15 +435,9 @@ function MatchDetailView({
                         <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>#{p.riotIdTagline}</span>
                       )}
                     </span>
-                    {/* Badges */}
+                    {/* Badges (tooltip au survol) */}
                     {(badges[p.puuid] ?? []).map((b, i) => (
-                      <span key={i} style={{
-                        fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
-                        padding: '1px 5px', borderRadius: 3,
-                        background: b.bg ?? 'transparent',
-                        color: b.color,
-                        whiteSpace: 'nowrap',
-                      }}>{b.label}</span>
+                      <Badge key={i} info={b} />
                     ))}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 6 }}>
@@ -746,6 +740,15 @@ function RoleCards({ detail, champMap, version, myTeamId }: {
   myTeamId?: number
 }) {
   const border = 'rgba(255,255,255,0.06)'
+
+  // Total kills par équipe (pour calcul du KP%)
+  const teamKills = (id: 100 | 200) =>
+    detail.participants.filter(p => p.teamId === id).reduce((s, p) => s + p.kills, 0)
+  const blueTeamKills = teamKills(100)
+  const redTeamKills  = teamKills(200)
+  const kp = (p: Participant | undefined, total: number) =>
+    !p || total === 0 ? 0 : Math.round(((p.kills + p.assists) / total) * 100)
+
   return (
     <div style={{
       marginBottom: 18,
@@ -757,58 +760,73 @@ function RoleCards({ detail, champMap, version, myTeamId }: {
         const red  = detail.participants.find(p => p.teamId === 200 && p.teamPosition === role.riot)
         if (!blue && !red) return null
 
-        // Choix des 3 stats à afficher selon le rôle
+        // Stats role-specific (différenciées par poste pour éviter la redondance)
         type Stat = { label: string; blueVal: number; redVal: number; format?: (v: number) => string }
         const baseStats: Record<string, Stat[]> = {
+          // TOP : tank/bruiser → KDA / dégâts subis / CS
           TOP: [
-            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
-            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
-            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+            { label: 'KDA',     blueVal: kdaScore(blue),                redVal: kdaScore(red),                format: kdaFmt(blue, red) },
+            { label: 'TANK',    blueVal: blue?.damageTaken ?? 0,         redVal: red?.damageTaken ?? 0,         format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'CS',      blueVal: blue?.cs ?? 0,                  redVal: red?.cs ?? 0 },
           ],
+          // JUNGLE : coordination → KDA / KP% / vision
           JUNGLE: [
-            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
-            { label: 'VISION', blueVal: blue?.visionScore ?? 0, redVal: red?.visionScore ?? 0 },
-            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'KDA',     blueVal: kdaScore(blue),                redVal: kdaScore(red),                format: kdaFmt(blue, red) },
+            { label: 'KP%',     blueVal: kp(blue, blueTeamKills),        redVal: kp(red, redTeamKills),         format: v => `${v}%` },
+            { label: 'VISION',  blueVal: blue?.visionScore ?? 0,         redVal: red?.visionScore ?? 0 },
           ],
+          // MID : playmaker → KDA / dégâts / KP%
           MIDDLE: [
-            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
-            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
-            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+            { label: 'KDA',     blueVal: kdaScore(blue),                redVal: kdaScore(red),                format: kdaFmt(blue, red) },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0,         redVal: red?.damageDealt ?? 0,         format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'KP%',     blueVal: kp(blue, blueTeamKills),        redVal: kp(red, redTeamKills),         format: v => `${v}%` },
           ],
+          // ADC : carry → dégâts / CS / or
           BOTTOM: [
-            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
-            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0, redVal: red?.damageDealt ?? 0, format: v => `${(v/1000).toFixed(1)}K` },
-            { label: 'CS',     blueVal: blue?.cs ?? 0,    redVal: red?.cs ?? 0 },
+            { label: 'DÉGÂTS', blueVal: blue?.damageDealt ?? 0,         redVal: red?.damageDealt ?? 0,         format: v => `${(v/1000).toFixed(1)}K` },
+            { label: 'CS',      blueVal: blue?.cs ?? 0,                  redVal: red?.cs ?? 0 },
+            { label: 'OR',      blueVal: blue?.goldEarned ?? 0,          redVal: red?.goldEarned ?? 0,          format: v => `${(v/1000).toFixed(1)}K` },
           ],
+          // SUPPORT : utility → vision / wards / assists
           UTILITY: [
-            { label: 'KDA',     blueVal: kdaScore(blue),  redVal: kdaScore(red),  format: kdaFmt(blue, red) },
-            { label: 'VISION', blueVal: blue?.visionScore ?? 0, redVal: red?.visionScore ?? 0 },
-            { label: 'WARDS',  blueVal: blue?.wardsPlaced ?? 0, redVal: red?.wardsPlaced ?? 0 },
+            { label: 'VISION',  blueVal: blue?.visionScore ?? 0,         redVal: red?.visionScore ?? 0 },
+            { label: 'WARDS',   blueVal: blue?.wardsPlaced ?? 0,         redVal: red?.wardsPlaced ?? 0 },
+            { label: 'ASSISTS', blueVal: blue?.assists ?? 0,             redVal: red?.assists ?? 0 },
           ],
         }
         const stats = baseStats[role.riot] ?? []
 
         return (
           <div key={role.riot} style={{
-            padding: 10, borderRadius: 8,
+            padding: '12px 10px', borderRadius: 8,
             background: 'rgba(255,255,255,0.02)',
             borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
             borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+            display: 'flex', flexDirection: 'column', alignItems: 'stretch',
           }}>
-            {/* Header rôle + 2 champs face à face */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ flex: 1, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'var(--text-muted)' }}>
-                {role.label}
-              </span>
+            {/* Header rôle (centré) */}
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 1.5,
+              color: 'var(--text-muted)', textAlign: 'center', marginBottom: 8,
+            }}>
+              {role.label}
+            </div>
+
+            {/* Champions face à face (parfaitement centrés) */}
+            <div style={{
+              display: 'flex', justifyContent: 'center', alignItems: 'center',
+              gap: 12, marginBottom: 12,
+            }}>
               <PlayerHead p={blue} side="blue" champMap={champMap} version={version} highlight={myTeamId === 100} />
-              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>vs</span>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 600 }}>VS</span>
               <PlayerHead p={red}  side="red"  champMap={champMap} version={version} highlight={myTeamId === 200} />
             </div>
 
-            {/* Stats comparées */}
+            {/* Stats role-specific */}
             {stats.map(s => {
               const fmt   = s.format ?? ((v: number) => v.toLocaleString('fr-FR'))
               const blueWin = s.blueVal >= s.redVal
+              const equal = s.blueVal === s.redVal
               return (
                 <div key={s.label} style={{
                   display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
@@ -816,19 +834,19 @@ function RoleCards({ detail, champMap, version, myTeamId }: {
                 }}>
                   <span style={{
                     flex: 1, textAlign: 'right',
-                    color: blueWin ? '#3A8AC9' : 'var(--text-dim)',
-                    fontWeight: blueWin ? 700 : 400,
+                    color: !equal && blueWin ? '#3A8AC9' : 'var(--text-dim)',
+                    fontWeight: !equal && blueWin ? 700 : 400,
                   }}>
                     {fmt(s.blueVal)}
                   </span>
                   <span style={{
                     fontSize: 9, color: 'var(--text-dim)',
-                    textTransform: 'uppercase', letterSpacing: 1, minWidth: 50, textAlign: 'center',
+                    textTransform: 'uppercase', letterSpacing: 1, minWidth: 56, textAlign: 'center',
                   }}>{s.label}</span>
                   <span style={{
                     flex: 1, textAlign: 'left',
-                    color: !blueWin ? '#E24B4A' : 'var(--text-dim)',
-                    fontWeight: !blueWin ? 700 : 400,
+                    color: !equal && !blueWin ? '#E24B4A' : 'var(--text-dim)',
+                    fontWeight: !equal && !blueWin ? 700 : 400,
                   }}>
                     {fmt(s.redVal)}
                   </span>
@@ -874,6 +892,41 @@ function kdaFmt(b?: Participant, r?: Participant) {
     if (target) return `${target.kills}/${target.deaths}/${target.assists}`
     return v.toFixed(2)
   }
+}
+
+// ── Badge joueur avec tooltip explicatif au hover ──
+function Badge({ info }: { info: BadgeInfo }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+    >
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+        padding: '1px 5px', borderRadius: 3,
+        background: info.bg ?? 'transparent',
+        color: info.color, whiteSpace: 'nowrap', cursor: 'help',
+      }}>{info.label}</span>
+      {hover && (
+        <div role="tooltip" style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 50,
+          padding: '6px 10px', borderRadius: 5,
+          background: 'rgba(8,5,18,0.97)',
+          border: '1px solid rgba(127,119,221,0.4)',
+          color: '#F5F2FA', fontSize: 11, fontWeight: 400, letterSpacing: 0,
+          whiteSpace: 'nowrap',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          pointerEvents: 'none',
+        }}>
+          <strong style={{ color: info.bg ?? '#7F77DD' }}>{info.label}</strong>
+          <span style={{ color: 'var(--text-dim)' }}> — </span>
+          {info.desc}
+        </div>
+      )}
+    </span>
+  )
 }
 
 // ── Petite icône de drake typé (avec fallback emoji) ──

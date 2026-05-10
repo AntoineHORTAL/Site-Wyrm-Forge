@@ -1,13 +1,34 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <!-- Halo extérieur -->
-  <circle cx="12" cy="12" r="10" fill="#A855F7" opacity="0.18"/>
-  <!-- Halo moyen -->
-  <circle cx="12" cy="12" r="7"  fill="#A855F7" opacity="0.40"/>
-  <!-- Cristal hexagonal central -->
-  <path d="M12 4 L19 8.5 L19 15.5 L12 20 L5 15.5 L5 8.5 Z"
-        fill="#C084FC" stroke="#7C3AED" stroke-width="0.6"/>
-  <!-- Reflet lumineux -->
-  <path d="M12 4 L19 8.5 L12 12 Z" fill="#E9D5FF" opacity="0.55"/>
-  <!-- Cœur lumineux -->
-  <circle cx="12" cy="12" r="2" fill="#F5F3FF"/>
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <radialGradient id="ihGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#F5F3FF" stop-opacity="0.95"/>
+      <stop offset="40%"  stop-color="#C084FC" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.0"/>
+    </radialGradient>
+    <linearGradient id="ihCrystal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#E9D5FF"/>
+      <stop offset="50%"  stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#5B21B6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Halo extérieur lumineux -->
+  <circle cx="16" cy="16" r="15" fill="url(#ihGlow)"/>
+
+  <!-- Corps cristal hexagonal -->
+  <path d="M16 4 L26 10 L26 22 L16 28 L6 22 L6 10 Z"
+        fill="url(#ihCrystal)" stroke="#3B0F76" stroke-width="0.8"/>
+
+  <!-- Facette claire (côté gauche supérieur) -->
+  <path d="M16 4 L26 10 L16 16 Z" fill="#E9D5FF" opacity="0.7"/>
+  <!-- Facette claire (côté gauche) -->
+  <path d="M16 4 L6 10 L16 16 Z" fill="#C4B5FD" opacity="0.55"/>
+
+  <!-- Coeur lumineux -->
+  <circle cx="16" cy="16" r="3.2" fill="#FFFFFF" opacity="0.95"/>
+  <circle cx="16" cy="16" r="1.6" fill="#F0ABFC"/>
+
+  <!-- Reflets -->
+  <line x1="16" y1="6"  x2="16" y2="9"  stroke="#FFFFFF" stroke-width="0.5" opacity="0.7"/>
+  <line x1="9"  y1="11" x2="13" y2="14" stroke="#FFFFFF" stroke-width="0.4" opacity="0.5"/>
 </svg>
