@@ -53,7 +53,7 @@ interface Participant {
 }
 interface Team {
   teamId: number; win: boolean; bans: number[]
-  objectives: { baron: number; dragon: number; herald: number; tower: number; inhibitor: number; champion: number }
+  objectives: { baron: number; dragon: number; herald: number; tower: number; inhibitor: number; voidgrub: number; champion: number }
 }
 interface MatchDetail {
   matchId: string; gameCreation: number; gameDuration: number; queueId: number; gameVersion: string
@@ -259,7 +259,10 @@ function MatchDetailView({
     return (
       <section style={{
         marginBottom: 18, borderRadius: 10, overflow: 'hidden',
-        border: `1px solid ${border}`, borderLeft: `4px solid ${teamColor}`,
+        borderTop:    `1px solid ${border}`,
+        borderRight:  `1px solid ${border}`,
+        borderBottom: `1px solid ${border}`,
+        borderLeft:   `4px solid ${teamColor}`,
         background: bg,
       }}>
         {/* Header équipe */}
@@ -274,11 +277,12 @@ function MatchDetailView({
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {totalKills} kills · {Math.round(totalGold / 1000)}K or
           </span>
-          <ObjStat src="/icons/objectives/_tower.png"      fallback="🏯" count={team.objectives.tower}     label="Tours" />
-          <ObjStat src="/icons/objectives/_dragon.png"     fallback="🐉" count={team.objectives.dragon}    label="Dragons" />
+          <ObjStat src="/icons/objectives/_tower.png"       fallback="🏯" count={team.objectives.tower}     label="Tours" />
+          <ObjStat src="/icons/objectives/_inhibitor.png"   fallback="◆"  count={team.objectives.inhibitor} label="Inhibs" />
+          <ObjStat src="/icons/objectives/_dragon.png"      fallback="🐉" count={team.objectives.dragon}    label="Dragons" />
           <ObjStat src="/icons/objectives/_baronnashor.png" fallback="🦇" count={team.objectives.baron}     label="Barons" />
-          <ObjStat src="/icons/objectives/_riftherald.png" fallback="🦅" count={team.objectives.herald}    label="Hérauts" />
-          <ObjStat src="/icons/objectives/_inhibitor.png"  fallback="🟣" count={team.objectives.inhibitor} label="Inhibs" />
+          <ObjStat src="/icons/objectives/_riftherald.png"  fallback="🦅" count={team.objectives.herald}    label="Hérauts" />
+          <ObjStat src="/icons/objectives/_voidgrub.png"    fallback="🟣" count={team.objectives.voidgrub}  label="Larves du Néant" />
           {team.bans.length > 0 && (
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>BANS</span>
@@ -421,22 +425,171 @@ function MatchDetailView({
     )
   }
 
+  // ── Stats agrégées par équipe (pour les graphiques de comparaison) ─────
+  const me        = myPuuid ? detail.participants.find(p => p.puuid === myPuuid) : undefined
+  const myTeamId  = me?.teamId
+  const myWin     = me?.win
+
+  const teamStats = (id: 100 | 200) => {
+    const players = detail.participants.filter(p => p.teamId === id)
+    return {
+      kills:  players.reduce((s, p) => s + p.kills, 0),
+      deaths: players.reduce((s, p) => s + p.deaths, 0),
+      assists: players.reduce((s, p) => s + p.assists, 0),
+      gold:   players.reduce((s, p) => s + p.goldEarned, 0),
+      damage: players.reduce((s, p) => s + p.damageDealt, 0),
+      taken:  players.reduce((s, p) => s + p.damageTaken, 0),
+      vision: players.reduce((s, p) => s + p.visionScore, 0),
+    }
+  }
+  const blue = teamStats(100)
+  const red  = teamStats(200)
+
   return (
     <div>
-      {/* En-tête match */}
-      <header style={{
-        marginBottom: 18, padding: '14px 18px', borderRadius: 10,
-        background: bg, border: `1px solid ${border}`,
-      }}>
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{queue}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-          {fmt(detail.gameDuration)} · {timeAgo(detail.gameCreation)} · Patch {detail.gameVersion?.split('.').slice(0, 2).join('.')}
+      {/* ── Bannière résultat (basée sur le user) ── */}
+      {me && (
+        <div style={{
+          marginBottom: 14, padding: '12px 18px', borderRadius: 10,
+          background: myWin ? 'rgba(93,202,165,0.10)' : 'rgba(226,75,74,0.10)',
+          borderTop:    `1px solid ${myWin ? 'rgba(93,202,165,0.25)' : 'rgba(226,75,74,0.25)'}`,
+          borderRight:  `1px solid ${myWin ? 'rgba(93,202,165,0.25)' : 'rgba(226,75,74,0.25)'}`,
+          borderBottom: `1px solid ${myWin ? 'rgba(93,202,165,0.25)' : 'rgba(226,75,74,0.25)'}`,
+          borderLeft:   `4px solid ${myWin ? '#5DCAA5' : '#E24B4A'}`,
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        }}>
+          <span style={{
+            fontSize: 22, fontWeight: 800, letterSpacing: 2,
+            color: myWin ? '#5DCAA5' : '#E24B4A',
+          }}>
+            {myWin ? 'VICTOIRE' : 'DÉFAITE'}
+          </span>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {queue} · {fmt(detail.gameDuration)} · {timeAgo(detail.gameCreation)} ·
+            Patch {detail.gameVersion?.split('.').slice(0, 2).join('.')}
+          </span>
         </div>
-      </header>
+      )}
+
+      {/* En-tête générique si pas de user reconnu */}
+      {!me && (
+        <header style={{
+          marginBottom: 14, padding: '14px 18px', borderRadius: 10,
+          background: bg,
+          borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+          borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{queue}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            {fmt(detail.gameDuration)} · {timeAgo(detail.gameCreation)} · Patch {detail.gameVersion?.split('.').slice(0, 2).join('.')}
+          </div>
+        </header>
+      )}
+
+      {/* ── Comparaison équipes (graphiques) ── */}
+      <div style={{
+        marginBottom: 18, padding: '14px 18px', borderRadius: 10, background: bg,
+        borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+        borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+      }}>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          Comparaison équipes
+        </div>
+        <VsBar label="Kills"        blue={blue.kills}  red={red.kills}  highlight={myTeamId} />
+        <VsBar label="Or total"     blue={blue.gold}   red={red.gold}   highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+        <VsBar label="Dégâts infligés" blue={blue.damage} red={red.damage} highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+        <VsBar label="Dégâts subis" blue={blue.taken}  red={red.taken}  highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+        <VsBar label="Vision"       blue={blue.vision} red={red.vision} highlight={myTeamId} />
+      </div>
 
       {renderTeam(100, 'ÉQUIPE BLEUE')}
       {renderTeam(200, 'ÉQUIPE ROUGE')}
+
+      {/* ── Distribution dégâts par joueur ── */}
+      <DamageBreakdown detail={detail} champMap={champMap} version={version} />
     </div>
+  )
+}
+
+// ── Barre de comparaison entre les 2 équipes (style horizontal back-to-back) ──
+function VsBar({ label, blue, red, highlight, format }: {
+  label: string; blue: number; red: number; highlight?: number
+  format?: (v: number) => string
+}) {
+  const total   = blue + red
+  const bluePct = total > 0 ? (blue / total) * 100 : 50
+  const redPct  = 100 - bluePct
+  const fmt     = format ?? ((v: number) => v.toLocaleString('fr-FR'))
+  const blueWin = blue >= red
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', fontSize: 11,
+        color: 'var(--text-dim)', marginBottom: 3,
+      }}>
+        <span style={{ color: blueWin ? '#3A8AC9' : 'var(--text-dim)', fontWeight: highlight === 100 ? 700 : 500 }}>
+          {fmt(blue)}
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+          {label}
+        </span>
+        <span style={{ color: !blueWin ? '#E24B4A' : 'var(--text-dim)', fontWeight: highlight === 200 ? 700 : 500 }}>
+          {fmt(red)}
+        </span>
+      </div>
+      <div style={{
+        display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden',
+        background: 'rgba(255,255,255,0.04)',
+      }}>
+        <div style={{ width: `${bluePct}%`, background: '#3A8AC9', transition: 'width 300ms' }} />
+        <div style={{ width: `${redPct}%`,  background: '#E24B4A', transition: 'width 300ms' }} />
+      </div>
+    </div>
+  )
+}
+
+// ── Breakdown dégâts infligés par joueur (les 10) ──
+function DamageBreakdown({ detail, champMap, version }: {
+  detail: MatchDetail; champMap: Record<number, ChampInfo>; version: string
+}) {
+  const sorted = [...detail.participants].sort((a, b) => b.damageDealt - a.damageDealt)
+  const max    = sorted[0]?.damageDealt ?? 1
+  return (
+    <section style={{
+      padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.02)',
+      borderTop: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)',
+      borderBottom: '1px solid rgba(255,255,255,0.06)', borderLeft: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        Dégâts infligés aux champions (classement)
+      </div>
+      {sorted.map((p, i) => {
+        const champ = champMap[p.championId]
+        const pct   = (p.damageDealt / max) * 100
+        const color = p.teamId === 100 ? '#3A8AC9' : '#E24B4A'
+        return (
+          <div key={p.puuid} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12,
+          }}>
+            <span style={{ width: 18, color: 'var(--text-dim)', fontSize: 11 }}>#{i + 1}</span>
+            {champ
+              ? <img src={champImg(version, champ.image)} alt="" style={{ width: 22, height: 22, borderRadius: 3 }} />
+              : <div style={{ width: 22, height: 22, borderRadius: 3, background: '#222' }} />}
+            <span style={{ flex: '0 0 130px', color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {p.riotIdGameName || p.championName}
+            </span>
+            <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
+            </div>
+            <span style={{ minWidth: 60, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
+              {(p.damageDealt / 1000).toFixed(1)}K
+            </span>
+          </div>
+        )
+      })}
+    </section>
   )
 }
 

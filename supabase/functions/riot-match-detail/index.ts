@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         herald:     t.objectives?.riftHerald?.kills ?? 0,
         tower:      t.objectives?.tower?.kills      ?? 0,
         inhibitor:  t.objectives?.inhibitor?.kills  ?? 0,
+        voidgrub:   t.objectives?.horde?.kills      ?? 0, // Void Grubs (Larves du Néant)
         champion:   t.objectives?.champion?.kills   ?? 0,
       },
     }))

@@ -492,7 +492,10 @@ export default function AccueilTab() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
                     padding: '10px 14px', borderRadius: 8, background: bg,
-                    border: `1px solid ${border}`, borderLeft: `3px solid ${winColor}`,
+                    borderTop:    `1px solid ${border}`,
+                    borderRight:  `1px solid ${border}`,
+                    borderBottom: `1px solid ${border}`,
+                    borderLeft:   `3px solid ${winColor}`,
                     cursor: 'pointer', transition: 'background 120ms',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
