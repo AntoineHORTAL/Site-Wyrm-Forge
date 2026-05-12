@@ -557,7 +557,16 @@ interface DeletionRequestRow {
   status: 'pending' | 'processed' | 'cancelled'
 }
 
+// Les comptes Wyrm Forge (équipe / admin) ne peuvent pas être supprimés depuis l'app.
+// Vérification UI + RLS côté DB pour double protection.
+const WYRM_DOMAIN = '@wyrm-forge.com'
+function isProtectedAccount(profile: UserProfile): boolean {
+  return profile.email?.toLowerCase().endsWith(WYRM_DOMAIN) || profile.role === 'admin'
+}
+
 function DeletionRequest({ profile }: { profile: UserProfile }) {
+  const protectedAcc = isProtectedAccount(profile)
+
   const [pending,  setPending]  = useState<DeletionRequestRow | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [opening,  setOpening]  = useState(false)
@@ -568,6 +577,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
 
   // Charger une éventuelle demande déjà en cours pour l'afficher
   useEffect(() => {
+    if (protectedAcc) { setLoading(false); return }
     let cancelled = false
     async function load() {
       const { data } = await supabase
@@ -585,7 +595,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
     }
     load()
     return () => { cancelled = true }
-  }, [profile.id])
+  }, [profile.id, protectedAcc])
 
   async function submit() {
     if (busy) return
@@ -628,6 +638,28 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
   }
 
   if (loading) return null
+
+  // Compte protégé (équipe Wyrm Forge / admin) : on affiche uniquement
+  // un message d'info, sans formulaire de suppression.
+  if (protectedAcc) {
+    return (
+      <section style={{
+        marginTop: 18, padding: '14px 18px', borderRadius: 10,
+        background: 'rgba(127,119,221,0.04)',
+        border: '1px solid rgba(127,119,221,0.2)',
+        borderLeft: '3px solid #7F77DD',
+      }}>
+        <div style={{ fontSize: 11, color: '#7F77DD', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
+          Compte Wyrm Forge protégé
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Les comptes de l&apos;équipe Wyrm Forge ne peuvent pas être supprimés depuis l&apos;app.
+          Pour toute demande administrative, contacte directement{' '}
+          <a href="mailto:admin@wyrm-forge.com" style={{ color: '#EF9F27' }}>admin@wyrm-forge.com</a>.
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section style={{
