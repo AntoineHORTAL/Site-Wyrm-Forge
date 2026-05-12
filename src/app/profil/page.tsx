@@ -337,7 +337,244 @@ export default function ProfilePage() {
           <StatCard label="Tâches au total" value={String(todoItemCount)} />
         </div>
       </section>
+
+      {/* Paramètres du compte */}
+      <ProfileSettings profile={profile} onProfileUpdate={p => setProfile(p)} />
+
+      {/* Zone danger : déconnexion / suppression */}
+      <DangerZone />
     </main>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Paramètres : pseudo / email / mot de passe / compte Riot — édition inline
+// ────────────────────────────────────────────────────────────────────────────────
+function ProfileSettings({ profile, onProfileUpdate }: {
+  profile: UserProfile; onProfileUpdate: (p: UserProfile) => void
+}) {
+  return (
+    <section style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Paramètres du compte
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <EditableField
+          label="Pseudo"
+          currentValue={profile.username}
+          placeholder="Nouveau pseudo"
+          onSave={async (newValue) => {
+            const { error } = await supabase.from('profiles')
+              .update({ username: newValue }).eq('id', profile.id)
+            if (error) throw new Error('Échec : ' + error.message)
+            onProfileUpdate({ ...profile, username: newValue })
+            return 'Pseudo mis à jour.'
+          }}
+        />
+        <EditableField
+          label="Email"
+          currentValue={profile.email}
+          placeholder="Nouvel email"
+          inputType="email"
+          onSave={async (newValue) => {
+            const { error } = await supabase.auth.updateUser({ email: newValue })
+            if (error) throw new Error('Échec : ' + error.message)
+            return 'Un email de confirmation a été envoyé à ' + newValue + '.'
+          }}
+        />
+        <EditableField
+          label="Mot de passe"
+          currentValue="••••••••"
+          placeholder="Nouveau mot de passe (8 caractères minimum)"
+          inputType="password"
+          maskValue
+          onSave={async (newValue) => {
+            if (newValue.length < 8) throw new Error('Le mot de passe doit faire au moins 8 caractères.')
+            const { error } = await supabase.auth.updateUser({ password: newValue })
+            if (error) throw new Error('Échec : ' + error.message)
+            return 'Mot de passe mis à jour.'
+          }}
+        />
+        <EditableField
+          label="Compte Riot"
+          currentValue={profile.riot_gamename
+            ? `${profile.riot_gamename}#${profile.riot_tagline} · ${(profile.riot_platform ?? 'euw1').toUpperCase()}`
+            : 'Non lié'
+          }
+          placeholder="GameName#TAG"
+          customForm={(value, setValue) => (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                placeholder="GameName#TAG"
+                style={inputStyle}
+              />
+            </div>
+          )}
+          onSave={async (newValue) => {
+            const clean = newValue.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
+            const m = clean.match(/^(.+)#(.+)$/)
+            if (!m) throw new Error('Format attendu : GameName#TAG')
+            const [, gameName, tagLine] = m
+            const { error } = await supabase.from('profiles')
+              .update({ riot_gamename: gameName, riot_tagline: tagLine })
+              .eq('id', profile.id)
+            if (error) throw new Error('Échec : ' + error.message)
+            onProfileUpdate({ ...profile, riot_gamename: gameName, riot_tagline: tagLine })
+            return 'Compte Riot mis à jour.'
+          }}
+        />
+      </div>
+    </section>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  flex: 1, minWidth: 180, padding: '8px 10px',
+  background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(127,119,221,0.3)',
+  borderRadius: 5, color: '#F5F2FA', fontSize: 13,
+  fontFamily: 'inherit', outline: 'none',
+}
+
+function EditableField({ label, currentValue, placeholder, inputType, maskValue, customForm, onSave }: {
+  label: string
+  currentValue: string
+  placeholder?: string
+  inputType?: 'text' | 'email' | 'password'
+  maskValue?: boolean
+  customForm?: (value: string, setValue: (v: string) => void) => React.ReactNode
+  onSave: (newValue: string) => Promise<string>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value,   setValue]   = useState('')
+  const [busy,    setBusy]    = useState(false)
+  const [msg,     setMsg]     = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  async function save() {
+    if (busy) return
+    setBusy(true); setMsg(null)
+    try {
+      const okMsg = await onSave(value)
+      setMsg({ kind: 'ok', text: okMsg })
+      setEditing(false)
+      setValue('')
+    } catch (e: unknown) {
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Erreur' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{
+      padding: '10px 14px', borderRadius: 6,
+      background: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      {!editing ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>
+              {label}
+            </div>
+            <div style={{ fontSize: 14, color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {currentValue}
+            </div>
+          </div>
+          <button onClick={() => { setEditing(true); setMsg(null) }} style={{
+            padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', background: 'rgba(127,119,221,0.15)',
+            border: '1px solid rgba(127,119,221,0.4)', color: '#F5F2FA',
+          }}>Modifier</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+            Nouveau {label.toLowerCase()}
+          </div>
+          {customForm
+            ? customForm(value, setValue)
+            : (
+              <input
+                type={inputType ?? 'text'}
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                placeholder={placeholder}
+                disabled={busy}
+                style={inputStyle}
+                onKeyDown={e => { if (e.key === 'Enter') save() }}
+              />
+            )
+          }
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button onClick={() => { setEditing(false); setValue(''); setMsg(null) }} disabled={busy}
+              style={{
+                padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)',
+              }}>Annuler</button>
+            <button onClick={save} disabled={busy || !value.trim()} style={{
+              padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
+              cursor: busy ? 'wait' : 'pointer',
+              background: 'rgba(239,159,39,0.18)',
+              border: '1px solid #EF9F27', color: '#F5F2FA',
+              opacity: !value.trim() ? 0.5 : 1,
+            }}>{busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+          </div>
+          {!busy && maskValue && (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
+              Tu seras peut-être déconnecté après le changement de mot de passe.
+            </div>
+          )}
+        </div>
+      )}
+      {msg && (
+        <div style={{
+          marginTop: 8, padding: '6px 10px', borderRadius: 4, fontSize: 12,
+          background: msg.kind === 'ok' ? 'rgba(93,202,165,0.10)' : 'rgba(226,75,74,0.10)',
+          borderLeft: `3px solid ${msg.kind === 'ok' ? '#5DCAA5' : '#E24B4A'}`,
+          color: msg.kind === 'ok' ? '#5DCAA5' : '#E24B4A',
+        }}>{msg.text}</div>
+      )}
+    </div>
+  )
+}
+
+// ── Zone danger : déconnexion (suppression de compte = action plus risquée à venir) ──
+function DangerZone() {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+
+  async function logout() {
+    if (busy) return
+    setBusy(true)
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
+  return (
+    <section style={{
+      padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(226,75,74,0.04)',
+      border: '1px solid rgba(226,75,74,0.2)',
+      borderLeft: '3px solid #E24B4A',
+    }}>
+      <div style={{ fontSize: 11, color: '#E24B4A', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
+        Zone sensible
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1, minWidth: 200 }}>
+          Te déconnecter de l'application sur cet appareil.
+        </div>
+        <button onClick={logout} disabled={busy} style={{
+          padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+          cursor: busy ? 'wait' : 'pointer',
+          background: 'rgba(226,75,74,0.15)', border: '1px solid #E24B4A', color: '#E24B4A',
+        }}>{busy ? 'Déconnexion…' : 'Se déconnecter'}</button>
+      </div>
+    </section>
   )
 }
 
