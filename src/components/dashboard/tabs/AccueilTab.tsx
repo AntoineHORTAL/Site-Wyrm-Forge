@@ -243,6 +243,16 @@ export default function AccueilTab() {
       const data = await res.json()
       if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
       setMatches(data.matches ?? [])
+
+      // Auto-migration : on stocke le puuid (identifiant Riot permanent) dans le profil
+      // pour pouvoir matcher l'utilisateur dans les matchs même après changement de Riot ID.
+      if (data.puuid && userId) {
+        // On ne re-update que si le puuid stocké est différent (évite les writes inutiles)
+        const { data: cur } = await supabase.from('profiles').select('riot_puuid').eq('id', userId).maybeSingle()
+        if (cur?.riot_puuid !== data.puuid) {
+          await supabase.from('profiles').update({ riot_puuid: data.puuid }).eq('id', userId)
+        }
+      }
     } catch {
       setMatchError('Impossible de joindre l\'API Riot.')
     } finally {

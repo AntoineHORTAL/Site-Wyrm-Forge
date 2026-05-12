@@ -139,10 +139,10 @@ export default function MatchPage() {
           return
         }
 
-        // 2. Riot ID + rang du joueur (pour highlight et comparaison) — depuis profiles
+        // 2. Riot ID + puuid + rang du joueur (pour highlight et comparaison) — depuis profiles
         const { data: profile } = await supabase
           .from('profiles')
-          .select('riot_gamename, riot_tagline, riot_rank')
+          .select('riot_gamename, riot_tagline, riot_rank, riot_puuid')
           .eq('id', session.user.id)
           .maybeSingle()
         if (profile?.riot_rank) setMyRank(profile.riot_rank)
@@ -205,13 +205,32 @@ export default function MatchPage() {
         }
         setDetail(dData)
 
-        // Highlight : retrouver le puuid de l'utilisateur dans la partie
-        if (profile?.riot_gamename) {
-          const me = (dData as MatchDetail).participants.find(
+        // Highlight : retrouver le user dans la partie.
+        //  1. PRIO : par puuid (identifiant permanent — invariant même si Riot ID change)
+        //  2. Fallback : par riot_gamename (+ tagline) pour les profils non-migrés
+        const participants = (dData as MatchDetail).participants
+        let me: Participant | undefined
+        if (profile?.riot_puuid) {
+          me = participants.find(p => p.puuid === profile.riot_puuid)
+        }
+        if (!me && profile?.riot_gamename) {
+          me = participants.find(
             p => p.riotIdGameName?.toLowerCase() === profile.riot_gamename?.toLowerCase()
               && (!profile.riot_tagline || p.riotIdTagline?.toLowerCase() === profile.riot_tagline.toLowerCase()),
           )
-          if (me) setMyPuuid(me.puuid)
+        }
+        // Dernier filet : gamename seul (sans tagline) si rien trouvé
+        if (!me && profile?.riot_gamename) {
+          me = participants.find(
+            p => p.riotIdGameName?.toLowerCase() === profile.riot_gamename?.toLowerCase(),
+          )
+        }
+        if (me) {
+          setMyPuuid(me.puuid)
+          // Si on n'avait pas le puuid en DB, on le sauvegarde maintenant (auto-migration)
+          if (!profile?.riot_puuid) {
+            await supabase.from('profiles').update({ riot_puuid: me.puuid }).eq('id', session.user.id)
+          }
         }
       } catch {
         if (!cancelled) setError('Impossible de charger le détail du match.')
