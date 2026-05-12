@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { tabGroups } from '@/components/dashboard/Dashboard'
 import type { DashTab } from '@/app/page'
@@ -56,6 +57,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -170,7 +172,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                 }}>
                   <DropdownItem label="Profil"
                     icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
-                    onClick={() => setDropdownOpen(false)}
+                    onClick={() => { setDropdownOpen(false); router.push('/profil') }}
                     hoverBg={c ? 'rgba(255,255,255,0.05)' : '#27272A'} />
                   <DropdownItem label="Déconnexion"
                     icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
