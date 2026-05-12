@@ -1720,7 +1720,10 @@ function DiffRow({ label, frames, get, format }: {
 // MapHeatmap : carte interactive Summoner's Rift avec points (kills ou wards).
 // Range slider pour filtrer la fenêtre de temps. Mode 'global' affiche tout.
 // ────────────────────────────────────────────────────────────────────────────────
-const RIFT_MAP_URL = 'https://ddragon.leagueoflegends.com/cdn/img/map/map11.png'
+// Carte locale (pas de CORS, pas de version DDragon à gérer).
+// Si l'utilisateur n'a pas encore déposé le fichier, fallback automatique sur la
+// carte DDragon versionnée puis sur l'URL non versionnée.
+const RIFT_MAP_URL = '/icons/maps/summoners_rift.png'
 // La grille de Riot va de 0..14820 (approximatif). 0,0 = bottom-left.
 const RIFT_SIZE = 14820
 
@@ -1780,28 +1783,54 @@ function MapHeatmap({ detail, mode, champMap, version }: {
         </div>
       </div>
 
-      {/* Range slider (deux curseurs pour from / to) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, fontSize: 11, color: 'var(--text-dim)' }}>
-        <span style={{ minWidth: 50 }}>De {from}m</span>
-        <input type="range" min={0} max={totalMin} value={from}
-          onChange={e => setFrom(Math.min(Number(e.target.value), to))}
-          style={{ flex: 1 }} />
-        <span style={{ minWidth: 60 }}>à {to}m</span>
-        <input type="range" min={0} max={totalMin} value={to}
-          onChange={e => setTo(Math.max(Number(e.target.value), from))}
-          style={{ flex: 1 }} />
-        <button onClick={() => { setFrom(0); setTo(totalMin) }} style={{
-          padding: '3px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer',
-          background: 'rgba(127,119,221,0.15)',
-          border: '1px solid rgba(127,119,221,0.3)',
-          color: '#F5F2FA',
-        }}>Globale</button>
+      {/* Fenêtre temporelle : deux curseurs (début / fin de la fenêtre à afficher) */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontSize: 11, color: 'var(--text-dim)', marginBottom: 4,
+        }}>
+          <span>
+            Fenêtre affichée : <strong style={{ color: '#F5F2FA' }}>{from}m → {to}m</strong>
+            {' '}<span style={{ color: 'var(--text-muted)' }}>(sur {totalMin}m total)</span>
+          </span>
+          <button onClick={() => { setFrom(0); setTo(totalMin) }} style={{
+            padding: '3px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer',
+            background: from === 0 && to === totalMin ? 'rgba(239,159,39,0.15)' : 'rgba(127,119,221,0.15)',
+            border: `1px solid ${from === 0 && to === totalMin ? '#EF9F27' : 'rgba(127,119,221,0.3)'}`,
+            color: '#F5F2FA', fontWeight: 600,
+          }}>Toute la partie</button>
+        </div>
+        {/* Slider de DÉBUT */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span style={{ minWidth: 50 }}>Début</span>
+          <input type="range" min={0} max={totalMin} value={from}
+            onChange={e => setFrom(Math.min(Number(e.target.value), to))}
+            style={{ flex: 1 }} />
+          <span style={{ minWidth: 36, textAlign: 'right', fontWeight: 600, color: '#F5F2FA' }}>{from}m</span>
+        </div>
+        {/* Slider de FIN */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          <span style={{ minWidth: 50 }}>Fin</span>
+          <input type="range" min={0} max={totalMin} value={to}
+            onChange={e => setTo(Math.max(Number(e.target.value), from))}
+            style={{ flex: 1 }} />
+          <span style={{ minWidth: 36, textAlign: 'right', fontWeight: 600, color: '#F5F2FA' }}>{to}m</span>
+        </div>
       </div>
 
       {/* La carte */}
       <div style={{ position: 'relative', aspectRatio: '1 / 1', maxWidth: 600, margin: '0 auto' }}>
         <img src={RIFT_MAP_URL} alt="Summoner's Rift"
-          style={{ width: '100%', height: '100%', borderRadius: 6, display: 'block', opacity: 0.8 }} />
+          onError={e => {
+            // Fallback 1 : DDragon versionné, sinon non versionné
+            const img = e.currentTarget as HTMLImageElement
+            if (img.src.endsWith('summoners_rift.png')) {
+              img.src = 'https://ddragon.leagueoflegends.com/cdn/14.24.1/img/map/map11.png'
+            } else if (img.src.includes('14.24.1')) {
+              img.src = 'https://ddragon.leagueoflegends.com/cdn/img/map/map11.png'
+            }
+          }}
+          style={{ width: '100%', height: '100%', borderRadius: 6, display: 'block', opacity: 0.8, background: '#0a0612' }} />
         {/* Points */}
         {filtered.map((e, i) => {
           const isKill = mode === 'kills'

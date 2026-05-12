@@ -119,17 +119,13 @@ export default function ChampionPage() {
                 </h1>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                   {data.tags?.map(t => (
-                    <span key={t} style={{
-                      padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 600,
-                      background: 'rgba(127,119,221,0.20)', border: '1px solid rgba(127,119,221,0.4)',
-                      color: '#F5F2FA',
-                    }}>{t}</span>
+                    <TagBadge key={t} tag={t} />
                   ))}
                   <span style={{
                     padding: '2px 8px', borderRadius: 3, fontSize: 11,
                     background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)',
                     color: 'var(--text-muted)',
-                  }}>
+                  }} title="Note de complexité de jeu attribuée par Riot, de 1 (facile) à 10 (très difficile).">
                     Difficulté {data.info.difficulty}/10
                   </span>
                 </div>
@@ -311,25 +307,13 @@ export default function ChampionPage() {
                 gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
               }}>
                 {data.skins.map((sk, i) => (
-                  <div key={sk.id}
+                  <SkinTile key={sk.id}
+                    champId={data.id}
+                    skinNum={sk.num}
+                    skinName={sk.name === 'default' ? 'Classique' : sk.name}
+                    active={skinIdx === i}
                     onClick={() => setSkinIdx(i)}
-                    style={{
-                      cursor: 'pointer', borderRadius: 5, overflow: 'hidden',
-                      border: skinIdx === i ? '2px solid #EF9F27' : '1px solid rgba(255,255,255,0.05)',
-                      transition: 'transform 120ms',
-                    }}
-                  >
-                    <img src={`${DDN}/cdn/img/champion/tiles/${data.id}_${sk.num}.jpg`}
-                      alt={sk.name}
-                      style={{ width: '100%', display: 'block' }}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3' }} />
-                    <div style={{
-                      padding: '4px 6px', fontSize: 10, color: 'var(--text-muted)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {sk.name === 'default' ? 'Classique' : sk.name}
-                    </div>
-                  </div>
+                  />
                 ))}
               </div>
             </section>
@@ -337,6 +321,102 @@ export default function ChampionPage() {
         </>
       )}
     </main>
+  )
+}
+
+// ── Tile de skin avec chaîne de fallbacks (tile → loading → splash) ──
+function SkinTile({ champId, skinNum, skinName, active, onClick }: {
+  champId: string; skinNum: number; skinName: string
+  active: boolean; onClick: () => void
+}) {
+  // Plusieurs URLs DDragon possibles selon la disponibilité du skin
+  const sources = [
+    `${DDN}/cdn/img/champion/tiles/${champId}_${skinNum}.jpg`,
+    `${DDN}/cdn/img/champion/loading/${champId}_${skinNum}.jpg`,
+    `${DDN}/cdn/img/champion/splash/${champId}_${skinNum}.jpg`,
+  ]
+  const [srcIdx, setSrcIdx] = useState(0)
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: 'pointer', borderRadius: 5, overflow: 'hidden',
+        border: active ? '2px solid #EF9F27' : '1px solid rgba(255,255,255,0.05)',
+        transition: 'transform 120ms',
+        background: '#0a0612',
+      }}
+    >
+      {!failed ? (
+        <img
+          src={sources[srcIdx]}
+          alt={skinName}
+          loading="lazy"
+          style={{ width: '100%', display: 'block', aspectRatio: '4 / 3', objectFit: 'cover' }}
+          onError={() => {
+            if (srcIdx < sources.length - 1) setSrcIdx(srcIdx + 1)
+            else setFailed(true)
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%', aspectRatio: '4 / 3',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(135deg, #2a1545, #534AB7)',
+          color: 'rgba(255,255,255,0.4)', fontSize: 11,
+        }}>Image indisponible</div>
+      )}
+      <div style={{
+        padding: '4px 6px', fontSize: 10, color: 'var(--text-muted)',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {skinName}
+      </div>
+    </div>
+  )
+}
+
+// ── Tag de classe champion avec tooltip explicatif au hover ──
+const TAG_DESCRIPTIONS: Record<string, string> = {
+  Fighter:    'Combattant — corps-à-corps polyvalent, équilibre entre dégâts et résistance. Souvent en TOP ou JUNGLE.',
+  Tank:       'Tank — encaisse les dégâts pour protéger son équipe. Initie les combats. Souvent en TOP ou SUPPORT.',
+  Mage:       'Mage — utilise principalement des sorts et de la puissance magique (AP) pour infliger ses dégâts.',
+  Assassin:   'Assassin — explose une cible isolée en un combo. Très mobile, fragile. Souvent en MID ou JUNGLE.',
+  Marksman:   'Tireur (ADC) — dégâts soutenus à distance via auto-attaques. Position en BOT lane.',
+  Support:    'Support — protège l\'ADC, sécurise la vision, initie ou pacifie les combats. Position en BOT.',
+  Specialist: 'Spécialiste — kit unique sortant des archétypes classiques (ex: Heimerdinger, Yuumi).',
+}
+
+function TagBadge({ tag }: { tag: string }) {
+  const [hover, setHover] = useState(false)
+  const desc = TAG_DESCRIPTIONS[tag]
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative', cursor: desc ? 'help' : 'default',
+        padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 600,
+        background: 'rgba(127,119,221,0.20)', border: '1px solid rgba(127,119,221,0.4)',
+        color: '#F5F2FA', display: 'inline-flex', alignItems: 'center',
+      }}
+    >
+      {tag}
+      {hover && desc && (
+        <span style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30,
+          maxWidth: 280, padding: '8px 12px', borderRadius: 6,
+          background: 'rgba(8,5,18,0.97)',
+          border: '1px solid rgba(127,119,221,0.4)',
+          color: '#F5F2FA', fontSize: 11, fontWeight: 400, letterSpacing: 0,
+          lineHeight: 1.4, whiteSpace: 'normal', textAlign: 'left',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)', pointerEvents: 'none',
+        }}>
+          {desc}
+        </span>
+      )}
+    </span>
   )
 }
 

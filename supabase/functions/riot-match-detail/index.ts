@@ -102,6 +102,23 @@ Deno.serve(async (req) => {
     const kills: KillEvent[] = []
     const wards: WardEvent[] = []
 
+    // Helper : récupère la position d'un participant au timestamp ts (frame la plus proche AVANT ts).
+    // Utilisé pour les WARD_PLACED qui n'ont pas de position dans le payload Riot.
+    function positionAt(participantId: number, ts: number): { x: number; y: number } | undefined {
+      if (!tl?.info?.frames) return undefined
+      let best = null, bestDelta = Infinity
+      // deno-lint-ignore no-explicit-any
+      for (const f of tl.info.frames as any[]) {
+        if ((f.timestamp ?? 0) > ts) break
+        const delta = ts - (f.timestamp ?? 0)
+        if (delta < bestDelta) { best = f; bestDelta = delta }
+      }
+      if (!best) return undefined
+      const pf = best.participantFrames?.[participantId]
+      if (!pf?.position) return undefined
+      return { x: pf.position.x ?? 0, y: pf.position.y ?? 0 }
+    }
+
     if (tl?.info?.frames) {
       // deno-lint-ignore no-explicit-any
       tl.info.frames.forEach((frame: any) => {
@@ -145,21 +162,29 @@ Deno.serve(async (req) => {
               teamId: killerTeam,
             })
           }
-          // Wards (WARD_PLACED, WARD_KILL — la position est exposée surtout pour WARD_KILL)
+          // Wards : WARD_PLACED n'a PAS de position dans match-v5.
+          // On déduit la position via la frame la plus proche (cf positionAt).
           if (ev.type === 'WARD_PLACED' && ev.creatorId) {
             const teamId = participantTeam[ev.creatorId] ?? 0
+            const pos = ev.position
+              ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 }
+              : positionAt(ev.creatorId, ev.timestamp ?? 0)
             wards.push({
               ts: ev.timestamp ?? 0, creatorId: ev.creatorId, teamId,
               wardType: ev.wardType ?? 'UNKNOWN', action: 'PLACED',
-              position: ev.position ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 } : undefined,
+              position: pos,
             })
           }
+          // WARD_KILL : la position de la ward détruite est généralement fournie
           if (ev.type === 'WARD_KILL' && ev.killerId) {
             const teamId = participantTeam[ev.killerId] ?? 0
+            const pos = ev.position
+              ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 }
+              : positionAt(ev.killerId, ev.timestamp ?? 0)
             wards.push({
               ts: ev.timestamp ?? 0, creatorId: ev.killerId, teamId,
               wardType: ev.wardType ?? 'UNKNOWN', action: 'KILLED',
-              position: ev.position ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 } : undefined,
+              position: pos,
             })
           }
         })
