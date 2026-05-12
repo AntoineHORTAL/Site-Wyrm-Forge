@@ -287,7 +287,12 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       <DrawerTabBtn
                         key={tab.id} tab={tab}
                         active={activeTab === tab.id} c={c}
-                        onClick={() => { if (!tab.soon) { onTabChange(tab.id); setDrawerOpen(false) } }}
+                        onClick={() => {
+                          if (tab.soon) return
+                          setDrawerOpen(false)
+                          if (tab.href) window.location.assign(tab.href)
+                          else onTabChange(tab.id as DashTab)
+                        }}
                         locked={!isAdmin && !isProTier && !!tab.locked}
                         soon={tab.soon}
                       />
@@ -359,7 +364,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 
 /* ── Drawer tab button ── */
 function DrawerTabBtn({ tab, active, c, onClick, locked, admin, soon }: {
-  tab: { id: DashTab; label: string; shortLabel: string; icon: React.ReactNode }
+  tab: { id: DashTab | string; label: string; shortLabel: string; icon: React.ReactNode }
   active: boolean; c: boolean; onClick: () => void; locked?: boolean; admin?: boolean; soon?: boolean
 }) {
   const [hovered, setHovered] = useState(false)

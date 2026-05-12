@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const gameNameRaw = url.searchParams.get('gameName')
     const tagLineRaw  = url.searchParams.get('tagLine')
     const platform    = url.searchParams.get('platform') ?? 'euw1'
-    const count       = Math.min(Number(url.searchParams.get('count') ?? '5'), 10)
+    const count       = Math.min(Number(url.searchParams.get('count') ?? '5'), 20)
 
     if (!gameNameRaw || !tagLineRaw) {
       return jsonResponse({ error: 'gameName et tagLine requis.' }, 400)
