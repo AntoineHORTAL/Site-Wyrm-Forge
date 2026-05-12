@@ -341,8 +341,11 @@ export default function ProfilePage() {
       {/* Paramètres du compte */}
       <ProfileSettings profile={profile} onProfileUpdate={p => setProfile(p)} />
 
-      {/* Zone danger : déconnexion / suppression */}
+      {/* Zone danger : déconnexion */}
       <DangerZone />
+
+      {/* Suppression du compte (RGPD article 17) */}
+      <DeletionRequest profile={profile} />
     </main>
   )
 }
@@ -539,6 +542,197 @@ function EditableField({ label, currentValue, placeholder, inputType, maskValue,
         }}>{msg.text}</div>
       )}
     </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// DeletionRequest : demande de suppression du compte (RGPD article 17 — droit à
+// l'effacement). On enregistre une demande dans la table deletion_requests qui
+// sera traitée par un admin / une Edge Function dans les 30 jours max.
+// ────────────────────────────────────────────────────────────────────────────────
+interface DeletionRequestRow {
+  id: string; user_id: string; email: string; username: string | null
+  reason: string | null
+  requested_at: string; processed_at: string | null
+  status: 'pending' | 'processed' | 'cancelled'
+}
+
+function DeletionRequest({ profile }: { profile: UserProfile }) {
+  const [pending,  setPending]  = useState<DeletionRequestRow | null>(null)
+  const [loading,  setLoading]  = useState(true)
+  const [opening,  setOpening]  = useState(false)
+  const [emailIn,  setEmailIn]  = useState('')
+  const [reason,   setReason]   = useState('')
+  const [busy,     setBusy]     = useState(false)
+  const [msg,      setMsg]      = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  // Charger une éventuelle demande déjà en cours pour l'afficher
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const { data } = await supabase
+        .from('deletion_requests')
+        .select('*')
+        .eq('user_id', profile.id)
+        .eq('status', 'pending')
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!cancelled) {
+        setPending(data as DeletionRequestRow | null)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [profile.id])
+
+  async function submit() {
+    if (busy) return
+    if (emailIn.trim().toLowerCase() !== profile.email.toLowerCase()) {
+      setMsg({ kind: 'err', text: 'L\'email saisi ne correspond pas à celui de ton compte.' })
+      return
+    }
+    setBusy(true); setMsg(null)
+    try {
+      const { data, error } = await supabase.from('deletion_requests').insert({
+        user_id:  profile.id,
+        email:    profile.email,
+        username: profile.username,
+        reason:   reason.trim() || null,
+        status:   'pending',
+      }).select().single()
+      if (error) { setMsg({ kind: 'err', text: 'Échec : ' + error.message }); return }
+      setPending(data as DeletionRequestRow)
+      setOpening(false)
+      setEmailIn(''); setReason('')
+      setMsg({ kind: 'ok', text: 'Demande enregistrée. Elle sera traitée sous 30 jours.' })
+    } catch {
+      setMsg({ kind: 'err', text: 'Erreur inattendue.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancelPending() {
+    if (!pending || busy) return
+    setBusy(true); setMsg(null)
+    const { error } = await supabase
+      .from('deletion_requests')
+      .update({ status: 'cancelled' })
+      .eq('id', pending.id)
+    setBusy(false)
+    if (error) { setMsg({ kind: 'err', text: 'Impossible d\'annuler : ' + error.message }); return }
+    setPending(null)
+    setMsg({ kind: 'ok', text: 'Demande annulée.' })
+  }
+
+  if (loading) return null
+
+  return (
+    <section style={{
+      marginTop: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(226,75,74,0.04)',
+      border: '1px solid rgba(226,75,74,0.2)',
+      borderLeft: '3px solid #E24B4A',
+    }}>
+      <div style={{ fontSize: 11, color: '#E24B4A', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
+        Suppression du compte et des données (RGPD)
+      </div>
+
+      {pending ? (
+        <div>
+          <div style={{ padding: '10px 14px', borderRadius: 6,
+            background: 'rgba(239,159,39,0.08)',
+            border: '1px solid rgba(239,159,39,0.3)',
+            color: '#EF9F27', fontSize: 13, marginBottom: 10,
+          }}>
+            <strong>Demande en cours de traitement</strong>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+              Demande déposée le {new Date(pending.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.
+              <br />Elle sera traitée sous 30 jours (article 17 du RGPD).
+            </div>
+          </div>
+          <button onClick={cancelPending} disabled={busy} style={{
+            padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+            cursor: busy ? 'wait' : 'pointer',
+            background: 'rgba(127,119,221,0.15)',
+            border: '1px solid rgba(127,119,221,0.4)', color: '#F5F2FA',
+          }}>{busy ? '…' : 'Annuler ma demande'}</button>
+        </div>
+      ) : !opening ? (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 12 }}>
+            Conformément à l&apos;article 17 du RGPD (droit à l&apos;effacement), tu peux demander
+            la suppression définitive de ton compte et de toutes les données associées.
+            Cette action est <strong style={{ color: '#E24B4A' }}>irréversible</strong> et entraînera :
+            <ul style={{ margin: '6px 0 0 18px', padding: 0, color: 'var(--text-dim)' }}>
+              <li>Suppression de ton profil et de tes identifiants</li>
+              <li>Suppression de tes builds d&apos;items et to-do lists</li>
+              <li>Suppression du lien vers ton compte Riot</li>
+              <li>Suppression de toutes contributions publiques (workshop)</li>
+            </ul>
+            <div style={{ marginTop: 8, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+              Traitement effectué sous 30 jours maximum.
+            </div>
+          </div>
+          <button onClick={() => { setOpening(true); setMsg(null) }} style={{
+            padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+            cursor: 'pointer',
+            background: 'rgba(226,75,74,0.15)',
+            border: '1px solid #E24B4A', color: '#E24B4A',
+          }}>Demander la suppression de mon compte</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+            Pour confirmer, saisis ton email <strong style={{ color: '#F5F2FA' }}>{profile.email}</strong> ci-dessous :
+          </div>
+          <input
+            type="email"
+            value={emailIn}
+            onChange={e => setEmailIn(e.target.value)}
+            placeholder={profile.email}
+            style={inputStyle}
+            disabled={busy}
+          />
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, marginBottom: 4 }}>
+            Raison du départ (optionnel) :
+          </div>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Ce qui t'a déçu, manqué, ou ce qu'on pourrait améliorer…"
+            disabled={busy}
+            rows={3}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <button onClick={() => { setOpening(false); setEmailIn(''); setReason(''); setMsg(null) }} disabled={busy} style={{
+              padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)',
+            }}>Annuler</button>
+            <button onClick={submit} disabled={busy || !emailIn} style={{
+              padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              cursor: busy ? 'wait' : 'pointer',
+              background: 'rgba(226,75,74,0.20)',
+              border: '1px solid #E24B4A', color: '#fff',
+              opacity: !emailIn ? 0.5 : 1,
+            }}>{busy ? 'Envoi…' : 'Confirmer la suppression'}</button>
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div style={{
+          marginTop: 10, padding: '6px 10px', borderRadius: 4, fontSize: 12,
+          background: msg.kind === 'ok' ? 'rgba(93,202,165,0.10)' : 'rgba(226,75,74,0.10)',
+          borderLeft: `3px solid ${msg.kind === 'ok' ? '#5DCAA5' : '#E24B4A'}`,
+          color: msg.kind === 'ok' ? '#5DCAA5' : '#E24B4A',
+        }}>{msg.text}</div>
+      )}
+    </section>
   )
 }
 
