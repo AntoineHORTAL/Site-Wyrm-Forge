@@ -989,6 +989,8 @@ type AxisKey = 'combat' | 'survie' | 'vision' | 'economie' | 'carry' | 'objectif
 
 interface AxisDef {
   key: AxisKey; label: string; short: string
+  // Description de ce que mesure l'axe (affichée au hover)
+  desc: string
   // Valeur brute extraite d'un participant (à normaliser ensuite)
   raw: (p: Participant, durationSec: number, teamKills: number, teamDmg: number, teamObjDmg: number) => number
   // Texte de conseil quand le score est faible
@@ -998,31 +1000,37 @@ interface AxisDef {
 const GPI_AXES: AxisDef[] = [
   {
     key: 'combat',  label: 'Combat',     short: 'CBT',
+    desc: 'Mesure tes dégâts par minute infligés aux champions. Reflète ton impact en team-fight.',
     raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60), // DPM
     improve: 'Augmente tes dégâts par minute : reste actif en team-fights et envoie ton burst au bon timing.',
   },
   {
     key: 'survie',  label: 'Survie',     short: 'SUR',
+    desc: 'Reflète ta capacité à rester en vie. Calculé à partir de l\'inverse de tes morts.',
     raw: (p) => 1 / Math.max(p.deaths, 1), // moins de morts = plus de score
     improve: 'Réduis tes morts : prends moins de risques, recule quand tu as flash down, ward avant les fights.',
   },
   {
     key: 'vision',  label: 'Vision',     short: 'VIS',
+    desc: 'Ton score de vision total (wards posées, wards détruites, temps de vision contrôlée).',
     raw: (p) => p.visionScore,
     improve: 'Achète plus de wards de contrôle et garde tes trinkets sur cooldown. Ward les objectifs (drake/baron) avant qu\'ils ne spawn.',
   },
   {
     key: 'economie',label: 'Économie',   short: 'ÉCO',
+    desc: 'Combine ton or par minute et ton CS. Reflète ton farm et ta gestion des ressources.',
     raw: (p, d) => d === 0 ? 0 : (p.goldEarned + p.cs * 25) / (d / 60), // GPM + CS impact
     improve: 'Travaille ta last-hit (CS/min) et évite les morts qui te font perdre de l\'or. Reste sur ta lane plus longtemps.',
   },
   {
     key: 'carry',   label: 'Carry',      short: 'CRY',
+    desc: 'Ta part de dégâts d\'équipe en %. Montre si tu portes l\'équipe en dégâts.',
     raw: (p, _, __, teamDmg) => teamDmg === 0 ? 0 : (p.damageDealt / teamDmg) * 100,
     improve: 'Augmente ta part de dégâts d\'équipe : concentre-toi sur les cibles prioritaires et tape les squishies en team-fight.',
   },
   {
     key: 'objectifs',label: 'Objectifs', short: 'OBJ',
+    desc: 'Tes dégâts infligés aux objectifs neutres (drakes, baron, héraut) et aux tours.',
     raw: (p) => (p.damageObjectives ?? 0) + (p.damageTurrets ?? 0),
     improve: 'Participe plus aux drakes/barons/tours. Push les vagues quand l\'objectif spawn pour exercer une pression.',
   },
@@ -1148,60 +1156,112 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
         </div>
       </div>
 
-      {/* Colonne droite : radar SVG */}
+      {/* Colonne droite : radar SVG + labels HTML overlay (pour les tooltips stylés) */}
       <div style={{
         padding: 12, borderRadius: 8,
         background: 'rgba(0,0,0,0.25)',
         border: '1px solid rgba(255,255,255,0.06)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'visible',
       }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 280, height: 'auto' }}>
-          {/* Grilles concentriques (4 paliers) */}
-          {[0.25, 0.5, 0.75, 1].map(scale => {
-            const pts = GPI_AXES.map((_, i) => pointFor(i, scale * 100))
-            const d   = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
-            return <path key={scale} d={d}
-              fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-          })}
-          {/* Axes (lignes du centre vers chaque sommet) */}
-          {GPI_AXES.map((_, i) => {
-            const p = pointFor(i, 100)
-            return <line key={i} x1={CX} y1={CY} x2={p.x} y2={p.y}
-              stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-          })}
-          {/* Polygone du joueur */}
-          <path d={myPolygon} fill={`${gradeColor}30`} stroke={gradeColor} strokeWidth="2"
-            strokeLinejoin="round" />
-          {/* Points sur chaque sommet */}
-          {GPI_AXES.map((a, i) => {
-            const p = pointFor(i, myScores[a.key])
-            return <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={gradeColor} stroke="#0a0612" strokeWidth="1" />
-          })}
-          {/* Labels des axes */}
+        <div style={{ position: 'relative', width: '100%', maxWidth: 280 }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+            {/* Grilles concentriques (4 paliers) */}
+            {[0.25, 0.5, 0.75, 1].map(scale => {
+              const pts = GPI_AXES.map((_, i) => pointFor(i, scale * 100))
+              const d   = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
+              return <path key={scale} d={d}
+                fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+            })}
+            {/* Axes (lignes du centre vers chaque sommet) */}
+            {GPI_AXES.map((_, i) => {
+              const p = pointFor(i, 100)
+              return <line key={i} x1={CX} y1={CY} x2={p.x} y2={p.y}
+                stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+            })}
+            {/* Polygone du joueur */}
+            <path d={myPolygon} fill={`${gradeColor}30`} stroke={gradeColor} strokeWidth="2"
+              strokeLinejoin="round" />
+            {/* Points sur chaque sommet */}
+            {GPI_AXES.map((a, i) => {
+              const p = pointFor(i, myScores[a.key])
+              return <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={gradeColor} stroke="#0a0612" strokeWidth="1" />
+            })}
+            {/* Scores aux sommets (en SVG car ancrés au polygone, pas au label externe) */}
+            {GPI_AXES.map((a, i) => {
+              const p = pointFor(i, myScores[a.key])
+              const angle = (-Math.PI / 2) + (i / GPI_AXES.length) * 2 * Math.PI
+              const offX = Math.cos(angle) * 12
+              const offY = Math.sin(angle) * 12
+              return (
+                <text key={i} x={p.x + offX} y={p.y + offY} textAnchor="middle" dominantBaseline="middle"
+                  fill={gradeColor} fontSize="9" fontWeight="700">
+                  {myScores[a.key]}
+                </text>
+              )
+            })}
+          </svg>
+
+          {/* Labels des axes en HTML overlay (pour tooltip stylé au hover) */}
           {GPI_AXES.map((a, i) => {
             const l = labelFor(i)
             return (
-              <text key={i} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle"
-                fill="#F5F2FA" fontSize="10" fontWeight="700">
-                {a.short}
-              </text>
+              <RadarAxisLabel
+                key={i}
+                axis={a}
+                color={gradeColor}
+                leftPct={(l.x / W) * 100}
+                topPct={(l.y / H) * 100}
+              />
             )
           })}
-          {/* Scores aux sommets */}
-          {GPI_AXES.map((a, i) => {
-            const p = pointFor(i, myScores[a.key])
-            const angle = (-Math.PI / 2) + (i / GPI_AXES.length) * 2 * Math.PI
-            const offX = Math.cos(angle) * 12
-            const offY = Math.sin(angle) * 12
-            return (
-              <text key={i} x={p.x + offX} y={p.y + offY} textAnchor="middle" dominantBaseline="middle"
-                fill={gradeColor} fontSize="9" fontWeight="700">
-                {myScores[a.key]}
-              </text>
-            )
-          })}
-        </svg>
+        </div>
       </div>
+    </div>
+  )
+}
+
+// ── Label HTML d'un axe du radar (positionné en % sur l'overlay) ──
+// Affiche l'acronyme (CBT, SUR, …). Au hover, tooltip stylée avec :
+// nom complet de l'axe + description de ce qu'il mesure.
+function RadarAxisLabel({ axis, color, leftPct, topPct }: {
+  axis: AxisDef; color: string
+  leftPct: number; topPct: number
+}) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'absolute',
+        left: `${leftPct}%`, top: `${topPct}%`,
+        transform: 'translate(-50%, -50%)',
+        fontSize: 10, fontWeight: 700, color: '#F5F2FA',
+        cursor: 'help', zIndex: hover ? 20 : 5,
+        whiteSpace: 'nowrap',
+        userSelect: 'none',
+      }}
+    >
+      {axis.short}
+      {hover && (
+        <div role="tooltip" style={{
+          position: 'absolute',
+          top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+          width: 'max-content', maxWidth: 240,
+          padding: '8px 10px', borderRadius: 6,
+          background: 'rgba(8,5,18,0.97)',
+          border: `1px solid ${color}aa`,
+          color: '#F5F2FA', fontSize: 11, fontWeight: 400,
+          lineHeight: 1.45, textAlign: 'left', letterSpacing: 0,
+          whiteSpace: 'normal',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          pointerEvents: 'none',
+        }}>
+          <strong style={{ color, fontSize: 11 }}>{axis.label}</strong>
+          <div style={{ color: 'var(--text-muted)', marginTop: 3 }}>{axis.desc}</div>
+        </div>
+      )}
     </div>
   )
 }
