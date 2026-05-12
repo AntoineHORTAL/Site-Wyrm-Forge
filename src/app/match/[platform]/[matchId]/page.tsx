@@ -76,11 +76,24 @@ interface Team {
   objectives: { baron: number; dragon: number; herald: number; tower: number; inhibitor: number; voidgrub: number; champion: number }
   drakes?: string[] // ex: ['infernaldrake', 'oceandrake', 'elderdrake']
 }
+interface Pos { x: number; y: number }
+interface KillEvent {
+  ts: number; killerId: number; victimId: number
+  assistingIds: number[]; position: Pos; teamId: number
+}
+interface WardEvent {
+  ts: number; creatorId: number; teamId: number
+  wardType: string; action: 'PLACED' | 'KILLED'; position?: Pos
+}
+
 interface MatchDetail {
   matchId: string; gameCreation: number; gameDuration: number; queueId: number; gameVersion: string
+  mapId?: number
   participants: Participant[]
   teams: Team[]
   timeline?: TimelineFrame[]
+  kills?: KillEvent[]
+  wards?: WardEvent[]
 }
 
 function fmt(secs: number) {
@@ -325,6 +338,9 @@ function MatchDetailView({
   const border = 'rgba(255,255,255,0.06)'
   const bg     = 'rgba(255,255,255,0.02)'
   const queue  = QUEUES[detail.queueId] ?? 'Partie'
+
+  // Toggle pour révéler les détails approfondis (sous le scoreboard)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   // Badges par joueur (recalcul mémoïsé)
   const badges = useMemo(() => computeBadges(detail), [detail])
@@ -608,28 +624,76 @@ function MatchDetailView({
       {renderTeam(100, 'ÉQUIPE BLEUE')}
       {renderTeam(200, 'ÉQUIPE ROUGE')}
 
-      {/* ── Comparaison équipes (sous le scoreboard) ── */}
-      <div style={{
-        marginBottom: 18, padding: '14px 18px', borderRadius: 10, background: bg,
-        borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
-        borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
-      }}>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-          Comparaison équipes
-        </div>
-        <VsBar label="Kills"           blue={blue.kills}  red={red.kills}  highlight={myTeamId} />
-        <VsBar label="Or total"        blue={blue.gold}   red={red.gold}   highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
-        <VsBar label="Dégâts infligés" blue={blue.damage} red={red.damage} highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
-        <VsBar label="Dégâts subis"    blue={blue.taken}  red={red.taken}  highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
-        <VsBar label="Vision"          blue={blue.vision} red={red.vision} highlight={myTeamId} />
-      </div>
+      {/* ── Toggle "dérouler les détails approfondis" ── */}
+      <button
+        onClick={() => setDetailsOpen(v => !v)}
+        style={{
+          marginBottom: 12, width: '100%', padding: '12px 18px',
+          borderRadius: 8, fontSize: 12, fontWeight: 700, letterSpacing: 1.5,
+          cursor: 'pointer', transition: 'all 120ms',
+          background: detailsOpen ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.03)',
+          borderTop:    `1px solid ${border}`,
+          borderRight:  `1px solid ${border}`,
+          borderBottom: `1px solid ${border}`,
+          borderLeft:   `4px solid ${detailsOpen ? '#EF9F27' : '#7F77DD'}`,
+          color: detailsOpen ? '#F5F2FA' : 'var(--text-muted)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 150ms', fontSize: 10,
+          }}>▶</span>
+          {detailsOpen ? 'REPLIER LES DÉTAILS APPROFONDIS' : 'DÉROULER LES DÉTAILS APPROFONDIS'}
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1 }}>
+          comparaison · graphiques · heatmap · ward map · diff timestamps
+        </span>
+      </button>
 
-      {/* ── Graphique global multi-métriques (classement) ── */}
-      <MetricChart detail={detail} champMap={champMap} version={version} />
+      {/* ── Tout le reste : visible uniquement si déroulé ── */}
+      {detailsOpen && (
+        <>
+          {/* Comparaison équipes */}
+          <div style={{
+            marginBottom: 18, padding: '14px 18px', borderRadius: 10, background: bg,
+            borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+            borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+          }}>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              Comparaison équipes
+            </div>
+            <VsBar label="Kills"           blue={blue.kills}  red={red.kills}  highlight={myTeamId} />
+            <VsBar label="Or total"        blue={blue.gold}   red={red.gold}   highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+            <VsBar label="Dégâts infligés" blue={blue.damage} red={red.damage} highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+            <VsBar label="Dégâts subis"    blue={blue.taken}  red={red.taken}  highlight={myTeamId} format={v => `${(v/1000).toFixed(1)}K`} />
+            <VsBar label="Vision"          blue={blue.vision} red={red.vision} highlight={myTeamId} />
+          </div>
 
-      {/* ── Graphique sur la durée de la partie ── */}
-      {detail.timeline && detail.timeline.length > 1 && (
-        <TimelineChart detail={detail} champMap={champMap} version={version} />
+          {/* Diff stats à timestamps clés */}
+          {detail.timeline && detail.timeline.length > 1 && (
+            <TimestampDiffs detail={detail} />
+          )}
+
+          {/* Kill heatmap */}
+          {detail.kills && detail.kills.length > 0 && (
+            <MapHeatmap detail={detail} mode="kills" champMap={champMap} version={version} />
+          )}
+
+          {/* Ward map */}
+          {detail.wards && detail.wards.length > 0 && (
+            <MapHeatmap detail={detail} mode="wards" champMap={champMap} version={version} />
+          )}
+
+          {/* Graphique global multi-métriques (classement) */}
+          <MetricChart detail={detail} champMap={champMap} version={version} />
+
+          {/* Graphique sur la durée de la partie */}
+          {detail.timeline && detail.timeline.length > 1 && (
+            <TimelineChart detail={detail} champMap={champMap} version={version} />
+          )}
+        </>
       )}
     </div>
   )
@@ -1337,6 +1401,202 @@ function ChampionAbilities({ me, champMap, version }: {
         ))}
       </div>
     </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Différences de stats à des timestamps clés (5/10/15/20/25 min).
+// Permet de voir rapidement "qui menait à X minute" pour or, XP, CS.
+// ────────────────────────────────────────────────────────────────────────────────
+function TimestampDiffs({ detail }: { detail: MatchDetail }) {
+  const frames = detail.timeline ?? []
+  if (frames.length === 0) return null
+
+  // Trouver la frame la plus proche d'une cible (en ms)
+  const frameAt = (targetMs: number) => {
+    let best = frames[0], bestDelta = Math.abs(frames[0].ts - targetMs)
+    for (const f of frames) {
+      const d = Math.abs(f.ts - targetMs)
+      if (d < bestDelta) { best = f; bestDelta = d }
+    }
+    return best
+  }
+
+  const gameMinutes = Math.floor(detail.gameDuration / 60)
+  // Timestamps disponibles : on n'affiche que ceux <= durée de la partie
+  const TARGETS = [5, 10, 14, 15, 20, 25, 30, 35, 40].filter(m => m <= gameMinutes + 1)
+
+  const border = 'rgba(255,255,255,0.06)'
+  return (
+    <section style={{
+      marginBottom: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.02)',
+      borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+      borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        Différentiels à des moments clés (bleu - rouge)
+      </div>
+
+      <div style={{ display: 'grid', gap: 6, gridTemplateColumns: `60px repeat(${TARGETS.length}, 1fr)` }}>
+        {/* Header colonnes */}
+        <div></div>
+        {TARGETS.map(m => (
+          <div key={m} style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', fontWeight: 700, letterSpacing: 1 }}>
+            {m}M
+          </div>
+        ))}
+
+        {/* Ligne OR */}
+        <DiffRow label="OR"  frames={TARGETS.map(m => frameAt(m * 60000))} get={f => f.teamGold[0] - f.teamGold[1]} format={v => `${(Math.abs(v)/1000).toFixed(1)}K`} />
+        {/* Ligne XP */}
+        <DiffRow label="XP"  frames={TARGETS.map(m => frameAt(m * 60000))} get={f => f.teamXp[0]   - f.teamXp[1]}   format={v => `${(Math.abs(v)/1000).toFixed(1)}K`} />
+        {/* Ligne CS */}
+        <DiffRow label="CS"  frames={TARGETS.map(m => frameAt(m * 60000))} get={f => f.teamCs[0]   - f.teamCs[1]}   format={v => Math.abs(v).toString()} />
+      </div>
+    </section>
+  )
+}
+
+function DiffRow({ label, frames, get, format }: {
+  label: string; frames: TimelineFrame[]
+  get: (f: TimelineFrame) => number; format: (v: number) => string
+}) {
+  return (
+    <>
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 700, letterSpacing: 1, display: 'flex', alignItems: 'center' }}>
+        {label}
+      </div>
+      {frames.map((f, i) => {
+        const diff = get(f)
+        const color = Math.abs(diff) < 100 ? '#A1A1AA' : diff > 0 ? '#3A8AC9' : '#E24B4A'
+        return (
+          <div key={i} style={{
+            textAlign: 'center', padding: '6px 4px', borderRadius: 4,
+            background: `${color}11`,
+            border: `1px solid ${color}44`,
+            color, fontSize: 11, fontWeight: 600,
+          }}>
+            {diff > 0 ? '+' : diff < 0 ? '−' : ''}{format(diff)}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// MapHeatmap : carte interactive Summoner's Rift avec points (kills ou wards).
+// Range slider pour filtrer la fenêtre de temps. Mode 'global' affiche tout.
+// ────────────────────────────────────────────────────────────────────────────────
+const RIFT_MAP_URL = 'https://ddragon.leagueoflegends.com/cdn/img/map/map11.png'
+// La grille de Riot va de 0..14820 (approximatif). 0,0 = bottom-left.
+const RIFT_SIZE = 14820
+
+function MapHeatmap({ detail, mode, champMap, version }: {
+  detail: MatchDetail; mode: 'kills' | 'wards'
+  champMap: Record<number, ChampInfo>; version: string
+}) {
+  const totalMin = Math.ceil(detail.gameDuration / 60)
+  const [from, setFrom]   = useState(0)
+  const [to,   setTo]     = useState(totalMin)
+  const [teamFilter, setTeamFilter] = useState<'all' | 100 | 200>('all')
+
+  const events = mode === 'kills'
+    ? (detail.kills ?? []).filter(e => e.position)
+    : (detail.wards ?? []).filter(e => e.position)
+
+  const filtered = events.filter(e => {
+    const min = e.ts / 60000
+    if (min < from || min > to) return false
+    if (teamFilter !== 'all' && e.teamId !== teamFilter) return false
+    return true
+  })
+
+  // Convertit position Riot (0..14820, 0,0=bottom-left) en % (top-left origin)
+  const pctX = (x: number) => (x / RIFT_SIZE) * 100
+  const pctY = (y: number) => ((RIFT_SIZE - y) / RIFT_SIZE) * 100
+
+  const border = 'rgba(255,255,255,0.06)'
+  const titleLabel = mode === 'kills' ? 'Carte des kills' : 'Carte des wards'
+  const count = filtered.length
+
+  return (
+    <section style={{
+      marginBottom: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.02)',
+      borderTop: `1px solid ${border}`, borderRight: `1px solid ${border}`,
+      borderBottom: `1px solid ${border}`, borderLeft: `1px solid ${border}`,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1 }}>
+          {titleLabel} — {count} évén.
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['all', 100, 200] as const).map(t => {
+            const active = teamFilter === t
+            const lbl    = t === 'all' ? 'Toutes' : t === 100 ? 'Bleue' : 'Rouge'
+            const col    = t === 100 ? '#3A8AC9' : t === 200 ? '#E24B4A' : '#7F77DD'
+            return (
+              <button key={t} onClick={() => setTeamFilter(t)} style={{
+                padding: '3px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer',
+                background: active ? `${col}22` : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${active ? col : 'rgba(255,255,255,0.08)'}`,
+                color: active ? '#F5F2FA' : 'var(--text-muted)', fontWeight: active ? 600 : 400,
+              }}>{lbl}</button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Range slider (deux curseurs pour from / to) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, fontSize: 11, color: 'var(--text-dim)' }}>
+        <span style={{ minWidth: 50 }}>De {from}m</span>
+        <input type="range" min={0} max={totalMin} value={from}
+          onChange={e => setFrom(Math.min(Number(e.target.value), to))}
+          style={{ flex: 1 }} />
+        <span style={{ minWidth: 60 }}>à {to}m</span>
+        <input type="range" min={0} max={totalMin} value={to}
+          onChange={e => setTo(Math.max(Number(e.target.value), from))}
+          style={{ flex: 1 }} />
+        <button onClick={() => { setFrom(0); setTo(totalMin) }} style={{
+          padding: '3px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer',
+          background: 'rgba(127,119,221,0.15)',
+          border: '1px solid rgba(127,119,221,0.3)',
+          color: '#F5F2FA',
+        }}>Globale</button>
+      </div>
+
+      {/* La carte */}
+      <div style={{ position: 'relative', aspectRatio: '1 / 1', maxWidth: 600, margin: '0 auto' }}>
+        <img src={RIFT_MAP_URL} alt="Summoner's Rift"
+          style={{ width: '100%', height: '100%', borderRadius: 6, display: 'block', opacity: 0.8 }} />
+        {/* Points */}
+        {filtered.map((e, i) => {
+          const isKill = mode === 'kills'
+          const color = e.teamId === 100 ? '#3A8AC9' : '#E24B4A'
+          const size  = isKill ? 12 : 8
+          return (
+            <div key={i} style={{
+              position: 'absolute',
+              left: `calc(${pctX(e.position!.x)}% - ${size/2}px)`,
+              top:  `calc(${pctY(e.position!.y)}% - ${size/2}px)`,
+              width: size, height: size, borderRadius: '50%',
+              background: color, border: '1.5px solid rgba(255,255,255,0.85)',
+              boxShadow: isKill ? `0 0 8px ${color}` : undefined,
+              opacity: 0.85, pointerEvents: 'none',
+            }} title={`${Math.floor(e.ts/60000)}m${Math.floor((e.ts/1000)%60).toString().padStart(2,'0')}`} />
+          )
+        })}
+      </div>
+
+      {/* Légende */}
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'center', marginTop: 8 }}>
+        {mode === 'kills'
+          ? 'Cercle bleu = kill par équipe bleue · rouge = par équipe rouge'
+          : 'Cercle bleu = ward bleue · rouge = ward rouge'}
+      </div>
+    </section>
   )
 }
 

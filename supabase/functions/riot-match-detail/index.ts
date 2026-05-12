@@ -89,6 +89,19 @@ Deno.serve(async (req) => {
     const itemEvents:  Record<number, ItemEvent[]>  = {}
     const skillEvents: Record<number, SkillEvent[]> = {}
 
+    // Kills (events CHAMPION_KILL) + Wards (placement et destruction) au niveau global de la partie
+    type Pos = { x: number; y: number }
+    type KillEvent = {
+      ts: number; killerId: number; victimId: number;
+      assistingIds: number[]; position: Pos; teamId: number
+    }
+    type WardEvent = {
+      ts: number; creatorId: number; teamId: number;
+      wardType: string; action: 'PLACED' | 'KILLED'; position?: Pos
+    }
+    const kills: KillEvent[] = []
+    const wards: WardEvent[] = []
+
     if (tl?.info?.frames) {
       // deno-lint-ignore no-explicit-any
       tl.info.frames.forEach((frame: any) => {
@@ -118,6 +131,36 @@ Deno.serve(async (req) => {
           if (ev.type === 'SKILL_LEVEL_UP' && ev.participantId && ev.skillSlot) {
             if (!skillEvents[ev.participantId]) skillEvents[ev.participantId] = []
             skillEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, slot: ev.skillSlot })
+          }
+          // Kills (CHAMPION_KILL : a position {x,y}, killerId, victimId, assistingParticipantIds)
+          if (ev.type === 'CHAMPION_KILL' && ev.position) {
+            const killerId = ev.killerId ?? 0
+            const victimId = ev.victimId ?? 0
+            const killerTeam = participantTeam[killerId] ?? 0
+            kills.push({
+              ts: ev.timestamp ?? 0,
+              killerId, victimId,
+              assistingIds: ev.assistingParticipantIds ?? [],
+              position: { x: ev.position.x ?? 0, y: ev.position.y ?? 0 },
+              teamId: killerTeam,
+            })
+          }
+          // Wards (WARD_PLACED, WARD_KILL — la position est exposée surtout pour WARD_KILL)
+          if (ev.type === 'WARD_PLACED' && ev.creatorId) {
+            const teamId = participantTeam[ev.creatorId] ?? 0
+            wards.push({
+              ts: ev.timestamp ?? 0, creatorId: ev.creatorId, teamId,
+              wardType: ev.wardType ?? 'UNKNOWN', action: 'PLACED',
+              position: ev.position ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 } : undefined,
+            })
+          }
+          if (ev.type === 'WARD_KILL' && ev.killerId) {
+            const teamId = participantTeam[ev.killerId] ?? 0
+            wards.push({
+              ts: ev.timestamp ?? 0, creatorId: ev.killerId, teamId,
+              wardType: ev.wardType ?? 'UNKNOWN', action: 'KILLED',
+              position: ev.position ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 } : undefined,
+            })
           }
         })
 
@@ -223,9 +266,12 @@ Deno.serve(async (req) => {
       gameDuration:  m.info.gameDuration,
       queueId:       m.info.queueId,
       gameVersion:   m.info.gameVersion,
+      mapId:         m.info.mapId ?? 11,
       participants,
       teams,
       timeline:      timelineFrames,
+      kills,
+      wards,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur inconnue'
