@@ -119,6 +119,7 @@ export default function MatchPage() {
   const [spellMap, setSpellMap] = useState<Record<number, SpellInfo>>({})
   const [runeMap,  setRuneMap]  = useState<Record<number, RuneInfo>>({})
   const [myPuuid,  setMyPuuid]  = useState('')
+  const [myRank,   setMyRank]   = useState<string | null>(null)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(true)
 
@@ -138,12 +139,13 @@ export default function MatchPage() {
           return
         }
 
-        // 2. Riot ID du joueur (pour highlight) — depuis profiles
+        // 2. Riot ID + rang du joueur (pour highlight et comparaison) — depuis profiles
         const { data: profile } = await supabase
           .from('profiles')
-          .select('riot_gamename, riot_tagline')
+          .select('riot_gamename, riot_tagline, riot_rank')
           .eq('id', session.user.id)
           .maybeSingle()
+        if (profile?.riot_rank) setMyRank(profile.riot_rank)
 
         // 3. Versions DDragon
         const vRes = await fetch(`${DDN}/api/versions.json`)
@@ -256,7 +258,7 @@ export default function MatchPage() {
         <MatchDetailView
           detail={detail} version={version}
           champMap={champMap} spellMap={spellMap} runeMap={runeMap}
-          myPuuid={myPuuid}
+          myPuuid={myPuuid} myRank={myRank}
         />
       )}
     </main>
@@ -325,13 +327,14 @@ function computeBadges(detail: MatchDetail): Record<string, BadgeInfo[]> {
 
 // ────────────────────────────────────────────────────────────────────────────────
 function MatchDetailView({
-  detail, version, champMap, spellMap, runeMap, myPuuid,
+  detail, version, champMap, spellMap, runeMap, myPuuid, myRank,
 }: {
   detail: MatchDetail; version: string
   champMap: Record<number, ChampInfo>
   spellMap: Record<number, SpellInfo>
   runeMap:  Record<number, RuneInfo>
   myPuuid:  string
+  myRank:   string | null
 }) {
   const accent = '#7F77DD'
   const gold   = '#EF9F27'
@@ -617,6 +620,7 @@ function MatchDetailView({
         <PersonalSection
           me={me} detail={detail}
           champMap={champMap} spellMap={spellMap} version={version}
+          myRank={myRank}
         />
       )}
 
@@ -893,10 +897,25 @@ function MetricChart({ detail, champMap, version }: {
 interface ChampionAbility { id: string; name: string; description: string; image: string; cooldown: string; cost: string; range: string }
 interface ChampionFull    { passive: { name: string; description: string; image: string }; abilities: ChampionAbility[] }
 
-function PersonalSection({ me, detail, champMap, spellMap, version }: {
+// Valeurs moyennes par rang LoL — approximations basées sur stats publiques.
+// Utilisées pour la comparaison perso vs rang dans la section ci-dessous.
+interface RankStats { kda: number; csPerMin: number; gpm: number; visionScore: number; dpm: number; kp: number }
+const RANK_AVG: Record<string, RankStats & { label: string; color: string }> = {
+  iron:     { label: 'Fer',      color: '#7C5D44', kda: 1.2, csPerMin: 4.0, gpm: 280, visionScore: 18, dpm: 200, kp: 45 },
+  bronze:   { label: 'Bronze',   color: '#9E6C3F', kda: 1.5, csPerMin: 4.5, gpm: 310, visionScore: 22, dpm: 240, kp: 48 },
+  silver:   { label: 'Argent',   color: '#9CA3AF', kda: 1.8, csPerMin: 5.0, gpm: 340, visionScore: 26, dpm: 280, kp: 50 },
+  gold:     { label: 'Or',       color: '#EF9F27', kda: 2.0, csPerMin: 5.8, gpm: 365, visionScore: 28, dpm: 310, kp: 52 },
+  platinum: { label: 'Platine',  color: '#5DCAA5', kda: 2.2, csPerMin: 6.5, gpm: 385, visionScore: 32, dpm: 340, kp: 54 },
+  emerald:  { label: 'Émeraude', color: '#10B981', kda: 2.3, csPerMin: 7.0, gpm: 395, visionScore: 33, dpm: 360, kp: 55 },
+  diamond:  { label: 'Diamant',  color: '#3A8AC9', kda: 2.5, csPerMin: 7.5, gpm: 410, visionScore: 35, dpm: 380, kp: 57 },
+  'master+':{ label: 'Maître +', color: '#A855F7', kda: 2.8, csPerMin: 8.0, gpm: 430, visionScore: 38, dpm: 410, kp: 60 },
+}
+
+function PersonalSection({ me, detail, champMap, spellMap, version, myRank }: {
   me: Participant; detail: MatchDetail
   champMap: Record<number, ChampInfo>; spellMap: Record<number, SpellInfo>
   version: string
+  myRank: string | null
 }) {
   const accent = '#7F77DD'
   const gold   = '#EF9F27'
@@ -932,6 +951,13 @@ function PersonalSection({ me, detail, champMap, spellMap, version }: {
       <div style={{ marginTop: 14 }}>
         <PersonalStatsCards me={me} detail={detail} />
       </div>
+
+      {/* Comparaison vs ton rang (si rang renseigné dans le profil) */}
+      {myRank && RANK_AVG[myRank] && (
+        <div style={{ marginTop: 14 }}>
+          <RankComparison me={me} detail={detail} rankKey={myRank} />
+        </div>
+      )}
 
       {/* Bouton dérouler / replier */}
       <button
@@ -1262,6 +1288,78 @@ function RadarAxisLabel({ axis, color, leftPct, topPct }: {
           <div style={{ color: 'var(--text-muted)', marginTop: 3 }}>{axis.desc}</div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Comparaison vs valeurs moyennes du rang du joueur ──
+function RankComparison({ me, detail, rankKey }: {
+  me: Participant; detail: MatchDetail; rankKey: string
+}) {
+  const rank = RANK_AVG[rankKey]
+  if (!rank) return null
+
+  const dur = detail.gameDuration
+  const teamKills = detail.participants.filter(p => p.teamId === me.teamId).reduce((s, p) => s + p.kills, 0)
+
+  const myKda = me.deaths === 0 ? me.kills + me.assists : (me.kills + me.assists) / me.deaths
+  const myDpm = dur === 0 ? 0 : me.damageDealt / (dur / 60)
+  const myGpm = dur === 0 ? 0 : me.goldEarned / (dur / 60)
+  const myCspm = dur === 0 ? 0 : me.cs / (dur / 60)
+  const myKp = teamKills === 0 ? 0 : ((me.kills + me.assists) / teamKills) * 100
+
+  const stats: { label: string; mine: number; avg: number; format: (v: number) => string }[] = [
+    { label: 'KDA',         mine: myKda,         avg: rank.kda,         format: v => v.toFixed(2) },
+    { label: 'KP %',        mine: myKp,          avg: rank.kp,          format: v => `${Math.round(v)}%` },
+    { label: 'Dégâts/min',  mine: myDpm,         avg: rank.dpm,         format: v => Math.round(v).toString() },
+    { label: 'Or/min',      mine: myGpm,         avg: rank.gpm,         format: v => Math.round(v).toString() },
+    { label: 'CS/min',      mine: myCspm,        avg: rank.csPerMin,    format: v => v.toFixed(1) },
+    { label: 'Score vision',mine: me.visionScore, avg: rank.visionScore, format: v => Math.round(v).toString() },
+  ]
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        Vs moyenne <span style={{ color: rank.color, fontWeight: 700 }}>{rank.label}</span>
+        <span style={{ color: 'var(--text-muted)', marginLeft: 6, textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>
+          (basée sur les stats publiques de la communauté)
+        </span>
+      </div>
+      <div style={{
+        display: 'grid', gap: 8,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+      }}>
+        {stats.map(s => {
+          const diff   = s.avg === 0 ? 0 : ((s.mine - s.avg) / s.avg) * 100
+          const better = s.mine >= s.avg
+          const color  = Math.abs(diff) < 5 ? '#A1A1AA' : better ? '#5DCAA5' : '#E24B4A'
+          return (
+            <div key={s.label} style={{
+              padding: '10px 12px', borderRadius: 6,
+              background: 'rgba(0,0,0,0.2)',
+              borderTop: '1px solid rgba(255,255,255,0.04)',
+              borderRight: '1px solid rgba(255,255,255,0.04)',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              borderLeft: `2px solid ${color}`,
+            }}>
+              <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                {s.label}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 18, fontWeight: 700, color: '#F5F2FA' }}>
+                  {s.format(s.mine)}
+                </span>
+                <span style={{ fontSize: 10, color }}>
+                  {diff >= 0 ? '+' : ''}{diff.toFixed(0)}%
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+                {rank.label} : {s.format(s.avg)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

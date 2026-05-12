@@ -27,7 +27,22 @@ interface UserProfile {
   riot_gamename?: string | null
   riot_tagline?:  string | null
   riot_platform?: string | null
+  riot_rank?:     string | null
 }
+
+// Rangs LoL utilisés pour la comparaison de stats moyennes.
+// Valeurs approximatives basées sur les stats publiques de la communauté
+// (sources : op.gg statistics, lolalytics, données aggregées).
+const LOL_RANKS: { key: string; label: string; color: string }[] = [
+  { key: 'iron',     label: 'Fer',       color: '#7C5D44' },
+  { key: 'bronze',   label: 'Bronze',    color: '#9E6C3F' },
+  { key: 'silver',   label: 'Argent',    color: '#9CA3AF' },
+  { key: 'gold',     label: 'Or',        color: '#EF9F27' },
+  { key: 'platinum', label: 'Platine',   color: '#5DCAA5' },
+  { key: 'emerald',  label: 'Émeraude',  color: '#10B981' },
+  { key: 'diamond',  label: 'Diamant',   color: '#3A8AC9' },
+  { key: 'master+',  label: 'Maître +',  color: '#A855F7' },
+]
 
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
 interface MatchInfo {
@@ -427,6 +442,34 @@ function ProfileSettings({ profile, onProfileUpdate }: {
             if (error) throw new Error('Échec : ' + error.message)
             onProfileUpdate({ ...profile, riot_gamename: gameName, riot_tagline: tagLine })
             return 'Compte Riot mis à jour.'
+          }}
+        />
+        <EditableField
+          label="Rang League (pour comparaisons)"
+          currentValue={
+            profile.riot_rank
+              ? LOL_RANKS.find(r => r.key === profile.riot_rank)?.label ?? profile.riot_rank
+              : 'Non renseigné'
+          }
+          customForm={(value, setValue) => (
+            <select
+              value={value || profile.riot_rank || ''}
+              onChange={e => setValue(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Sélectionne ton rang</option>
+              {LOL_RANKS.map(r => (
+                <option key={r.key} value={r.key}>{r.label}</option>
+              ))}
+            </select>
+          )}
+          onSave={async (newValue) => {
+            if (!newValue) throw new Error('Sélectionne un rang.')
+            const { error } = await supabase.from('profiles')
+              .update({ riot_rank: newValue }).eq('id', profile.id)
+            if (error) throw new Error('Échec : ' + error.message)
+            onProfileUpdate({ ...profile, riot_rank: newValue })
+            return 'Rang mis à jour. Tu verras la comparaison sur la page des matchs.'
           }}
         />
       </div>
