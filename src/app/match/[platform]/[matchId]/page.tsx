@@ -1727,10 +1727,24 @@ const RIFT_MAP_URL = '/icons/maps/summoners_rift.png'
 // La grille de Riot va de 0..14820 (approximatif). 0,0 = bottom-left.
 const RIFT_SIZE = 14820
 
+// Mapping wardType Riot → label français lisible
+const WARD_TYPE_LABEL: Record<string, string> = {
+  YELLOW_TRINKET: 'Totem balise (jaune)',
+  SIGHT_WARD:     'Balise de vision (verte)',
+  CONTROL_WARD:   'Balise de contrôle (rose)',
+  BLUE_TRINKET:   'Lentille oraculaire (bleue)',
+  TEEMO_MUSHROOM: 'Champignon de Teemo',
+  UNDEFINED:      'Ward (type inconnu)',
+  UNKNOWN:        'Ward (type inconnu)',
+}
+
 function MapHeatmap({ detail, mode, champMap, version }: {
   detail: MatchDetail; mode: 'kills' | 'wards'
   champMap: Record<number, ChampInfo>; version: string
 }) {
+  // participantId Riot (1..10) → Participant
+  const pById = (id: number): Participant | undefined =>
+    detail.participants[id - 1]
   const totalMin = Math.ceil(detail.gameDuration / 60)
   const [from, setFrom]   = useState(0)
   const [to,   setTo]     = useState(totalMin)
@@ -1831,23 +1845,19 @@ function MapHeatmap({ detail, mode, champMap, version }: {
             }
           }}
           style={{ width: '100%', height: '100%', borderRadius: 6, display: 'block', opacity: 0.8, background: '#0a0612' }} />
-        {/* Points */}
-        {filtered.map((e, i) => {
-          const isKill = mode === 'kills'
-          const color = e.teamId === 100 ? '#3A8AC9' : '#E24B4A'
-          const size  = isKill ? 12 : 8
-          return (
-            <div key={i} style={{
-              position: 'absolute',
-              left: `calc(${pctX(e.position!.x)}% - ${size/2}px)`,
-              top:  `calc(${pctY(e.position!.y)}% - ${size/2}px)`,
-              width: size, height: size, borderRadius: '50%',
-              background: color, border: '1.5px solid rgba(255,255,255,0.85)',
-              boxShadow: isKill ? `0 0 8px ${color}` : undefined,
-              opacity: 0.85, pointerEvents: 'none',
-            }} title={`${Math.floor(e.ts/60000)}m${Math.floor((e.ts/1000)%60).toString().padStart(2,'0')}`} />
-          )
-        })}
+        {/* Points avec tooltip détaillé au hover */}
+        {filtered.map((e, i) => (
+          <HoverPoint
+            key={i}
+            event={e}
+            mode={mode}
+            x={pctX(e.position!.x)}
+            y={pctY(e.position!.y)}
+            pById={pById}
+            champMap={champMap}
+            version={version}
+          />
+        ))}
       </div>
 
       {/* Légende */}
@@ -1857,6 +1867,173 @@ function MapHeatmap({ detail, mode, champMap, version }: {
           : 'Cercle bleu = ward bleue · rouge = ward rouge'}
       </div>
     </section>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// HoverPoint : un point sur la carte (kill ou ward) avec tooltip détaillé.
+// Pour un kill : victime / tueur / assists. Pour une ward : type / poseur / action.
+// ────────────────────────────────────────────────────────────────────────────────
+function HoverPoint({ event, mode, x, y, pById, champMap, version }: {
+  event: KillEvent | WardEvent
+  mode: 'kills' | 'wards'
+  x: number; y: number
+  pById: (id: number) => Participant | undefined
+  champMap: Record<number, ChampInfo>
+  version: string
+}) {
+  const [hover, setHover] = useState(false)
+  const isKill = mode === 'kills'
+  const color  = event.teamId === 100 ? '#3A8AC9' : '#E24B4A'
+  const size   = isKill ? 12 : 8
+
+  const fmtTs = (ts: number) =>
+    `${Math.floor(ts/60000)}m${Math.floor((ts/1000)%60).toString().padStart(2,'0')}`
+
+  // Le tooltip déborde de la carte : on choisit son ancrage selon la position
+  const tooltipLeft = x < 50  // si on est dans la moitié gauche → tooltip à droite du point
+  const tooltipTop  = y < 50  // si on est dans la moitié haute → tooltip en bas du point
+
+  return (
+    <>
+      <div
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          position: 'absolute',
+          left: `calc(${x}% - ${size/2 + 4}px)`,
+          top:  `calc(${y}% - ${size/2 + 4}px)`,
+          width: size + 8, height: size + 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'help',
+          zIndex: hover ? 20 : 10,
+        }}
+      >
+        {/* Le point visible */}
+        <div style={{
+          width: size, height: size, borderRadius: '50%',
+          background: color, border: '1.5px solid rgba(255,255,255,0.85)',
+          boxShadow: isKill ? `0 0 8px ${color}` : undefined,
+          opacity: hover ? 1 : 0.85,
+          transform: hover ? 'scale(1.4)' : 'scale(1)',
+          transition: 'transform 100ms, opacity 100ms',
+        }} />
+
+        {/* Tooltip */}
+        {hover && (
+          <div style={{
+            position: 'absolute',
+            ...(tooltipLeft ? { left: '100%', marginLeft: 6 } : { right: '100%', marginRight: 6 }),
+            ...(tooltipTop  ? { top: 0 } : { bottom: 0 }),
+            minWidth: 180, padding: '8px 10px', borderRadius: 6,
+            background: 'rgba(8,5,18,0.97)',
+            border: `1px solid ${color}aa`,
+            color: '#F5F2FA', fontSize: 11, lineHeight: 1.4,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            pointerEvents: 'none', whiteSpace: 'nowrap',
+          }}>
+            {isKill ? (
+              <KillTooltip k={event as KillEvent} pById={pById} champMap={champMap} version={version} fmtTs={fmtTs} />
+            ) : (
+              <WardTooltip w={event as WardEvent} pById={pById} champMap={champMap} version={version} fmtTs={fmtTs} />
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function KillTooltip({ k, pById, champMap, version, fmtTs }: {
+  k: KillEvent
+  pById: (id: number) => Participant | undefined
+  champMap: Record<number, ChampInfo>
+  version: string
+  fmtTs: (ts: number) => string
+}) {
+  const killer = k.killerId > 0 ? pById(k.killerId) : undefined
+  const victim = pById(k.victimId)
+  const assists = k.assistingIds.map(id => pById(id)).filter(Boolean) as Participant[]
+
+  const PlayerLine = ({ p, label, color }: { p?: Participant; label: string; color: string }) => {
+    if (!p) return null
+    const champ = champMap[p.championId]
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+        <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>{label}</span>
+        {champ && <img src={champImg(version, champ.image)} alt=""
+          style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${color}` }} />}
+        <span style={{ color, fontWeight: 600 }}>
+          {p.riotIdGameName || champ?.name || p.championName}
+        </span>
+        <span style={{ color: 'var(--text-dim)' }}>· {champ?.name ?? p.championName}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5, paddingBottom: 5, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1 }}>KILL</span>
+        <span style={{ fontWeight: 700 }}>{fmtTs(k.ts)}</span>
+      </div>
+      <PlayerLine p={victim} label="VICTIME" color="#E24B4A" />
+      {killer
+        ? <PlayerLine p={killer} label="TUÉ PAR" color="#5DCAA5" />
+        : <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>TUÉ PAR</span>
+            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Tourelle / sbire / monstre</span>
+          </div>}
+      {assists.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>ASSIST</span>
+          {assists.map((a, i) => {
+            const c = champMap[a.championId]
+            return c && (
+              <img key={i} src={champImg(version, c.image)} alt={a.riotIdGameName || c.name}
+                title={a.riotIdGameName || c.name}
+                style={{ width: 18, height: 18, borderRadius: 3, border: '1px solid rgba(255,255,255,0.2)' }} />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WardTooltip({ w, pById, champMap, version, fmtTs }: {
+  w: WardEvent
+  pById: (id: number) => Participant | undefined
+  champMap: Record<number, ChampInfo>
+  version: string
+  fmtTs: (ts: number) => string
+}) {
+  const creator = pById(w.creatorId)
+  const champ   = creator ? champMap[creator.championId] : undefined
+  const wardLbl = WARD_TYPE_LABEL[w.wardType] ?? w.wardType
+  const actionLbl = w.action === 'PLACED' ? 'POSÉE' : 'DÉTRUITE'
+  const actionColor = w.action === 'PLACED' ? '#5DCAA5' : '#EF9F27'
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5, paddingBottom: 5, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <span style={{ fontSize: 10, color: actionColor, letterSpacing: 1, fontWeight: 700 }}>{actionLbl}</span>
+        <span style={{ fontWeight: 700 }}>{fmtTs(w.ts)}</span>
+      </div>
+      <div style={{ fontSize: 11, color: '#F5F2FA', marginBottom: 4 }}>{wardLbl}</div>
+      {creator && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>
+            {w.action === 'PLACED' ? 'PAR' : 'DÉTRUITE PAR'}
+          </span>
+          {champ && <img src={champImg(version, champ.image)} alt=""
+            style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${creator.teamId === 100 ? '#3A8AC9' : '#E24B4A'}` }} />}
+          <span style={{ color: creator.teamId === 100 ? '#3A8AC9' : '#E24B4A', fontWeight: 600 }}>
+            {creator.riotIdGameName || champ?.name || creator.championName}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
