@@ -1011,11 +1011,8 @@ function PersonalSection({ me, detail, champMap, spellMap, version, myRank }: {
 // Calcule pour chaque axe un score 0-100 normalisé par rapport au max du match
 // (le meilleur joueur sur cet axe vaut 100). Le score global est la moyenne des axes.
 // ────────────────────────────────────────────────────────────────────────────────
-type AxisKey = 'combat' | 'survie' | 'vision' | 'economie' | 'carry' | 'objectifs'
-
 interface AxisDef {
-  key: AxisKey; label: string; short: string
-  // Description de ce que mesure l'axe (affichée au hover)
+  key: string; label: string; short: string
   desc: string
   // Valeur brute extraite d'un participant (à normaliser ensuite)
   raw: (p: Participant, durationSec: number, teamKills: number, teamDmg: number, teamObjDmg: number) => number
@@ -1023,77 +1020,176 @@ interface AxisDef {
   improve: string
 }
 
-const GPI_AXES: AxisDef[] = [
-  {
-    key: 'combat',  label: 'Combat',     short: 'CBT',
-    desc: 'Mesure tes dégâts par minute infligés aux champions. Reflète ton impact en team-fight.',
-    raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60), // DPM
-    improve: 'Augmente tes dégâts par minute : reste actif en team-fights et envoie ton burst au bon timing.',
-  },
-  {
-    key: 'survie',  label: 'Survie',     short: 'SUR',
-    desc: 'Reflète ta capacité à rester en vie. Calculé à partir de l\'inverse de tes morts.',
-    raw: (p) => 1 / Math.max(p.deaths, 1), // moins de morts = plus de score
-    improve: 'Réduis tes morts : prends moins de risques, recule quand tu as flash down, ward avant les fights.',
-  },
-  {
-    key: 'vision',  label: 'Vision',     short: 'VIS',
-    desc: 'Ton score de vision total (wards posées, wards détruites, temps de vision contrôlée).',
+// ── Axes universels (fallback si rôle inconnu) ──
+const GPI_AXES_DEFAULT: AxisDef[] = [
+  { key: 'combat',   label: 'Combat',    short: 'CBT', desc: 'Tes dégâts par minute infligés aux champions.',
+    raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60),
+    improve: 'Augmente tes dégâts par minute : reste actif en team-fights et envoie ton burst au bon timing.' },
+  { key: 'survie',   label: 'Survie',    short: 'SUR', desc: 'Capacité à rester en vie (inverse des morts).',
+    raw: (p) => 1 / Math.max(p.deaths, 1),
+    improve: 'Réduis tes morts : prends moins de risques, ward avant les fights.' },
+  { key: 'vision',   label: 'Vision',    short: 'VIS', desc: 'Ton score de vision total (wards posées/détruites).',
     raw: (p) => p.visionScore,
-    improve: 'Achète plus de wards de contrôle et garde tes trinkets sur cooldown. Ward les objectifs (drake/baron) avant qu\'ils ne spawn.',
-  },
-  {
-    key: 'economie',label: 'Économie',   short: 'ÉCO',
-    desc: 'Combine ton or par minute et ton CS. Reflète ton farm et ta gestion des ressources.',
-    raw: (p, d) => d === 0 ? 0 : (p.goldEarned + p.cs * 25) / (d / 60), // GPM + CS impact
-    improve: 'Travaille ta last-hit (CS/min) et évite les morts qui te font perdre de l\'or. Reste sur ta lane plus longtemps.',
-  },
-  {
-    key: 'carry',   label: 'Carry',      short: 'CRY',
-    desc: 'Ta part de dégâts d\'équipe en %. Montre si tu portes l\'équipe en dégâts.',
+    improve: 'Achète plus de wards de contrôle et ward les objectifs avant qu\'ils ne spawn.' },
+  { key: 'economie', label: 'Économie',  short: 'ÉCO', desc: 'Or par minute + CS.',
+    raw: (p, d) => d === 0 ? 0 : (p.goldEarned + p.cs * 25) / (d / 60),
+    improve: 'Travaille ton last-hit et évite les morts qui te font perdre de l\'or.' },
+  { key: 'carry',    label: 'Carry',     short: 'CRY', desc: 'Ta part de dégâts dans le total d\'équipe (%).',
     raw: (p, _, __, teamDmg) => teamDmg === 0 ? 0 : (p.damageDealt / teamDmg) * 100,
-    improve: 'Augmente ta part de dégâts d\'équipe : concentre-toi sur les cibles prioritaires et tape les squishies en team-fight.',
-  },
-  {
-    key: 'objectifs',label: 'Objectifs', short: 'OBJ',
-    desc: 'Tes dégâts infligés aux objectifs neutres (drakes, baron, héraut) et aux tours.',
+    improve: 'Augmente ta part de dégâts d\'équipe : concentre-toi sur les cibles prioritaires.' },
+  { key: 'objectifs',label: 'Objectifs', short: 'OBJ', desc: 'Dégâts aux objectifs (drake/baron/tours).',
     raw: (p) => (p.damageObjectives ?? 0) + (p.damageTurrets ?? 0),
-    improve: 'Participe plus aux drakes/barons/tours. Push les vagues quand l\'objectif spawn pour exercer une pression.',
-  },
+    improve: 'Participe plus aux drakes/barons/tours. Push pour exercer une pression sur les objectifs.' },
 ]
+
+// ── Axes spécifiques au rôle ──
+// Chaque rôle a 6 axes pertinents pour ses responsabilités.
+const GPI_AXES_BY_ROLE: Record<string, AxisDef[]> = {
+  TOP: [
+    { key: 'cbt',  label: 'Combat',     short: 'CBT',  desc: 'Tes dégâts par minute infligés aux champions.',
+      raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60),
+      improve: 'Augmente ton DPM : engage avec ton tank stack ou full burst sur le carry ennemi.' },
+    { key: 'tank', label: 'Tank',       short: 'TANK', desc: 'Dégâts subis pour absorber les coups. Crucial pour un top tank/bruiser.',
+      raw: (p) => p.damageTaken,
+      improve: 'Reste devant l\'équipe en team-fight pour absorber les dégâts. Investis dans des objets de tank.' },
+    { key: 'farm', label: 'Farm',       short: 'CS',   desc: 'Ton total de CS. Le top doit farmer hard sa lane.',
+      raw: (p) => p.cs,
+      improve: 'Améliore ton last-hit. Reste sur ta lane plus longtemps avant de TP en team-fight.' },
+    { key: 'solo', label: 'Présence',   short: 'SOLO', desc: 'Kills + assists, reflète ton impact en lane solo et en team-fight.',
+      raw: (p) => p.kills + p.assists,
+      improve: 'Pression ta lane en solo, et TP/roam aux bons moments pour avoir des kills/assists.' },
+    { key: 'obj',  label: 'Objectifs',  short: 'OBJ',  desc: 'Dégâts aux tours et objectifs.',
+      raw: (p) => (p.damageObjectives ?? 0) + (p.damageTurrets ?? 0),
+      improve: 'Splitpush ta lane et focus les tours dès qu\'elles sont seules.' },
+    { key: 'sur',  label: 'Survie',     short: 'SUR',  desc: 'Capacité à rester en vie.',
+      raw: (p) => 1 / Math.max(p.deaths, 1),
+      improve: 'Évite les ganks : ward la rivière, recule au CD de flash, joue safe quand t\'es behind.' },
+  ],
+  JUNGLE: [
+    { key: 'kp',   label: 'Kill Part.', short: 'KP',   desc: '(Kills + assists) / kills d\'équipe. Le jungler doit être présent partout.',
+      raw: (p, _, tk) => tk === 0 ? 0 : ((p.kills + p.assists) / tk) * 100,
+      improve: 'Gank plus tes lanes et active-toi aux objectifs. Ta KP devrait être au-dessus de 55%.' },
+    { key: 'vis',  label: 'Vision',     short: 'VIS',  desc: 'Score de vision. Crucial : tu vois la map pour ton équipe.',
+      raw: (p) => p.visionScore,
+      improve: 'Ward le river bushes, scuttle, et les jungles ennemies pour tracker l\'ennemi.' },
+    { key: 'obj',  label: 'Objectifs',  short: 'OBJ',  desc: 'Dégâts aux objectifs (drake/baron/héraut). Le jungler est le pilote.',
+      raw: (p) => p.damageObjectives ?? 0,
+      improve: 'Secure tous les drakes et héraut. Smite est ta responsabilité.' },
+    { key: 'ctrl', label: 'Contrôle',   short: 'CTRL', desc: 'Tes assists. Reflète ta présence dans tous les fights.',
+      raw: (p) => p.assists,
+      improve: 'Sois toujours là pour engage ou peel quand un fight éclate.' },
+    { key: 'cbt',  label: 'Combat',     short: 'CBT',  desc: 'Tes dégâts par minute infligés aux champions.',
+      raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60),
+      improve: 'Investis dans des items de dégâts si tu joues un jungler bruiser/carry.' },
+    { key: 'eco',  label: 'Économie',   short: 'ÉCO',  desc: 'Or par minute. Le jungler doit clear sa jungle efficacement.',
+      raw: (p, d) => d === 0 ? 0 : p.goldEarned / (d / 60),
+      improve: 'Optimise ton clear : pas de mort en early, full clear avec scuttle.' },
+  ],
+  MIDDLE: [
+    { key: 'cbt',  label: 'Combat',     short: 'CBT',  desc: 'Dégâts par minute. Le mid doit être un dommager-clé.',
+      raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60),
+      improve: 'Reste sur ta lane pour pusher avant d\'avoir tes items. Hit le carry ennemi en team-fight.' },
+    { key: 'kp',   label: 'Kill Part.', short: 'KP',   desc: '(Kills+assists) / kills d\'équipe. Le mid roam beaucoup.',
+      raw: (p, _, tk) => tk === 0 ? 0 : ((p.kills + p.assists) / tk) * 100,
+      improve: 'Roam aux side lanes (TF/Ryze/Galio). Aide ton jungler aux objectifs.' },
+    { key: 'cs',   label: 'CS',         short: 'CS',   desc: 'Creep score. Tu dois farmer entre les roams.',
+      raw: (p) => p.cs,
+      improve: 'Vise 7+ CS/min sur ta lane. Ne reste pas mort à côté du wave.' },
+    { key: 'dmg',  label: 'Dégâts',     short: 'DMG',  desc: 'Ta part de dégâts dans le total d\'équipe (%).',
+      raw: (p, _, __, teamDmg) => teamDmg === 0 ? 0 : (p.damageDealt / teamDmg) * 100,
+      improve: 'Tape les cibles prioritaires. Évite de wast ton burst sur un tank.' },
+    { key: 'kill', label: 'Kills',      short: 'KILL', desc: 'Nombre de kills. Le mid est souvent un assassin/burst mage.',
+      raw: (p) => p.kills,
+      improve: 'Cherche les solo kills sur ta lane et pick les engages au prio target.' },
+    { key: 'vis',  label: 'Vision',     short: 'VIS',  desc: 'Score de vision (sweep et ward au mid).',
+      raw: (p) => p.visionScore,
+      improve: 'Ward les bushes mid et le river quand tu roam. Sweep avant un baron.' },
+  ],
+  BOTTOM: [
+    { key: 'dmg',  label: 'Dégâts',     short: 'DMG',  desc: 'Ta part de dégâts d\'équipe (%). Tu DOIS porter en dommages.',
+      raw: (p, _, __, teamDmg) => teamDmg === 0 ? 0 : (p.damageDealt / teamDmg) * 100,
+      improve: 'Reste en backline et tape les tanks/carries. Tu es la source #1 de dégâts soutenus.' },
+    { key: 'dpm',  label: 'DPM',        short: 'DPM',  desc: 'Dégâts par minute. Constance = victoire pour un ADC.',
+      raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60),
+      improve: 'Sois actif en team-fight de A à Z. Tape tout le temps.' },
+    { key: 'cs',   label: 'CS',         short: 'CS',   desc: 'Creep score. Vise 9+ CS/min sur ta bot lane.',
+      raw: (p) => p.cs,
+      improve: 'Améliore ton last-hit. Reste en lane plus longtemps avant de roam.' },
+    { key: 'gpm',  label: 'Or/min',     short: 'GPM',  desc: 'Or par minute. Te permet d\'avoir tes items vite.',
+      raw: (p, d) => d === 0 ? 0 : p.goldEarned / (d / 60),
+      improve: 'Évite les morts. Stack les CS et les kills early pour rush ton premier item.' },
+    { key: 'kp',   label: 'Kill Part.', short: 'KP',   desc: '(Kills+assists)/kills d\'équipe.',
+      raw: (p, _, tk) => tk === 0 ? 0 : ((p.kills + p.assists) / tk) * 100,
+      improve: 'Sois présent en team-fight. Pas de splitpush en early/mid game.' },
+    { key: 'sur',  label: 'Survie',     short: 'SUR',  desc: 'Capacité à rester en vie. Un ADC mort = 0 dégâts.',
+      raw: (p) => 1 / Math.max(p.deaths, 1),
+      improve: 'Position-toi bien : reste en backline et ne te fais pas catch.' },
+  ],
+  UTILITY: [
+    { key: 'vis',   label: 'Vision',    short: 'VIS',  desc: 'Score de vision. Ton job #1 c\'est de voir la map.',
+      raw: (p) => p.visionScore,
+      improve: 'Garde tes wards sur CD. Achète une rose de contrôle dès que tu reviens en base.' },
+    { key: 'wards', label: 'Wards',     short: 'WRD',  desc: 'Wards posées + wards détruites. Ton activité de vision.',
+      raw: (p) => (p.wardsPlaced ?? 0) + (p.wardsKilled ?? 0),
+      improve: 'Sweep les wards ennemies avant un drake/baron.' },
+    { key: 'heal',  label: 'Soutien',   short: 'HEAL', desc: 'Soins totaux + soins sur alliés.',
+      raw: (p) => (p.totalHeal ?? 0) + (p.healOnTeammates ?? 0),
+      improve: 'Reste en range de ton ADC pour le shield/heal en lane.' },
+    { key: 'cc',    label: 'CC',        short: 'CC',   desc: 'Temps total de CC infligé aux ennemis (secondes).',
+      raw: (p) => p.timeCcOthers ?? 0,
+      improve: 'Engage avec ton CC sur les prio targets. Time-le pour ton ADC.' },
+    { key: 'asst',  label: 'Assists',   short: 'ASST', desc: 'Nombre d\'assists. Le support participe à tous les fights.',
+      raw: (p) => p.assists,
+      improve: 'Roam et aide ton jungler aux objectifs. Sois présent en team-fight.' },
+    { key: 'tank',  label: 'Tank',      short: 'TANK', desc: 'Dégâts subis. Tu encaisses pour ton ADC.',
+      raw: (p) => p.damageTaken,
+      improve: 'Peel pour ton ADC : interpose-toi entre lui et la menace.' },
+  ],
+}
+
+// Helper : retourne les 6 axes adaptés au rôle (fallback : universels)
+function getAxesForRole(role?: string): AxisDef[] {
+  if (role && GPI_AXES_BY_ROLE[role]) return GPI_AXES_BY_ROLE[role]
+  return GPI_AXES_DEFAULT
+}
 
 function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDetail }) {
   const dur = detail.gameDuration
+
+  // 6 axes adaptés au rôle du joueur (TOP/JGL/MID/ADC/SUP) — fallback universel sinon
+  const AXES = useMemo(() => getAxesForRole(me.teamPosition), [me.teamPosition])
+  const roleLabel = POS[me.teamPosition] || '—'
 
   // Sommes équipe pour les ratios
   const myTeam = detail.participants.filter(p => p.teamId === me.teamId)
   const teamKills = myTeam.reduce((s, p) => s + p.kills, 0)
   const teamDmg   = myTeam.reduce((s, p) => s + p.damageDealt, 0)
   const teamObjDmg= myTeam.reduce((s, p) => s + (p.damageObjectives ?? 0), 0)
+  void teamKills; void teamDmg; void teamObjDmg
 
-  // Calculer la valeur brute par axe pour chaque joueur
+  // Calculer la valeur brute par axe pour chaque joueur (normalisation vs max du match)
   const rawAll = detail.participants.map(p => {
     const tk  = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + q.kills, 0)
     const td  = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + q.damageDealt, 0)
     const tod = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + (q.damageObjectives ?? 0), 0)
-    return Object.fromEntries(GPI_AXES.map(a => [a.key, a.raw(p, dur, tk, td, tod)])) as Record<AxisKey, number>
+    return Object.fromEntries(AXES.map(a => [a.key, a.raw(p, dur, tk, td, tod)])) as Record<string, number>
   })
 
   // Max par axe (pour normaliser à 100)
   const maxByAxis = Object.fromEntries(
-    GPI_AXES.map(a => [a.key, Math.max(...rawAll.map(r => r[a.key]), 1)]),
-  ) as Record<AxisKey, number>
+    AXES.map(a => [a.key, Math.max(...rawAll.map(r => r[a.key]), 1)]),
+  ) as Record<string, number>
 
   // Mes scores normalisés (0-100)
   const myIdx     = detail.participants.findIndex(p => p.puuid === me.puuid)
   const myRaw     = rawAll[myIdx]
   const myScores  = Object.fromEntries(
-    GPI_AXES.map(a => [a.key, Math.round((myRaw[a.key] / maxByAxis[a.key]) * 100)]),
-  ) as Record<AxisKey, number>
+    AXES.map(a => [a.key, Math.round((myRaw[a.key] / maxByAxis[a.key]) * 100)]),
+  ) as Record<string, number>
 
   // Score global = moyenne des 6 axes
   const overall = Math.round(
-    GPI_AXES.reduce((s, a) => s + myScores[a.key], 0) / GPI_AXES.length,
+    AXES.reduce((s, a) => s + myScores[a.key], 0) / AXES.length,
   )
 
   // Note alphabétique
@@ -1107,7 +1203,7 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
     overall >= 40 ? '#A1A1AA' : '#E24B4A'
 
   // 2 axes les plus faibles → "What to improve"
-  const weakest = [...GPI_AXES]
+  const weakest = [...AXES]
     .map(a => ({ axis: a, score: myScores[a.key] }))
     .sort((a, b) => a.score - b.score)
     .slice(0, 2)
@@ -1116,15 +1212,15 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
   const W = 220, H = 220, CX = W / 2, CY = H / 2, R = 85
   const pointFor = (idx: number, value: number) => {
     // 6 axes répartis sur 360°, -90° en haut
-    const angle = (-Math.PI / 2) + (idx / GPI_AXES.length) * 2 * Math.PI
+    const angle = (-Math.PI / 2) + (idx / AXES.length) * 2 * Math.PI
     const dist  = (value / 100) * R
     return { x: CX + Math.cos(angle) * dist, y: CY + Math.sin(angle) * dist }
   }
   const labelFor = (idx: number) => {
-    const angle = (-Math.PI / 2) + (idx / GPI_AXES.length) * 2 * Math.PI
+    const angle = (-Math.PI / 2) + (idx / AXES.length) * 2 * Math.PI
     return { x: CX + Math.cos(angle) * (R + 14), y: CY + Math.sin(angle) * (R + 14) }
   }
-  const myPolygon = GPI_AXES.map((a, i) => pointFor(i, myScores[a.key]))
+  const myPolygon = AXES.map((a, i) => pointFor(i, myScores[a.key]))
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
 
   return (
@@ -1143,7 +1239,7 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
           textAlign: 'center',
         }}>
           <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 2, marginBottom: 4 }}>
-            SCORE GLOBAL
+            SCORE {roleLabel !== '—' && <span style={{ color: '#EF9F27' }}>{roleLabel}</span>}
           </div>
           <div style={{
             fontSize: 44, fontWeight: 900, color: gradeColor, lineHeight: 1,
@@ -1194,13 +1290,13 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
             {/* Grilles concentriques (4 paliers) */}
             {[0.25, 0.5, 0.75, 1].map(scale => {
-              const pts = GPI_AXES.map((_, i) => pointFor(i, scale * 100))
+              const pts = AXES.map((_, i) => pointFor(i, scale * 100))
               const d   = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
               return <path key={scale} d={d}
                 fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
             })}
             {/* Axes (lignes du centre vers chaque sommet) */}
-            {GPI_AXES.map((_, i) => {
+            {AXES.map((_, i) => {
               const p = pointFor(i, 100)
               return <line key={i} x1={CX} y1={CY} x2={p.x} y2={p.y}
                 stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
@@ -1209,14 +1305,14 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
             <path d={myPolygon} fill={`${gradeColor}30`} stroke={gradeColor} strokeWidth="2"
               strokeLinejoin="round" />
             {/* Points sur chaque sommet */}
-            {GPI_AXES.map((a, i) => {
+            {AXES.map((a, i) => {
               const p = pointFor(i, myScores[a.key])
               return <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={gradeColor} stroke="#0a0612" strokeWidth="1" />
             })}
             {/* Scores aux sommets (en SVG car ancrés au polygone, pas au label externe) */}
-            {GPI_AXES.map((a, i) => {
+            {AXES.map((a, i) => {
               const p = pointFor(i, myScores[a.key])
-              const angle = (-Math.PI / 2) + (i / GPI_AXES.length) * 2 * Math.PI
+              const angle = (-Math.PI / 2) + (i / AXES.length) * 2 * Math.PI
               const offX = Math.cos(angle) * 12
               const offY = Math.sin(angle) * 12
               return (
@@ -1229,7 +1325,7 @@ function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDet
           </svg>
 
           {/* Labels des axes en HTML overlay (pour tooltip stylé au hover) */}
-          {GPI_AXES.map((a, i) => {
+          {AXES.map((a, i) => {
             const l = labelFor(i)
             return (
               <RadarAxisLabel
