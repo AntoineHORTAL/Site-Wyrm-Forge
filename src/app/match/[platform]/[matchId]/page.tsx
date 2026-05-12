@@ -1919,13 +1919,16 @@ function HoverPoint({ event, mode, x, y, pById, champMap, version }: {
           transition: 'transform 100ms, opacity 100ms',
         }} />
 
-        {/* Tooltip */}
+        {/* Tooltip — largeur auto en fonction du contenu, avec min/max */}
         {hover && (
           <div style={{
             position: 'absolute',
             ...(tooltipLeft ? { left: '100%', marginLeft: 6 } : { right: '100%', marginRight: 6 }),
             ...(tooltipTop  ? { top: 0 } : { bottom: 0 }),
-            minWidth: 180, padding: '8px 10px', borderRadius: 6,
+            width: 'max-content',
+            minWidth: 180,
+            maxWidth: 380,
+            padding: '8px 10px', borderRadius: 6,
             background: 'rgba(8,5,18,0.97)',
             border: `1px solid ${color}aa`,
             color: '#F5F2FA', fontSize: 11, lineHeight: 1.4,
@@ -1960,13 +1963,13 @@ function KillTooltip({ k, pById, champMap, version, fmtTs }: {
     const champ = champMap[p.championId]
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-        <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>{label}</span>
+        <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 56, letterSpacing: 1, flexShrink: 0 }}>{label}</span>
         {champ && <img src={champImg(version, champ.image)} alt=""
-          style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${color}` }} />}
-        <span style={{ color, fontWeight: 600 }}>
+          style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${color}`, flexShrink: 0 }} />}
+        <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
           {p.riotIdGameName || champ?.name || p.championName}
         </span>
-        <span style={{ color: 'var(--text-dim)' }}>· {champ?.name ?? p.championName}</span>
+        <span style={{ color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>· {champ?.name ?? p.championName}</span>
       </div>
     )
   }
@@ -1981,12 +1984,12 @@ function KillTooltip({ k, pById, champMap, version, fmtTs }: {
       {killer
         ? <PlayerLine p={killer} label="TUÉ PAR" color="#5DCAA5" />
         : <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>TUÉ PAR</span>
-            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Tourelle / sbire / monstre</span>
+            <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 56, letterSpacing: 1, flexShrink: 0 }}>TUÉ PAR</span>
+            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', whiteSpace: 'nowrap', flexShrink: 0 }}>Tourelle / sbire / monstre</span>
           </div>}
       {assists.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>ASSIST</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 56, letterSpacing: 1, flexShrink: 0 }}>ASSIST</span>
           {assists.map((a, i) => {
             const c = champMap[a.championId]
             return c && (
@@ -2023,12 +2026,12 @@ function WardTooltip({ w, pById, champMap, version, fmtTs }: {
       <div style={{ fontSize: 11, color: '#F5F2FA', marginBottom: 4 }}>{wardLbl}</div>
       {creator && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 36, letterSpacing: 1 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)', width: 80, letterSpacing: 1, flexShrink: 0 }}>
             {w.action === 'PLACED' ? 'PAR' : 'DÉTRUITE PAR'}
           </span>
           {champ && <img src={champImg(version, champ.image)} alt=""
-            style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${creator.teamId === 100 ? '#3A8AC9' : '#E24B4A'}` }} />}
-          <span style={{ color: creator.teamId === 100 ? '#3A8AC9' : '#E24B4A', fontWeight: 600 }}>
+            style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${creator.teamId === 100 ? '#3A8AC9' : '#E24B4A'}`, flexShrink: 0 }} />}
+          <span style={{ color: creator.teamId === 100 ? '#3A8AC9' : '#E24B4A', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
             {creator.riotIdGameName || champ?.name || creator.championName}
           </span>
         </div>
