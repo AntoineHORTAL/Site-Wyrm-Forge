@@ -326,17 +326,32 @@ export default function AccueilTab() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
             {rotation.map(champ => (
-              <div key={champ.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <div
+                key={champ.id}
+                onClick={() => router.push(`/champion/${champ.id}`)}
+                role="button"
+                tabIndex={0}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                  cursor: 'pointer',
+                }}
+              >
                 <img
                   src={champImg(version, champ.image)}
                   alt={champ.name}
                   style={{
                     width: 58, height: 58, borderRadius: 8,
                     objectFit: 'cover', border: `2px solid ${border}`,
-                    transition: 'border-color 0.15s',
+                    transition: 'border-color 0.15s, transform 0.15s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = accent)}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = border)}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = accent
+                    e.currentTarget.style.transform = 'scale(1.05)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = border
+                    e.currentTarget.style.transform = 'scale(1)'
+                  }}
                 />
                 <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.2 }}>
                   {champ.name}

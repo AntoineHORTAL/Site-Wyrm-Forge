@@ -171,21 +171,15 @@ export default function JunglePathTab() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
           >
-            {/* Map background */}
-            <rect width="100" height="100" fill="#0d1015" />
-            <rect x="5" y="5" width="90" height="90" rx="4" fill="#0a1520" stroke="rgba(58,138,201,0.15)" strokeWidth="0.5" />
-            {/* River */}
-            <path d="M5,95 Q30,70 50,50 Q70,30 95,5" stroke="rgba(58,138,201,0.3)" strokeWidth="4" fill="none" />
-            {/* Bases */}
-            <rect x="5" y="75" width="20" height="20" rx="2" fill="rgba(58,138,201,0.15)" stroke="rgba(58,138,201,0.4)" strokeWidth="0.5" />
-            <rect x="75" y="5" width="20" height="20" rx="2" fill="rgba(226,75,74,0.15)" stroke="rgba(226,75,74,0.4)" strokeWidth="0.5" />
-            {/* Camp dots */}
-            {[
-              [20, 65], [15, 45], [25, 30], [50, 52], [35, 85],
-              [75, 45], [80, 60], [70, 75], [50, 48], [60, 20],
-            ].map(([x, y], i) => (
-              <circle key={i} cx={x} cy={y} r="2.5" fill={i < 5 ? 'rgba(58,138,201,0.5)' : 'rgba(226,75,74,0.5)'} stroke="rgba(255,255,255,0.2)" strokeWidth="0.3" />
-            ))}
+            {/* Map background : vraie carte Summoner's Rift via DDragon */}
+            <image
+              href="https://ddragon.leagueoflegends.com/cdn/img/map/map11.png"
+              x="0" y="0" width="100" height="100"
+              preserveAspectRatio="xMidYMid slice"
+              opacity="0.85"
+            />
+            {/* Léger voile pour mieux voir les tracés au-dessus */}
+            <rect width="100" height="100" fill="rgba(0,0,0,0.15)" />
             {/* Saved paths */}
             {paths.map((path, i) => (
               <path key={i} d={pointsToD(path.points)} stroke={path.color} strokeWidth={path.thickness * 0.3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
