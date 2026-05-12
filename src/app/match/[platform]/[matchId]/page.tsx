@@ -925,8 +925,13 @@ function PersonalSection({ me, detail, champMap, spellMap, version }: {
         </span>
       </div>
 
-      {/* Cartes de stats : TOUJOURS visibles */}
-      <PersonalStatsCards me={me} detail={detail} />
+      {/* Score perf + Radar GPI + What to improve (en haut, toujours visibles) */}
+      <PerformanceOverview me={me} detail={detail} />
+
+      {/* Cartes de stats détaillées */}
+      <div style={{ marginTop: 14 }}>
+        <PersonalStatsCards me={me} detail={detail} />
+      </div>
 
       {/* Bouton dérouler / replier */}
       <button
@@ -971,6 +976,232 @@ function PersonalSection({ me, detail, champMap, spellMap, version }: {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// PerformanceOverview : score /100 + radar GPI 6 axes + "What to improve".
+// Calcule pour chaque axe un score 0-100 normalisé par rapport au max du match
+// (le meilleur joueur sur cet axe vaut 100). Le score global est la moyenne des axes.
+// ────────────────────────────────────────────────────────────────────────────────
+type AxisKey = 'combat' | 'survie' | 'vision' | 'economie' | 'carry' | 'objectifs'
+
+interface AxisDef {
+  key: AxisKey; label: string; short: string
+  // Valeur brute extraite d'un participant (à normaliser ensuite)
+  raw: (p: Participant, durationSec: number, teamKills: number, teamDmg: number, teamObjDmg: number) => number
+  // Texte de conseil quand le score est faible
+  improve: string
+}
+
+const GPI_AXES: AxisDef[] = [
+  {
+    key: 'combat',  label: 'Combat',     short: 'CBT',
+    raw: (p, d) => d === 0 ? 0 : p.damageDealt / (d / 60), // DPM
+    improve: 'Augmente tes dégâts par minute : reste actif en team-fights et envoie ton burst au bon timing.',
+  },
+  {
+    key: 'survie',  label: 'Survie',     short: 'SUR',
+    raw: (p) => 1 / Math.max(p.deaths, 1), // moins de morts = plus de score
+    improve: 'Réduis tes morts : prends moins de risques, recule quand tu as flash down, ward avant les fights.',
+  },
+  {
+    key: 'vision',  label: 'Vision',     short: 'VIS',
+    raw: (p) => p.visionScore,
+    improve: 'Achète plus de wards de contrôle et garde tes trinkets sur cooldown. Ward les objectifs (drake/baron) avant qu\'ils ne spawn.',
+  },
+  {
+    key: 'economie',label: 'Économie',   short: 'ÉCO',
+    raw: (p, d) => d === 0 ? 0 : (p.goldEarned + p.cs * 25) / (d / 60), // GPM + CS impact
+    improve: 'Travaille ta last-hit (CS/min) et évite les morts qui te font perdre de l\'or. Reste sur ta lane plus longtemps.',
+  },
+  {
+    key: 'carry',   label: 'Carry',      short: 'CRY',
+    raw: (p, _, __, teamDmg) => teamDmg === 0 ? 0 : (p.damageDealt / teamDmg) * 100,
+    improve: 'Augmente ta part de dégâts d\'équipe : concentre-toi sur les cibles prioritaires et tape les squishies en team-fight.',
+  },
+  {
+    key: 'objectifs',label: 'Objectifs', short: 'OBJ',
+    raw: (p) => (p.damageObjectives ?? 0) + (p.damageTurrets ?? 0),
+    improve: 'Participe plus aux drakes/barons/tours. Push les vagues quand l\'objectif spawn pour exercer une pression.',
+  },
+]
+
+function PerformanceOverview({ me, detail }: { me: Participant; detail: MatchDetail }) {
+  const dur = detail.gameDuration
+
+  // Sommes équipe pour les ratios
+  const myTeam = detail.participants.filter(p => p.teamId === me.teamId)
+  const teamKills = myTeam.reduce((s, p) => s + p.kills, 0)
+  const teamDmg   = myTeam.reduce((s, p) => s + p.damageDealt, 0)
+  const teamObjDmg= myTeam.reduce((s, p) => s + (p.damageObjectives ?? 0), 0)
+
+  // Calculer la valeur brute par axe pour chaque joueur
+  const rawAll = detail.participants.map(p => {
+    const tk  = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + q.kills, 0)
+    const td  = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + q.damageDealt, 0)
+    const tod = detail.participants.filter(q => q.teamId === p.teamId).reduce((s, q) => s + (q.damageObjectives ?? 0), 0)
+    return Object.fromEntries(GPI_AXES.map(a => [a.key, a.raw(p, dur, tk, td, tod)])) as Record<AxisKey, number>
+  })
+
+  // Max par axe (pour normaliser à 100)
+  const maxByAxis = Object.fromEntries(
+    GPI_AXES.map(a => [a.key, Math.max(...rawAll.map(r => r[a.key]), 1)]),
+  ) as Record<AxisKey, number>
+
+  // Mes scores normalisés (0-100)
+  const myIdx     = detail.participants.findIndex(p => p.puuid === me.puuid)
+  const myRaw     = rawAll[myIdx]
+  const myScores  = Object.fromEntries(
+    GPI_AXES.map(a => [a.key, Math.round((myRaw[a.key] / maxByAxis[a.key]) * 100)]),
+  ) as Record<AxisKey, number>
+
+  // Score global = moyenne des 6 axes
+  const overall = Math.round(
+    GPI_AXES.reduce((s, a) => s + myScores[a.key], 0) / GPI_AXES.length,
+  )
+
+  // Note alphabétique
+  const grade =
+    overall >= 90 ? 'S+' : overall >= 80 ? 'S' :
+    overall >= 70 ? 'A' : overall >= 60 ? 'B' :
+    overall >= 50 ? 'C' : overall >= 40 ? 'D' : 'E'
+  const gradeColor =
+    overall >= 80 ? '#EF9F27' :
+    overall >= 60 ? '#5DCAA5' :
+    overall >= 40 ? '#A1A1AA' : '#E24B4A'
+
+  // 2 axes les plus faibles → "What to improve"
+  const weakest = [...GPI_AXES]
+    .map(a => ({ axis: a, score: myScores[a.key] }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 2)
+
+  // Géométrie du radar (hexagone)
+  const W = 220, H = 220, CX = W / 2, CY = H / 2, R = 85
+  const pointFor = (idx: number, value: number) => {
+    // 6 axes répartis sur 360°, -90° en haut
+    const angle = (-Math.PI / 2) + (idx / GPI_AXES.length) * 2 * Math.PI
+    const dist  = (value / 100) * R
+    return { x: CX + Math.cos(angle) * dist, y: CY + Math.sin(angle) * dist }
+  }
+  const labelFor = (idx: number) => {
+    const angle = (-Math.PI / 2) + (idx / GPI_AXES.length) * 2 * Math.PI
+    return { x: CX + Math.cos(angle) * (R + 14), y: CY + Math.sin(angle) * (R + 14) }
+  }
+  const myPolygon = GPI_AXES.map((a, i) => pointFor(i, myScores[a.key]))
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
+
+  return (
+    <div style={{
+      display: 'grid', gap: 14,
+      gridTemplateColumns: 'minmax(180px, 250px) 1fr',
+      alignItems: 'stretch',
+    }}>
+      {/* Colonne gauche : score + improve */}
+      <div>
+        {/* Score circle */}
+        <div style={{
+          padding: '14px 16px', borderRadius: 8,
+          background: 'rgba(0,0,0,0.25)',
+          border: `1px solid ${gradeColor}55`,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 2, marginBottom: 4 }}>
+            SCORE GLOBAL
+          </div>
+          <div style={{
+            fontSize: 44, fontWeight: 900, color: gradeColor, lineHeight: 1,
+          }}>
+            {overall}
+            <span style={{ fontSize: 16, color: 'var(--text-dim)', fontWeight: 400 }}>/100</span>
+          </div>
+          <div style={{
+            display: 'inline-block', marginTop: 6, padding: '2px 10px',
+            borderRadius: 4, background: gradeColor, color: '#1a0d2e',
+            fontSize: 14, fontWeight: 800, letterSpacing: 2,
+          }}>
+            {grade}
+          </div>
+        </div>
+
+        {/* What to improve */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
+            À améliorer
+          </div>
+          {weakest.map((w, i) => (
+            <div key={i} style={{
+              padding: '6px 10px', marginBottom: 4, borderRadius: 6,
+              background: 'rgba(226,75,74,0.08)',
+              borderLeft: '3px solid #E24B4A',
+              fontSize: 11, lineHeight: 1.4,
+            }}>
+              <span style={{ color: '#E24B4A', fontWeight: 700 }}>{w.axis.label}</span>
+              <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>· {w.score}/100</span>
+              <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+                {w.axis.improve}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Colonne droite : radar SVG */}
+      <div style={{
+        padding: 12, borderRadius: 8,
+        background: 'rgba(0,0,0,0.25)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 280, height: 'auto' }}>
+          {/* Grilles concentriques (4 paliers) */}
+          {[0.25, 0.5, 0.75, 1].map(scale => {
+            const pts = GPI_AXES.map((_, i) => pointFor(i, scale * 100))
+            const d   = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z'
+            return <path key={scale} d={d}
+              fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+          })}
+          {/* Axes (lignes du centre vers chaque sommet) */}
+          {GPI_AXES.map((_, i) => {
+            const p = pointFor(i, 100)
+            return <line key={i} x1={CX} y1={CY} x2={p.x} y2={p.y}
+              stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+          })}
+          {/* Polygone du joueur */}
+          <path d={myPolygon} fill={`${gradeColor}30`} stroke={gradeColor} strokeWidth="2"
+            strokeLinejoin="round" />
+          {/* Points sur chaque sommet */}
+          {GPI_AXES.map((a, i) => {
+            const p = pointFor(i, myScores[a.key])
+            return <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={gradeColor} stroke="#0a0612" strokeWidth="1" />
+          })}
+          {/* Labels des axes */}
+          {GPI_AXES.map((a, i) => {
+            const l = labelFor(i)
+            return (
+              <text key={i} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle"
+                fill="#F5F2FA" fontSize="10" fontWeight="700">
+                {a.short}
+              </text>
+            )
+          })}
+          {/* Scores aux sommets */}
+          {GPI_AXES.map((a, i) => {
+            const p = pointFor(i, myScores[a.key])
+            const angle = (-Math.PI / 2) + (i / GPI_AXES.length) * 2 * Math.PI
+            const offX = Math.cos(angle) * 12
+            const offY = Math.sin(angle) * 12
+            return (
+              <text key={i} x={p.x + offX} y={p.y + offY} textAnchor="middle" dominantBaseline="middle"
+                fill={gradeColor} fontSize="9" fontWeight="700">
+                {myScores[a.key]}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }
