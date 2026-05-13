@@ -1,0 +1,48 @@
+# Déploie automatiquement toutes les Edge Functions Supabase à chaque push sur main
+# qui modifie un fichier dans supabase/functions/
+#
+# Pré-requis dans les secrets GitHub du repo :
+#   - SUPABASE_ACCESS_TOKEN : Personal access token Supabase
+#       (générer ici : https://supabase.com/dashboard/account/tokens)
+#   - SUPABASE_PROJECT_ID   : ref du projet (cuscgmgqakxnfwnsrhhv)
+#
+# Déclenchable aussi manuellement via Actions → 'Run workflow'.
+
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/deploy-supabase-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy all Edge Functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          # Liste toutes les fonctions présentes dans supabase/functions (hors _shared)
+          for fn in supabase/functions/*/; do
+            name=$(basename "$fn")
+            if [ "$name" = "_shared" ]; then continue; fi
+            echo "📦 Deploying $name…"
+            supabase functions deploy "$name" \
+              --project-ref "$SUPABASE_PROJECT_ID" \
+              --use-api
+          done
+          echo "✅ Toutes les fonctions ont été déployées."
