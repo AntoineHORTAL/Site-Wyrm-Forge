@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
     const tagLineRaw  = url.searchParams.get('tagLine')
     const platform    = url.searchParams.get('platform') ?? 'euw1'
     const count       = Math.min(Number(url.searchParams.get('count') ?? '5'), 20)
+    const start       = Math.max(Number(url.searchParams.get('start') ?? '0'), 0)
 
     if (!gameNameRaw || !tagLineRaw) {
       return jsonResponse({ error: 'gameName et tagLine requis.' }, 400)
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
 
     // 4. IDs des derniers matchs
     const idsRes = await fetch(
-      `https://${routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${count}`,
+      `https://${routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=${start}&count=${count}`,
       { headers },
     )
     if (!idsRes.ok) {

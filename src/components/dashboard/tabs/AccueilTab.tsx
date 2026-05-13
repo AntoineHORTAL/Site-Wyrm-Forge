@@ -109,6 +109,11 @@ export default function AccueilTab() {
   // Matches
   const [matches, setMatches]         = useState<MatchInfo[]>([])
   const [loadingMatches, setLoadingMatches] = useState(false)
+  const [loadingMore,    setLoadingMore]    = useState(false)
+  // Flag pour cacher le bouton si Riot a renvoyé moins de matchs que demandé (= dernière page)
+  const [reachedEnd,     setReachedEnd]     = useState(false)
+  // Taille des batchs successifs
+  const PAGE_SIZE = 5
   const [matchError, setMatchError]   = useState('')
 
   const border  = c ? 'rgba(186,117,23,0.2)' : '#27272A'
@@ -221,9 +226,13 @@ export default function AccueilTab() {
     if (savedRiot && version) loadMatches(savedRiot)
   }, [savedRiot])
 
-  async function loadMatches(riot: { gameName: string; tagLine: string; platform: string }) {
-    setLoadingMatches(true)
+  async function loadMatches(
+    riot: { gameName: string; tagLine: string; platform: string },
+    { append = false, start = 0 }: { append?: boolean; start?: number } = {},
+  ) {
+    if (append) setLoadingMore(true); else setLoadingMatches(true)
     setMatchError('')
+    if (!append) setReachedEnd(false)
     try {
       // Edge Function privée — on envoie le JWT du user pour que Supabase valide l'auth.
       const { data: { session } } = await supabase.auth.getSession()
@@ -234,7 +243,8 @@ export default function AccueilTab() {
           gameName: riot.gameName,
           tagLine:  riot.tagLine,
           platform: riot.platform,
-          count:    '5',
+          count:    String(PAGE_SIZE),
+          start:    String(start),
         }),
         {
           headers: {
@@ -245,7 +255,20 @@ export default function AccueilTab() {
       )
       const data = await res.json()
       if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
-      setMatches(data.matches ?? [])
+      const newMatches: MatchInfo[] = data.matches ?? []
+
+      if (append) {
+        // Dédoublonnage au cas où l'API renvoie un match déjà chargé
+        setMatches(prev => {
+          const seen = new Set(prev.map(m => m.matchId))
+          return [...prev, ...newMatches.filter(m => !seen.has(m.matchId))]
+        })
+      } else {
+        setMatches(newMatches)
+      }
+
+      // Si Riot renvoie moins que demandé, on est à la fin de l'historique
+      if (newMatches.length < PAGE_SIZE) setReachedEnd(true)
       // Le puuid renvoyé identifie l'invocateur affiché à l'écran (peut être un autre joueur si on l'a recherché)
       if (data.puuid) setViewedPuuid(data.puuid)
 
@@ -264,7 +287,7 @@ export default function AccueilTab() {
     } catch {
       setMatchError('Impossible de joindre l\'API Riot.')
     } finally {
-      setLoadingMatches(false)
+      if (append) setLoadingMore(false); else setLoadingMatches(false)
     }
   }
 
@@ -384,7 +407,9 @@ export default function AccueilTab() {
       <section>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA' }}>Mes 5 dernières parties</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA' }}>
+              Mes dernières parties{matches.length > 0 ? ` (${matches.length})` : ''}
+            </div>
             {savedRiot && !editMode && (
               <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
                 {savedRiot.gameName}<span style={{ color: 'var(--text-dim)' }}>#{savedRiot.tagLine}</span>
@@ -655,6 +680,37 @@ export default function AccueilTab() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* ── Bouton "Voir plus" pour charger les parties suivantes ── */}
+        {!loadingMatches && !matchError && matches.length > 0 && !reachedEnd && (
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button
+              onClick={() => savedRiot && loadMatches(savedRiot, { append: true, start: matches.length })}
+              disabled={loadingMore}
+              style={{
+                padding: '10px 24px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                cursor: loadingMore ? 'wait' : 'pointer', transition: 'all 120ms',
+                background: 'rgba(127,119,221,0.12)',
+                border: '1px solid rgba(127,119,221,0.35)',
+                color: '#F5F2FA', letterSpacing: 0.5,
+              }}
+              onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = 'rgba(127,119,221,0.22)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.12)' }}
+            >
+              {loadingMore ? 'Chargement…' : `▼ Voir ${PAGE_SIZE} parties de plus`}
+            </button>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 6 }}>
+              {matches.length} parties affichées
+            </div>
+          </div>
+        )}
+
+        {/* ── Fin de l'historique ── */}
+        {!loadingMatches && !matchError && matches.length > 0 && reachedEnd && (
+          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-dim)' }}>
+            Tu as atteint la fin de l&apos;historique disponible ({matches.length} parties).
           </div>
         )}
 
