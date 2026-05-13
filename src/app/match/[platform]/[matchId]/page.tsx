@@ -9,7 +9,7 @@
  * les 2 équipes avec tous les joueurs et leurs stats complètes.
  */
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
@@ -112,6 +112,10 @@ function timeAgo(ts: number) {
 export default function MatchPage() {
   const { platform, matchId } = useParams<{ platform: string; matchId: string }>()
   const router = useRouter()
+  // Query param ?puuid=... → priorité pour identifier le joueur à mettre en avant
+  // (utile quand on regarde le match d'un autre invocateur via la recherche).
+  const searchParams = useSearchParams()
+  const queryPuuid   = searchParams.get('puuid') ?? ''
 
   const [detail,  setDetail]  = useState<MatchDetail | null>(null)
   const [version, setVersion] = useState('')
@@ -205,12 +209,16 @@ export default function MatchPage() {
         }
         setDetail(dData)
 
-        // Highlight : retrouver le user dans la partie.
-        //  1. PRIO : par puuid (identifiant permanent — invariant même si Riot ID change)
-        //  2. Fallback : par riot_gamename (+ tagline) pour les profils non-migrés
+        // Highlight : retrouver le joueur à mettre en avant.
+        //  PRIO 1 : query param ?puuid (recherche d'un autre invocateur depuis Accueil)
+        //  PRIO 2 : riot_puuid stocké dans le profil (l'utilisateur connecté)
+        //  PRIO 3 : fallback gamename + tagline (anciens profils sans puuid)
         const participants = (dData as MatchDetail).participants
         let me: Participant | undefined
-        if (profile?.riot_puuid) {
+        if (queryPuuid) {
+          me = participants.find(p => p.puuid === queryPuuid)
+        }
+        if (!me && profile?.riot_puuid) {
           me = participants.find(p => p.puuid === profile.riot_puuid)
         }
         if (!me && profile?.riot_gamename) {
@@ -227,8 +235,9 @@ export default function MatchPage() {
         }
         if (me) {
           setMyPuuid(me.puuid)
-          // Si on n'avait pas le puuid en DB, on le sauvegarde maintenant (auto-migration)
-          if (!profile?.riot_puuid) {
+          // Si on regarde notre propre profil et que le puuid n'est pas encore en DB → on le sauvegarde
+          const looksLikeMe = !queryPuuid || (profile?.riot_puuid && queryPuuid === profile.riot_puuid)
+          if (looksLikeMe && !profile?.riot_puuid) {
             await supabase.from('profiles').update({ riot_puuid: me.puuid }).eq('id', session.user.id)
           }
         }
@@ -241,7 +250,7 @@ export default function MatchPage() {
 
     load()
     return () => { cancelled = true }
-  }, [platform, matchId])
+  }, [platform, matchId, queryPuuid])
 
   return (
     <main style={{

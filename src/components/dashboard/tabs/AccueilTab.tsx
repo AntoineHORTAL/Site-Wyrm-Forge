@@ -99,6 +99,9 @@ export default function AccueilTab() {
   const [userId, setUserId]           = useState<string | null>(null)
   const [riotInput, setRiotInput]     = useState('') // "GameName#TAG"
   const [savedRiot, setSavedRiot]     = useState<{ gameName: string; tagLine: string; platform: string } | null>(null)
+  // puuid de l'invocateur dont on affiche actuellement les matchs (peut être un autre que soi via la recherche).
+  // Passé dans l'URL du match pour que la page de détail highlighte le bon joueur.
+  const [viewedPuuid, setViewedPuuid] = useState<string>('')
   const [savingRiot, setSavingRiot]   = useState(false)
   const [riotError, setRiotError]     = useState('')
   const [editMode, setEditMode]       = useState(false)
@@ -243,11 +246,16 @@ export default function AccueilTab() {
       const data = await res.json()
       if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
       setMatches(data.matches ?? [])
+      // Le puuid renvoyé identifie l'invocateur affiché à l'écran (peut être un autre joueur si on l'a recherché)
+      if (data.puuid) setViewedPuuid(data.puuid)
 
       // Auto-migration : on stocke le puuid (identifiant Riot permanent) dans le profil
-      // pour pouvoir matcher l'utilisateur dans les matchs même après changement de Riot ID.
-      if (data.puuid && userId) {
-        // On ne re-update que si le puuid stocké est différent (évite les writes inutiles)
+      // SEULEMENT si on consulte SES PROPRES matchs (et pas un autre invocateur via la recherche).
+      const isViewingOwnProfile =
+        savedRiot
+        && riot.gameName.toLowerCase() === savedRiot.gameName.toLowerCase()
+        && riot.tagLine.toLowerCase()  === savedRiot.tagLine.toLowerCase()
+      if (data.puuid && userId && isViewingOwnProfile) {
         const { data: cur } = await supabase.from('profiles').select('riot_puuid').eq('id', userId).maybeSingle()
         if (cur?.riot_puuid !== data.puuid) {
           await supabase.from('profiles').update({ riot_puuid: data.puuid }).eq('id', userId)
@@ -511,7 +519,12 @@ export default function AccueilTab() {
               return (
                 <div
                   key={m.matchId}
-                  onClick={() => savedRiot && router.push(`/match/${savedRiot.platform}/${m.matchId}`)}
+                  onClick={() => {
+                    if (!savedRiot) return
+                    // On embarque le puuid de l'invocateur affiché → la page de match highlighte LE BON joueur
+                    const qs = viewedPuuid ? `?puuid=${encodeURIComponent(viewedPuuid)}` : ''
+                    router.push(`/match/${savedRiot.platform}/${m.matchId}${qs}`)
+                  }}
                   role="button"
                   tabIndex={0}
                   style={{
