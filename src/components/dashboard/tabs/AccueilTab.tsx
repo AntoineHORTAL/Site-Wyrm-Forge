@@ -117,6 +117,9 @@ export default function AccueilTab() {
   const MAX_TOTAL = 100
   // Sentinel pour l'infinite scroll (IntersectionObserver)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  // L'utilisateur a-t-il vraiment scrollé ? Évite le déclenchement auto à l'arrivée
+  // sur la page (où la sentinel peut être visible parce que la liste est courte).
+  const [userScrolled, setUserScrolled] = useState(false)
   const [matchError, setMatchError]   = useState('')
 
   const border  = c ? 'rgba(186,117,23,0.2)' : '#27272A'
@@ -229,9 +232,20 @@ export default function AccueilTab() {
     if (savedRiot && version) loadMatches(savedRiot)
   }, [savedRiot])
 
+  // Détecter un scroll utilisateur pour activer l'infinite scroll
+  // (évite le déclenchement automatique à l'arrivée sur la page si la sentinel
+  // est déjà visible parce que la liste est courte).
+  useEffect(() => {
+    if (userScrolled) return
+    const onScroll = () => setUserScrolled(true)
+    window.addEventListener('scroll', onScroll, { once: true, passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [userScrolled])
+
   // ── Infinite scroll : observer une sentinel en bas de la liste ────────────
   useEffect(() => {
     if (!sentinelRef.current || !savedRiot) return
+    if (!userScrolled) return            // pas de chargement auto avant scroll
     const el = sentinelRef.current
     const obs = new IntersectionObserver(entries => {
       const visible = entries[0].isIntersecting
@@ -243,10 +257,10 @@ export default function AccueilTab() {
       ) {
         loadMatches(savedRiot, { append: true, start: matches.length })
       }
-    }, { rootMargin: '200px' /* déclenche avant que la sentinel soit pleinement visible */ })
+    }, { rootMargin: '200px' })
     obs.observe(el)
     return () => obs.disconnect()
-  }, [savedRiot, loadingMatches, loadingMore, reachedEnd, matches.length])
+  }, [savedRiot, loadingMatches, loadingMore, reachedEnd, matches.length, userScrolled])
 
   async function loadMatches(
     riot: { gameName: string; tagLine: string; platform: string },
@@ -280,11 +294,21 @@ export default function AccueilTab() {
       const newMatches: MatchInfo[] = data.matches ?? []
 
       if (append) {
-        // Dédoublonnage au cas où l'API renvoie un match déjà chargé
+        // Dédoublonnage : on ne garde que les matchs qu'on n'avait pas déjà
+        let trulyNew = 0
         setMatches(prev => {
           const seen = new Set(prev.map(m => m.matchId))
-          return [...prev, ...newMatches.filter(m => !seen.has(m.matchId))]
+          const filtered = newMatches.filter(m => !seen.has(m.matchId))
+          trulyNew = filtered.length
+          return [...prev, ...filtered]
         })
+        // Filet de sécurité : si Riot a renvoyé des matchs mais 0 nouveaux,
+        // c'est que le param 'start' n'est pas pris en compte (fonction pas
+        // redéployée ou bug serveur). On stoppe pour éviter une boucle infinie.
+        if (newMatches.length > 0 && trulyNew === 0) {
+          setReachedEnd(true)
+          setMatchError('Pagination indisponible — redéploie l\'Edge Function riot-matches.')
+        }
       } else {
         setMatches(newMatches)
       }
@@ -712,6 +736,21 @@ export default function AccueilTab() {
               <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '10px 0' }}>
                 Chargement des parties suivantes…
               </div>
+            )}
+            {!loadingMore && !reachedEnd && matches.length < MAX_TOTAL && (
+              <button
+                onClick={() => savedRiot && loadMatches(savedRiot, { append: true, start: matches.length })}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                  cursor: 'pointer', background: 'rgba(127,119,221,0.08)',
+                  border: '1px solid rgba(127,119,221,0.25)',
+                  color: 'var(--text-muted)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.08)' }}
+              >
+                Charger {PAGE_SIZE} parties de plus
+              </button>
             )}
             {!loadingMore && reachedEnd && (
               <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
