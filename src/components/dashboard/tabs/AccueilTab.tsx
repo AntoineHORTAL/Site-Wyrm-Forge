@@ -117,6 +117,9 @@ export default function AccueilTab() {
   const MAX_TOTAL = 100
   // Sentinel pour l'infinite scroll (IntersectionObserver)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  // Lock synchrone : empêche 2 fetches concurrents (l'observer peut fire avant que
+  // loadingMore ne soit mis à jour par React, créant un état de double appel).
+  const inFlightRef = useRef(false)
   // L'utilisateur a-t-il vraiment scrollé ? Évite le déclenchement auto à l'arrivée
   // sur la page (où la sentinel peut être visible parce que la liste est courte).
   const [userScrolled, setUserScrolled] = useState(false)
@@ -266,6 +269,9 @@ export default function AccueilTab() {
     riot: { gameName: string; tagLine: string; platform: string },
     { append = false, start = 0 }: { append?: boolean; start?: number } = {},
   ) {
+    // Lock synchrone : si un fetch est déjà en cours, on ignore les nouveaux appels.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     if (append) setLoadingMore(true); else setLoadingMatches(true)
     setMatchError('')
     if (!append) setReachedEnd(false)
@@ -294,20 +300,21 @@ export default function AccueilTab() {
       const newMatches: MatchInfo[] = data.matches ?? []
 
       if (append) {
-        // Dédoublonnage : on ne garde que les matchs qu'on n'avait pas déjà
-        let trulyNew = 0
+        // Dédup sur la base de l'état actuel (closure stable au moment de l'appel)
+        const knownIds = new Set(matches.map(m => m.matchId))
+        const filtered = newMatches.filter(m => !knownIds.has(m.matchId))
+        const trulyNew = filtered.length
+
+        // Update du state avec une 2ème dédup au cas où prev ait changé entre-temps
         setMatches(prev => {
-          const seen = new Set(prev.map(m => m.matchId))
-          const filtered = newMatches.filter(m => !seen.has(m.matchId))
-          trulyNew = filtered.length
-          return [...prev, ...filtered]
+          const prevIds = new Set(prev.map(m => m.matchId))
+          return [...prev, ...filtered.filter(m => !prevIds.has(m.matchId))]
         })
-        // Filet de sécurité : si Riot a renvoyé des matchs mais 0 nouveaux,
-        // c'est que le param 'start' n'est pas pris en compte (fonction pas
-        // redéployée ou bug serveur). On stoppe pour éviter une boucle infinie.
+
+        // Filet silencieux : si Riot a renvoyé des matchs mais aucun n'est nouveau,
+        // on considère qu'on est à la fin et on stoppe — pas d'erreur affichée.
         if (newMatches.length > 0 && trulyNew === 0) {
           setReachedEnd(true)
-          setMatchError('Pagination indisponible — redéploie l\'Edge Function riot-matches.')
         }
       } else {
         setMatches(newMatches)
@@ -333,6 +340,7 @@ export default function AccueilTab() {
     } catch {
       setMatchError('Impossible de joindre l\'API Riot.')
     } finally {
+      inFlightRef.current = false
       if (append) setLoadingMore(false); else setLoadingMatches(false)
     }
   }
