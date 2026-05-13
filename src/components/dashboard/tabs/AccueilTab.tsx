@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
@@ -110,10 +110,13 @@ export default function AccueilTab() {
   const [matches, setMatches]         = useState<MatchInfo[]>([])
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [loadingMore,    setLoadingMore]    = useState(false)
-  // Flag pour cacher le bouton si Riot a renvoyé moins de matchs que demandé (= dernière page)
+  // Flag : Riot a renvoyé moins de matchs que demandé (= dernière page)
   const [reachedEnd,     setReachedEnd]     = useState(false)
-  // Taille des batchs successifs
-  const PAGE_SIZE = 5
+  // Taille des batchs successifs + cap absolu pour ne pas marteler l'API
+  const PAGE_SIZE = 10
+  const MAX_TOTAL = 100
+  // Sentinel pour l'infinite scroll (IntersectionObserver)
+  const sentinelRef = useRef<HTMLDivElement>(null)
   const [matchError, setMatchError]   = useState('')
 
   const border  = c ? 'rgba(186,117,23,0.2)' : '#27272A'
@@ -225,6 +228,25 @@ export default function AccueilTab() {
   useEffect(() => {
     if (savedRiot && version) loadMatches(savedRiot)
   }, [savedRiot])
+
+  // ── Infinite scroll : observer une sentinel en bas de la liste ────────────
+  useEffect(() => {
+    if (!sentinelRef.current || !savedRiot) return
+    const el = sentinelRef.current
+    const obs = new IntersectionObserver(entries => {
+      const visible = entries[0].isIntersecting
+      if (visible
+        && !loadingMatches && !loadingMore
+        && !reachedEnd
+        && matches.length > 0
+        && matches.length < MAX_TOTAL
+      ) {
+        loadMatches(savedRiot, { append: true, start: matches.length })
+      }
+    }, { rootMargin: '200px' /* déclenche avant que la sentinel soit pleinement visible */ })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [savedRiot, loadingMatches, loadingMore, reachedEnd, matches.length])
 
   async function loadMatches(
     riot: { gameName: string; tagLine: string; platform: string },
@@ -683,34 +705,24 @@ export default function AccueilTab() {
           </div>
         )}
 
-        {/* ── Bouton "Voir plus" pour charger les parties suivantes ── */}
-        {!loadingMatches && !matchError && matches.length > 0 && !reachedEnd && (
-          <div style={{ textAlign: 'center', marginTop: 12 }}>
-            <button
-              onClick={() => savedRiot && loadMatches(savedRiot, { append: true, start: matches.length })}
-              disabled={loadingMore}
-              style={{
-                padding: '10px 24px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                cursor: loadingMore ? 'wait' : 'pointer', transition: 'all 120ms',
-                background: 'rgba(127,119,221,0.12)',
-                border: '1px solid rgba(127,119,221,0.35)',
-                color: '#F5F2FA', letterSpacing: 0.5,
-              }}
-              onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = 'rgba(127,119,221,0.22)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.12)' }}
-            >
-              {loadingMore ? 'Chargement…' : `▼ Voir ${PAGE_SIZE} parties de plus`}
-            </button>
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 6 }}>
-              {matches.length} parties affichées
-            </div>
-          </div>
-        )}
-
-        {/* ── Fin de l'historique ── */}
-        {!loadingMatches && !matchError && matches.length > 0 && reachedEnd && (
-          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-dim)' }}>
-            Tu as atteint la fin de l&apos;historique disponible ({matches.length} parties).
+        {/* ── Sentinel pour l'infinite scroll + indicateurs ── */}
+        {!loadingMatches && !matchError && matches.length > 0 && (
+          <div ref={sentinelRef} style={{ textAlign: 'center', marginTop: 12, minHeight: 40 }}>
+            {loadingMore && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '10px 0' }}>
+                Chargement des parties suivantes…
+              </div>
+            )}
+            {!loadingMore && reachedEnd && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                Fin de l&apos;historique — {matches.length} parties affichées
+              </div>
+            )}
+            {!loadingMore && !reachedEnd && matches.length >= MAX_TOTAL && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                Limite atteinte ({MAX_TOTAL} parties affichées)
+              </div>
+            )}
           </div>
         )}
 
