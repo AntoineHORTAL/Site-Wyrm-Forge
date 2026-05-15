@@ -29,8 +29,22 @@ export default function Footer() {
           </a>
         ))}
       </div>
-      <div style={{ color: theme === 'mythic' ? '#5F5E5A' : '#52525B', fontSize: 12 }}>
-        © 2026 Wyrm Forge. Non affilié à Riot Games.
+      <div style={{ color: theme === 'mythic' ? '#5F5E5A' : '#52525B', fontSize: 12, marginBottom: 10 }}>
+        © 2026 Wyrm Forge. Tous droits réservés.
+      </div>
+      {/* Mention obligatoire Riot Games (cf. Developer Agreement) */}
+      <div style={{
+        color: theme === 'mythic' ? '#5F5E5A' : '#52525B',
+        fontSize: 11, lineHeight: 1.6,
+        maxWidth: 720, margin: '0 auto',
+      }}>
+        Wyrm Forge n&apos;est pas affilié, sponsorisé ni endossé par Riot Games, Inc. ou
+        l&apos;une de ses filiales. League of Legends et Riot Games sont des marques ou
+        marques déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.
+        <br />
+        <span style={{ color: theme === 'mythic' ? '#888780' : '#71717A' }}>
+          Powered by the Riot Games API.
+        </span>
       </div>
     </footer>
   )

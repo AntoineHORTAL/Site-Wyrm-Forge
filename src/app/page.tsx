@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import Nav from '@/components/nav/Nav'
 import Hero from '@/components/landing/Hero'
 import Features from '@/components/landing/Features'
-import Pricing from '@/components/landing/Pricing'
+// import Pricing from '@/components/landing/Pricing' // masqué pendant examen Riot
 import FAQ from '@/components/landing/FAQ'
 import Footer from '@/components/landing/Footer'
 import AuthModal from '@/components/auth/AuthModal'
@@ -107,7 +107,11 @@ export default function Home() {
         <>
           <Hero onLogin={() => setShowAuth(true)} />
           <Features />
-          <Pricing onLogin={() => setShowAuth(true)} />
+          {/* Section Pricing temporairement masquée pendant l'examen de la
+              demande Personal API Key Riot Games. Wyrm Forge se présente
+              comme un projet 100% gratuit et non-commercial pendant cette
+              période. À réactiver une fois la clé validée. */}
+          {/* <Pricing onLogin={() => setShowAuth(true)} /> */}
           <FAQ />
           <Footer />
         </>

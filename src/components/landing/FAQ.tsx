@@ -5,7 +5,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 const faqs = [
   {
     q: 'Wyrm Forge est-il autorisé par Riot Games ?',
-    a: "Wyrm Forge utilise uniquement l'API officielle Riot Games et ne modifie pas les fichiers du jeu. Il est conforme aux règles d'utilisation des APIs Riot et ne risque pas de ban.",
+    a: "Wyrm Forge utilise uniquement l'API officielle Riot Games et ne modifie pas les fichiers du jeu. Il est conforme aux règles d'utilisation des APIs Riot et ne risque pas de ban. Wyrm Forge n'est pas affilié à Riot Games.",
   },
   {
     q: "Comment fonctionne l'overlay en jeu ?",
@@ -13,15 +13,15 @@ const faqs = [
   },
   {
     q: 'Puis-je importer mes builds depuis Mobafire ou OP.GG ?',
-    a: 'Un import depuis les URLs Mobafire est disponible sur les plans Chevalier et plus. L\'import OP.GG est en cours de développement.',
+    a: "Un import depuis Mobafire est en cours de développement. L'import OP.GG est sur la roadmap.",
   },
   {
-    q: 'Les analyses IA utilisent quelles données ?',
-    a: "Les analyses utilisent ton historique de matchs via l'API Riot. Aucune donnée personnelle autre que ton Riot ID n'est partagée avec des tiers.",
+    q: 'Quelles données sont utilisées par l\'outil ?',
+    a: "Wyrm Forge utilise ton historique de matchs récupéré via l'API officielle Riot Games. Aucune donnée personnelle autre que ton Riot ID n'est partagée avec des tiers.",
   },
   {
-    q: 'Puis-je annuler mon abonnement à tout moment ?',
-    a: "Oui, tu peux annuler à tout moment depuis ton espace compte. L'accès premium reste actif jusqu'à la fin de la période facturée.",
+    q: 'Combien coûte Wyrm Forge ?',
+    a: "Wyrm Forge est entièrement gratuit pour la communauté. Le projet n'est pas commercial — il est développé par passion et toutes les fonctionnalités sont accessibles sans paiement.",
   },
 ]
 
