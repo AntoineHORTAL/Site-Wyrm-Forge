@@ -143,6 +143,60 @@ UPDATE profiles SET email = u.email FROM auth.users u WHERE profiles.id = u.id A
 ---
 
 ### API Riot
-- Clé development key active (expire 24h) — demande Production key en cours
-- Clé Tournament API : non encore demandée
-- Aucun appel API Riot réel en production pour l'instant
+- **Personal API Key validée** par Riot — plus de renouvellement quotidien.
+- Stockée dans **Supabase secrets** (`RIOT_API_KEY`), jamais dans le code ni
+  dans les .env Vercel. Toutes les requêtes Riot passent par des Edge
+  Functions Supabase qui font office de proxy.
+- Edge Functions actives : `riot-rotation`, `riot-matches`, `riot-match-detail`,
+  `riot-rank`. Déploiement auto via GitHub Action sur push.
+- L'app desktop (`Logiciel-Assistant-LOL`) consomme aussi les Edge Functions
+  via `WyrmBackendService.cs` — clé Riot **plus du tout** côté client.
+- Tournament API : non encore demandée.
+
+---
+
+## 💰 Modèle freemium (à activer quand Pricing sera réactivé)
+
+### Règle Riot Developer Agreement
+- ❌ **Interdit** : vendre l'accès à l'API (paywall absolu sans free tier).
+- ✅ **Autorisé** : freemium avec **un free tier qui fonctionne**. C'est le
+  modèle de **op.gg, blitz, u.gg, mobalytics** — tous ont des plans payants
+  avec des quotas sur de la data Riot.
+
+### Récap du modèle prévu
+
+|                          | FREE | STANDARD | PREMIUM |
+|--------------------------|------|----------|---------|
+| To-do list               |   3  |    9     |    ∞    |
+| Jungle paths             |   3  |    9     |    ∞    |
+| Build items              |   3  |    9     |    ∞    |
+| Workshop builds (semaine)|   3  |    9     |    ∞    |
+| Workshop paths (semaine) |   3  |    9     |    ∞    |
+| Match Up (semaine)       |   3  |    6     |    ∞    |
+| Post Game (semaine)      |   3  |    9     |    ∞    |
+| Stats                    |   ∞  |    ∞     |    ∞    |
+| Champions                |   ∞  |    ∞     |    ∞    |
+| Cosmétique profil        |  —   |    ✓     |    ✓    |
+| Badge supporter          |  —   |    —     |    ✓    |
+| Accès anticipé features  |  —   |    —     |    ✓    |
+
+Stats et Champions sont **toujours illimités** : ces écrans sont l'argument
+principal pour amener l'utilisateur sur le site (SEO + valeur de découverte),
+les paywaller cassera plus de chose que ça ne rapportera.
+
+### Enforcement (à coder le moment venu)
+
+À prévoir côté DB Supabase :
+- Table `usage_counters` (`user_id`, `feature`, `period_start`, `count`)
+- Fonction côté backend `canAccess(userId, feature)` qui :
+  1. Lit le `tier` actuel de l'user dans `profiles`
+  2. Récupère le quota associé au tier pour cette feature
+  3. Lit le compteur de la période en cours (`period_start` semaine ou mois)
+  4. Retourne `{ allowed: boolean, remaining: number, resetsAt: timestamp }`
+- **Reset hebdomadaire** : soit cron Supabase qui purge les compteurs
+  expirés, soit check lazy au moment de chaque appel (plus simple).
+- Côté UI : afficher le compteur restant ("Il te reste 2/3 analyses cette
+  semaine") + paywall popup quand atteint zero.
+
+Pas urgent — la section Pricing est actuellement masquée sur la vitrine.
+Quand on la réactivera, on cadrera l'enforcement.
