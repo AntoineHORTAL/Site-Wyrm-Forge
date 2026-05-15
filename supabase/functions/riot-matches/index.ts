@@ -47,40 +47,42 @@ Deno.serve(async (req) => {
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Non authentifié.' }, 401)
 
-    // 2. Params (nettoyés des caractères invisibles que certains clients injectent)
+    // 2. Params : on accepte soit (gameName+tagLine), soit (puuid) directement.
+    //    Le 2e mode évite un appel account-v1 quand on a déjà le puuid en cache.
     const url = new URL(req.url)
+    const puuidParam  = url.searchParams.get('puuid')
     const gameNameRaw = url.searchParams.get('gameName')
     const tagLineRaw  = url.searchParams.get('tagLine')
     const platform    = url.searchParams.get('platform') ?? 'euw1'
     const count       = Math.min(Number(url.searchParams.get('count') ?? '5'), 20)
     const start       = Math.max(Number(url.searchParams.get('start') ?? '0'), 0)
 
-    if (!gameNameRaw || !tagLineRaw) {
-      return jsonResponse({ error: 'gameName et tagLine requis.' }, 400)
+    if (!puuidParam && (!gameNameRaw || !tagLineRaw)) {
+      return jsonResponse({ error: 'puuid OU (gameName + tagLine) requis.' }, 400)
     }
-    const gameName = sanitize(gameNameRaw)
-    const tagLine  = sanitize(tagLineRaw)
 
     const apiKey  = requireSecret('RIOT_API_KEY')
     const routing = ROUTING[platform] ?? 'europe'
     const headers = { 'X-Riot-Token': apiKey }
 
-    // 3. Compte → puuid
-    const acctUrl = `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
-    console.log('[riot-matches] Account lookup', { gameName, tagLine, platform, routing, url: acctUrl })
-
-    const acctRes = await fetch(acctUrl, { headers })
-    console.log('[riot-matches] Account response', { status: acctRes.status })
-
-    if (!acctRes.ok) {
-      const body = await acctRes.text()
-      console.log('[riot-matches] Account error body', body)
-      if (acctRes.status === 404) {
-        return jsonResponse({ error: 'Invocateur introuvable. Vérifie ton Riot ID.' }, 404)
+    // 3. Résolution du puuid : soit direct, soit via account-v1
+    let puuid: string
+    if (puuidParam) {
+      puuid = sanitize(puuidParam)
+    } else {
+      const gameName = sanitize(gameNameRaw!)
+      const tagLine  = sanitize(tagLineRaw!)
+      const acctUrl  = `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+      const acctRes  = await fetch(acctUrl, { headers })
+      if (!acctRes.ok) {
+        if (acctRes.status === 404) {
+          return jsonResponse({ error: 'Invocateur introuvable. Vérifie ton Riot ID.' }, 404)
+        }
+        return jsonResponse({ error: `Riot API ${acctRes.status}` }, acctRes.status)
       }
-      return jsonResponse({ error: `Riot API ${acctRes.status}`, detail: body }, acctRes.status)
+      const acct = await acctRes.json()
+      puuid = acct.puuid
     }
-    const { puuid } = await acctRes.json()
 
     // 4. IDs des derniers matchs
     const idsRes = await fetch(

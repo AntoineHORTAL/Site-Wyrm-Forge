@@ -99,8 +99,18 @@ Deno.serve(async (req) => {
       ts: number; creatorId: number; teamId: number;
       wardType: string; action: 'PLACED' | 'KILLED'; position?: Pos
     }
+    // Events macro (tours, inhibs, drakes, baron, héraut, voidgrubs, atakhan, game end)
+    // Utilisés notamment par l'app desktop pour la timeline visuelle post-game.
+    type TimelineEvent = {
+      ts: number; type: string; subType?: string
+      killerId?: number; teamId?: number
+      laneType?: string; towerType?: string; buildingType?: string
+      monsterType?: string; monsterSubType?: string
+      winningTeam?: number
+    }
     const kills: KillEvent[] = []
     const wards: WardEvent[] = []
+    const events: TimelineEvent[] = []
 
     // Helper : récupère la position d'un participant au timestamp ts (frame la plus proche AVANT ts).
     // Utilisé pour les WARD_PLACED qui n'ont pas de position dans le payload Riot.
@@ -185,6 +195,33 @@ Deno.serve(async (req) => {
               ts: ev.timestamp ?? 0, creatorId: ev.killerId, teamId,
               wardType: ev.wardType ?? 'UNKNOWN', action: 'KILLED',
               position: pos,
+            })
+          }
+          // Events macro pour timeline post-game (app desktop) : tours, inhibs,
+          // drakes (typés), barons, hérauts, voidgrubs, atakhan, fin de partie.
+          if (ev.type === 'BUILDING_KILL') {
+            events.push({
+              ts: ev.timestamp ?? 0, type: 'BUILDING_KILL',
+              killerId: ev.killerId ?? 0,
+              teamId:   ev.teamId   ?? 0,
+              laneType:     ev.laneType,
+              towerType:    ev.towerType,
+              buildingType: ev.buildingType,
+            })
+          }
+          if (ev.type === 'ELITE_MONSTER_KILL') {
+            events.push({
+              ts: ev.timestamp ?? 0, type: 'ELITE_MONSTER_KILL',
+              killerId: ev.killerId ?? 0,
+              teamId:   ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0,
+              monsterType:    ev.monsterType,
+              monsterSubType: ev.monsterSubType,
+            })
+          }
+          if (ev.type === 'GAME_END') {
+            events.push({
+              ts: ev.timestamp ?? 0, type: 'GAME_END',
+              winningTeam: ev.winningTeam ?? 0,
             })
           }
         })
@@ -297,6 +334,7 @@ Deno.serve(async (req) => {
       timeline:      timelineFrames,
       kills,
       wards,
+      events,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur inconnue'

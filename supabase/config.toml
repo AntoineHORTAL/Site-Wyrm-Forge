@@ -13,3 +13,7 @@ verify_jwt = true
 [functions.riot-match-detail]
 # Auth requise — détail complet d'un match (10 joueurs, items, runes).
 verify_jwt = true
+
+[functions.riot-rank]
+# Auth requise — rang Solo/Duo et Flex d'un joueur.
+verify_jwt = true
