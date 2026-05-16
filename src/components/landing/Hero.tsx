@@ -2,7 +2,7 @@
 
 import { useTheme } from '@/components/providers/ThemeProvider'
 
-export default function Hero({ onLogin }: { onLogin: () => void }) {
+export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
   const { theme } = useTheme()
 
   const scrollTo = (id: string) => {
@@ -68,12 +68,19 @@ export default function Hero({ onLogin }: { onLogin: () => void }) {
         </p>
 
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button className="wf-btn-primary" onClick={onLogin}>
+          {/* Téléchargement direct du .exe, pas de connexion requise. L'URL 'latest'
+              de GitHub redirige automatiquement vers la dernière release publiée. */}
+          <a
+            href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+            className="wf-btn-primary"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            download
+          >
             Télécharger pour Windows
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14m0 0l-6-6m6 6l6-6" />
             </svg>
-          </button>
+          </a>
           <button className="wf-btn-secondary" onClick={() => scrollTo('features')}>
             Voir les fonctionnalités
           </button>

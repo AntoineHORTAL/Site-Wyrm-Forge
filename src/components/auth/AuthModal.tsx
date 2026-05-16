@@ -22,6 +22,44 @@ const EyeIcon = ({ open }: { open: boolean }) => open ? (
   </svg>
 )
 
+// ────────────────────────────────────────────────────────────────────────────────
+// PasswordField : input de mot de passe avec œil pour show/hide.
+// ⚠️ DOIT être défini AU TOP LEVEL (pas dans le composant parent), sinon React
+// le re-crée à chaque render → le focus est perdu à chaque caractère tapé.
+// Les styles sont passés en props pour rester sensibles au thème du parent.
+// ────────────────────────────────────────────────────────────────────────────────
+function PasswordField({
+  value, onChange, show, onToggle, placeholder, autoComplete, hasError,
+  inputBase, eyeBtn,
+}: {
+  value: string; onChange: (v: string) => void
+  show: boolean; onToggle: () => void
+  placeholder: string; autoComplete: string; hasError?: boolean
+  inputBase: React.CSSProperties
+  eyeBtn: React.CSSProperties
+}) {
+  return (
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      <input
+        type={show ? 'text' : 'password'}
+        style={{
+          ...inputBase,
+          paddingRight: 44,
+          borderColor: hasError ? '#E24B4A' : inputBase.borderColor,
+        }}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        required
+        autoComplete={autoComplete}
+      />
+      <button type="button" onClick={onToggle} style={eyeBtn} tabIndex={-1}>
+        <EyeIcon open={show} />
+      </button>
+    </div>
+  )
+}
+
 export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
@@ -117,33 +155,6 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
     color: 'var(--text-dim)', padding: 4, display: 'flex', alignItems: 'center',
     transition: 'color 0.15s',
   }
-
-  const PasswordField = ({
-    value, onChange, show, onToggle, placeholder, autoComplete, hasError,
-  }: {
-    value: string; onChange: (v: string) => void
-    show: boolean; onToggle: () => void
-    placeholder: string; autoComplete: string; hasError?: boolean
-  }) => (
-    <div style={{ position: 'relative', marginBottom: 12 }}>
-      <input
-        type={show ? 'text' : 'password'}
-        style={{
-          ...inputBase,
-          paddingRight: 44,
-          borderColor: hasError ? '#E24B4A' : inputBase.borderColor,
-        }}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        required
-        autoComplete={autoComplete}
-      />
-      <button type="button" onClick={onToggle} style={eyeBtn} tabIndex={-1}>
-        <EyeIcon open={show} />
-      </button>
-    </div>
-  )
 
   return (
     <div
@@ -285,6 +296,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   show={showPassword} onToggle={() => setShowPassword(v => !v)}
                   placeholder={mode === 'signup' ? 'Min. 6 caractères' : '••••••••'}
                   autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  inputBase={inputBase} eyeBtn={eyeBtn}
                 />
               </>
             )}
@@ -299,6 +311,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   placeholder="••••••••"
                   autoComplete="new-password"
                   hasError={!!(confirmPassword && confirmPassword !== password)}
+                  inputBase={inputBase} eyeBtn={eyeBtn}
                 />
               </>
             )}
