@@ -125,13 +125,18 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               <a onClick={() => scrollTo('features')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Fonctionnalités</a>
               <a onClick={() => scrollTo('pricing')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Tarifs</a>
               <a onClick={onLogin} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
-              <button onClick={onLogin} style={{
-                background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
-                color: c ? 'white' : '#09090B',
-                padding: c ? '8px 18px' : '7px 14px',
-                borderRadius: 8, border: 'none',
-                fontSize: c ? 14 : 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              }}>Télécharger</button>
+              <a
+                href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+                download
+                style={{
+                  background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
+                  color: c ? 'white' : '#09090B',
+                  padding: c ? '8px 18px' : '7px 14px',
+                  borderRadius: 8, border: 'none',
+                  fontSize: c ? 14 : 13, fontWeight: 500, cursor: 'pointer',
+                  textDecoration: 'none', display: 'inline-block',
+                }}
+              >Télécharger</a>
             </>
           ) : (
             <div ref={dropdownRef} style={{ position: 'relative' }}>
@@ -324,14 +329,27 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               </div>
 
               {mode === 'visitor' && (
-                <div style={{ padding: '0 16px 16px' }}>
+                <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <a
+                    href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+                    download
+                    onClick={() => setDrawerOpen(false)}
+                    style={{
+                      width: '100%', padding: '13px',
+                      background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
+                      color: c ? 'white' : '#09090B',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                      textDecoration: 'none', textAlign: 'center', display: 'block',
+                    }}
+                  >Télécharger</a>
                   <button onClick={() => { setDrawerOpen(false); onLogin?.() }} style={{
-                    width: '100%', padding: '13px',
-                    background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
-                    color: c ? 'white' : '#09090B',
-                    border: 'none', borderRadius: 8,
-                    fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                  }}>Télécharger</button>
+                    width: '100%', padding: '11px',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    border: `1px solid ${c ? 'rgba(186,117,23,0.3)' : '#3F3F46'}`, borderRadius: 8,
+                    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>Connexion / Inscription</button>
                 </div>
               )}
 
