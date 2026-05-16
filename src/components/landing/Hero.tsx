@@ -68,10 +68,11 @@ export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
         </p>
 
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-          {/* Téléchargement direct du .exe, pas de connexion requise. L'URL 'latest'
-              de GitHub redirige automatiquement vers la dernière release publiée. */}
+          {/* Téléchargement direct du .exe depuis Supabase Storage (bucket public).
+              Pour mettre à jour : remplacer le fichier WyrmForge.exe dans le bucket
+              'downloads' — l'URL ne change jamais. */}
           <a
-            href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+            href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
             className="wf-btn-primary"
             style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}
             download

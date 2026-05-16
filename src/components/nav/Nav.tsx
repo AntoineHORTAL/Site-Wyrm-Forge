@@ -126,7 +126,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               <a onClick={() => scrollTo('pricing')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Tarifs</a>
               <a onClick={onLogin} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
               <a
-                href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+                href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
                 download
                 style={{
                   background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
@@ -331,7 +331,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               {mode === 'visitor' && (
                 <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <a
-                    href="https://github.com/AdminWyrmForge/wyrm-forge/releases/latest/download/WyrmForge.exe"
+                    href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
                     download
                     onClick={() => setDrawerOpen(false)}
                     style={{
