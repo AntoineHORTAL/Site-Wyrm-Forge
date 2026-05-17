@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { tabGroups } from '@/components/dashboard/Dashboard'
 import type { DashTab } from '@/app/page'
@@ -58,6 +58,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   const [drawerOpen, setDrawerOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const pathname = usePathname()
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -107,8 +108,17 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
         position: 'sticky', top: 0, zIndex: 50, background: 'var(--nav-bg)',
         borderBottom: c ? '1px solid rgba(186,117,23,0.2)' : '1px solid #1F1F23',
       }}>
-        {/* Logo */}
-        <div onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setDrawerOpen(false) }}
+        {/* Logo : clic → page principale.
+            - Hors de '/' (champion, profil, match, etc.) : navigation vers /
+            - Sur '/' connecté : switch sur l'onglet Accueil
+            - Sur '/' visiteur : scroll en haut de la vitrine */}
+        <div
+          onClick={() => {
+            setDrawerOpen(false)
+            if (pathname !== '/') { window.location.assign('/'); return }
+            if (mode === 'user' && onTabChange) onTabChange('accueil' as DashTab)
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }}
           style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
           <Image src="/wyrm-logo.ico" alt="Wyrm Forge" width={38} height={38}
             style={{ borderRadius: 8, objectFit: 'cover' }} />
