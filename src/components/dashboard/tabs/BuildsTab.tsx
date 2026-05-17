@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import SkillOrderEditor, { type SkillOrder } from '@/components/builder/SkillOrderEditor'
+import RunesEditor, { type RunesPage } from '@/components/builder/RunesEditor'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface DDItem {
@@ -52,8 +54,15 @@ interface SavedBuild {
   champ: DDChamp | null
   blocks: BuildBlock[]
   totalGold: number
+  // Composants additionnels — null si non configuré pour ce build
+  runes?: RunesPage | null
+  skillOrder?: SkillOrder | null
+  // Composants actifs : ['items', 'runes', 'skills'] (sous-ensemble)
+  components?: BuilderComponent[]
   createdAt: string   // ISO date string
 }
+
+export type BuilderComponent = 'items' | 'runes' | 'skills'
 
 // ─── Filter categories ─────────────────────────────────────────────────────────
 const FILTERS = [
@@ -151,6 +160,11 @@ export default function BuildsTab() {
     { id: uid(), name: 'Items cœur',      items: [] },
   ])
 
+  // Composants actifs du build en cours d'édition + leurs données
+  const [activeComponents, setActiveComponents] = useState<BuilderComponent[]>(['items'])
+  const [runes, setRunes] = useState<RunesPage>({ primary: null, secondary: null, shards: null })
+  const [skillOrder, setSkillOrder] = useState<SkillOrder>({ levels: [], priority: [] })
+
   // Drag
   const [dragItem, setDragItem]         = useState<DDItem | null>(null)
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null)
@@ -241,6 +255,9 @@ export default function BuildsTab() {
           champ:     row.champ ?? null,
           totalGold: row.total_gold,
           createdAt: row.created_at,
+          runes:      row.runes ?? null,
+          skillOrder: row.skill_order ?? null,
+          components: (row.components as BuilderComponent[]) ?? ['items'],
           blocks: (row.blocks ?? []).map((sb: any) => ({
             id:   sb.id ?? uid(),
             name: sb.name ?? 'Bloc',
@@ -367,6 +384,9 @@ export default function BuildsTab() {
       { id: uid(), name: 'Items de départ', items: [] },
       { id: uid(), name: 'Items cœur',      items: [] },
     ])
+    setActiveComponents(['items'])
+    setRunes({ primary: null, secondary: null, shards: null })
+    setSkillOrder({ levels: [], priority: [] })
     setSelectedItem(null)
     setView('editor')
   }
@@ -376,6 +396,9 @@ export default function BuildsTab() {
     setSelectedChamp(build.champ)
     setEditingBuildId(build.id)
     setBlocks(build.blocks)
+    setActiveComponents(build.components ?? ['items'])
+    setRunes(build.runes ?? { primary: null, secondary: null, shards: null })
+    setSkillOrder(build.skillOrder ?? { levels: [], priority: [] })
     setSelectedItem(null)
     setView('editor')
   }
@@ -406,6 +429,11 @@ export default function BuildsTab() {
         : null,
       blocks:     slimBlocks,
       total_gold: gold,
+      // Composants additionnels : on stocke null si pas dans la liste active
+      // pour pouvoir distinguer 'pas configuré' de 'configuré vide'.
+      runes:       activeComponents.includes('runes')  ? runes      : null,
+      skill_order: activeComponents.includes('skills') ? skillOrder : null,
+      components:  activeComponents,
     }
 
     if (editingBuildId) {
@@ -417,7 +445,13 @@ export default function BuildsTab() {
       // En mémoire : conserver les blocks complets (pas slim)
       setSavedBuilds(prev => prev.map(b =>
         b.id === editingBuildId
-          ? { ...b, name: payload.name, champ: selectedChamp, blocks, totalGold: gold }
+          ? {
+              ...b,
+              name: payload.name, champ: selectedChamp, blocks, totalGold: gold,
+              runes: payload.runes,
+              skillOrder: payload.skill_order,
+              components: payload.components,
+            }
           : b
       ))
     } else {
@@ -434,6 +468,9 @@ export default function BuildsTab() {
           champ:     data.champ,
           blocks,          // blocks complets en mémoire
           totalGold:  data.total_gold,
+          runes:      payload.runes,
+          skillOrder: payload.skill_order,
+          components: payload.components,
           createdAt:  data.created_at,
         }, ...prev])
       }
@@ -570,6 +607,29 @@ export default function BuildsTab() {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
                       {build.champ?.name ?? 'Champion libre'} · {build.blocks.reduce((s, b) => s + b.items.reduce((ss, bi) => ss + bi.count, 0), 0)} items
+                    </div>
+                    {/* Badges de composition : ce que contient le build */}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                      {(build.components ?? ['items']).map(comp => {
+                        const meta: Record<string, { label: string; icon: string; color: string }> = {
+                          items:  { label: 'Items',  icon: '🛡️', color: '#5DCAA5' },
+                          runes:  { label: 'Runes',  icon: '🔮', color: '#7F77DD' },
+                          skills: { label: 'Skills', icon: '⚡', color: '#EF9F27' },
+                        }
+                        const m = meta[comp]
+                        if (!m) return null
+                        return (
+                          <span key={comp} style={{
+                            fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+                            padding: '1px 6px', borderRadius: 3,
+                            background: `${m.color}22`,
+                            color: m.color,
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                          }}>
+                            {m.icon} {m.label.toUpperCase()}
+                          </span>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -732,6 +792,46 @@ export default function BuildsTab() {
           fontWeight: 600, cursor: savingBuild ? 'default' : 'pointer', fontFamily: 'inherit',
           transition: 'background 0.15s',
         }}>{savingBuild ? 'Sauvegarde…' : 'Sauver'}</button>
+      </div>
+
+      {/* ══ Toggles composants : Items / Runes / Skills ══════════════════════ */}
+      <div style={{
+        display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+        padding: '10px 14px', marginBottom: 14, borderRadius: 6,
+        background: bg, border: `1px solid ${border}`, fontSize: 12,
+      }}>
+        <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginRight: 4 }}>
+          Composants :
+        </span>
+        {([
+          { key: 'items',  label: 'Items',           icon: '🛡️' },
+          { key: 'runes',  label: 'Runes',           icon: '🔮' },
+          { key: 'skills', label: 'Ordre de sorts',  icon: '⚡' },
+        ] as { key: BuilderComponent; label: string; icon: string }[]).map(comp => {
+          const on = activeComponents.includes(comp.key)
+          return (
+            <button key={comp.key}
+              onClick={() => {
+                if (on) setActiveComponents(activeComponents.filter(c => c !== comp.key))
+                else    setActiveComponents([...activeComponents, comp.key])
+              }}
+              style={{
+                padding: '5px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                background: on ? 'rgba(127,119,221,0.18)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${on ? '#7F77DD' : 'rgba(255,255,255,0.08)'}`,
+                color: on ? '#F5F2FA' : 'var(--text-muted)',
+                fontWeight: on ? 600 : 400, display: 'flex', alignItems: 'center', gap: 5,
+                fontFamily: 'inherit',
+              }}>
+              <span>{comp.icon}</span>
+              {comp.label}
+              {on && <span style={{ color: '#5DCAA5', fontSize: 11 }}>✓</span>}
+            </button>
+          )
+        })}
+        <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
+          Coche les composants à inclure dans ton build
+        </span>
       </div>
 
       {/* ══ Main grid ═══════════════════════════════════════════════════════ */}
@@ -1374,6 +1474,20 @@ export default function BuildsTab() {
           </div>
         )
       })()}
+
+      {/* ══ Section RUNES (si activée) ═══════════════════════════════════════ */}
+      {activeComponents.includes('runes') && (
+        <div style={{ marginTop: 18 }}>
+          <RunesEditor value={runes} onChange={setRunes} />
+        </div>
+      )}
+
+      {/* ══ Section SKILL ORDER (si activé) ══════════════════════════════════ */}
+      {activeComponents.includes('skills') && (
+        <div style={{ marginTop: 18 }}>
+          <SkillOrderEditor value={skillOrder} onChange={setSkillOrder} />
+        </div>
+      )}
     </div>
   )
 }

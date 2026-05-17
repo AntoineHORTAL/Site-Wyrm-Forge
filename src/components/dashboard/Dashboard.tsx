@@ -63,7 +63,7 @@ export const tabGroups: TabGroup[] = [
     label: 'Personnalisation',
     tabs: [
       { id: 'jungle',  label: 'Jungle Path',   shortLabel: 'Jungle',  icon: <IconJungle /> },
-      { id: 'builds',  label: 'Builds Items',  shortLabel: 'Builds',  icon: <IconBuilds /> },
+      { id: 'builds',  label: 'Builder',  shortLabel: 'Builder',  icon: <IconBuilds /> },
     ],
   },
   {
@@ -98,7 +98,7 @@ const tabTitles: Record<DashTab, { title: string; subtitle: string }> = {
   stats:            { title: 'Stats',             subtitle: 'Analyse tes performances' },
   overlay:          { title: 'Overlay Workshop',  subtitle: 'Gère et importe tes overlays' },
   jungle:           { title: 'Jungle Path',       subtitle: 'Crée et partage tes jungle paths' },
-  builds:           { title: 'Builds Items',      subtitle: 'Construis et gère tes builds' },
+  builds:           { title: 'Builder',           subtitle: 'Construis tes builds : items, runes, ordre de sorts' },
   'workshop-builds':{ title: 'Workshop Builds',   subtitle: 'Builds de la communauté' },
   'workshop-jungle':{ title: 'Workshop Jungle',   subtitle: 'Jungle paths de la communauté' },
   matchup:          { title: 'Match Up',          subtitle: 'Analyse tes matchups en temps réel' },
