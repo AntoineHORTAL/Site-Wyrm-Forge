@@ -66,42 +66,42 @@ export type BuilderComponent = 'items' | 'runes' | 'skills'
 
 // ─── Filter categories ─────────────────────────────────────────────────────────
 const FILTERS = [
-  { icon: '/Icons/Stats/Attack_damage.png',          label: 'AD',           tags: ['Damage'] },
-  { icon: '/Icons/Stats/Ability_power.png',          label: 'AP',           tags: ['SpellDamage'] },
-  { icon: '/Icons/Stats/Armor.png',                  label: 'Armure',       tags: ['Armor'] },
-  { icon: '/Icons/Stats/Magic_resistance.png',       label: 'Rés. mag.',    tags: ['SpellBlock'] },
-  { icon: '/Icons/Stats/Health.png',                 label: 'Vie',          tags: ['Health'] },
-  { icon: '/Icons/Stats/Armor_penetration.png',      label: 'Létalité',     tags: ['ArmorPenetration'] },
-  { icon: '/Icons/Stats/Magic_penetration.png',      label: 'Pén. mag.',    tags: ['MagicPenetration'] },
-  { icon: '/Icons/Stats/Attack_speed.png',           label: 'Vit. attq.',   tags: ['AttackSpeed'], scale: 1.5 },
-  { icon: '/Icons/Stats/Critical_strike_chance.png', label: 'Crit',         tags: ['CriticalStrike'] },
-  { icon: '/Icons/Stats/Life_steal.png',             label: 'Vol de vie',   tags: ['LifeSteal'] },
-  { icon: '/Icons/Stats/Omnivamp.png',               label: 'Omnivamp',     tags: ['SpellVamp'] },
-  { icon: '/Icons/Stats/Movement_speed.png',         label: 'Vit. dép.',    tags: ['NonbootsMovement'] },
-  { icon: '/Icons/Stats/Mana.png',                   label: 'Mana',         tags: ['Mana'] },
-  { icon: '/Icons/Stats/Health_regeneration.png',    label: 'Régén. PV',    tags: ['HealthRegen'] },
-  { icon: '/Icons/Stats/Mana_regeneration.png',      label: 'Régén. mana',  tags: ['ManaRegen'] },
-  { icon: '/Icons/Stats/Heal_and_shield_power.png',  label: 'Soins',        tags: ['Aura'] },
-  { icon: '/Icons/Stats/Tenacity.png',               label: 'Ténacité',     tags: ['Tenacity'] },
-  { icon: '/Icons/Stats/Adaptive_Force.png',         label: 'Adapt.',       tags: ['Damage', 'SpellDamage'] },
+  { icon: '/icons/Stats/Attack_damage.png',          label: 'AD',           tags: ['Damage'] },
+  { icon: '/icons/Stats/Ability_power.png',          label: 'AP',           tags: ['SpellDamage'] },
+  { icon: '/icons/Stats/Armor.png',                  label: 'Armure',       tags: ['Armor'] },
+  { icon: '/icons/Stats/Magic_resistance.png',       label: 'Rés. mag.',    tags: ['SpellBlock'] },
+  { icon: '/icons/Stats/Health.png',                 label: 'Vie',          tags: ['Health'] },
+  { icon: '/icons/Stats/Armor_penetration.png',      label: 'Létalité',     tags: ['ArmorPenetration'] },
+  { icon: '/icons/Stats/Magic_penetration.png',      label: 'Pén. mag.',    tags: ['MagicPenetration'] },
+  { icon: '/icons/Stats/Attack_speed.png',           label: 'Vit. attq.',   tags: ['AttackSpeed'], scale: 1.5 },
+  { icon: '/icons/Stats/Critical_strike_chance.png', label: 'Crit',         tags: ['CriticalStrike'] },
+  { icon: '/icons/Stats/Life_steal.png',             label: 'Vol de vie',   tags: ['LifeSteal'] },
+  { icon: '/icons/Stats/Omnivamp.png',               label: 'Omnivamp',     tags: ['SpellVamp'] },
+  { icon: '/icons/Stats/Movement_speed.png',         label: 'Vit. dép.',    tags: ['NonbootsMovement'] },
+  { icon: '/icons/Stats/Mana.png',                   label: 'Mana',         tags: ['Mana'] },
+  { icon: '/icons/Stats/Health_regeneration.png',    label: 'Régén. PV',    tags: ['HealthRegen'] },
+  { icon: '/icons/Stats/Mana_regeneration.png',      label: 'Régén. mana',  tags: ['ManaRegen'] },
+  { icon: '/icons/Stats/Heal_and_shield_power.png',  label: 'Soins',        tags: ['Aura'] },
+  { icon: '/icons/Stats/Tenacity.png',               label: 'Ténacité',     tags: ['Tenacity'] },
+  { icon: '/icons/Stats/Adaptive_Force.png',         label: 'Adapt.',       tags: ['Damage', 'SpellDamage'] },
 ]
 
 // ─── Stat display ──────────────────────────────────────────────────────────────
 const STATS: StatConfig[] = [
-  { key: 'FlatPhysicalDamageMod',   label: 'Dégâts physiques',  suffix: '',  icon: '/Icons/Stats/Attack_damage.png',         category: 'off' },
-  { key: 'FlatMagicDamageMod',      label: 'Puissance (AP)',     suffix: '',  icon: '/Icons/Stats/Ability_power.png',          category: 'off' },
-  { key: 'FlatCritChanceMod',       label: 'Coup critique',      suffix: '%', mult: 100, icon: '/Icons/Stats/Critical_strike_chance.png', category: 'off' },
-  { key: 'PercentAttackSpeedMod',   label: "Vitesse d'attaque",  suffix: '%', mult: 100, icon: '/Icons/Stats/Attack_speed.png', scale: 1.5, category: 'off' },
-  { key: 'PercentLifeStealMod',     label: 'Vol de vie',         suffix: '%', mult: 100, icon: '/Icons/Stats/Life_steal.png',             category: 'off' },
-  { key: 'FlatArmorPenetrationMod', label: 'Létalité',           suffix: '',  icon: '/Icons/Stats/Armor_penetration.png',      category: 'off' },
-  { key: 'FlatMagicPenetrationMod', label: 'Pén. magique',       suffix: '',  icon: '/Icons/Stats/Magic_penetration.png',      category: 'off' },
-  { key: 'FlatHPPoolMod',           label: 'Points de vie',      suffix: '',  icon: '/Icons/Stats/Health.png',                 category: 'def' },
-  { key: 'FlatArmorMod',            label: 'Armure',             suffix: '',  icon: '/Icons/Stats/Armor.png',                  category: 'def' },
-  { key: 'FlatSpellBlockMod',       label: 'Résistance mag.',    suffix: '',  icon: '/Icons/Stats/Magic_resistance.png',       category: 'def' },
-  { key: 'FlatHPRegenMod',          label: 'Régén. PV',          suffix: '',  icon: '/Icons/Stats/Health_regeneration.png',    category: 'def' },
-  { key: 'FlatMPPoolMod',           label: 'Mana',               suffix: '',  icon: '/Icons/Stats/Mana.png',                   category: 'util' },
-  { key: 'FlatMovementSpeedMod',    label: 'Vitesse dép.',       suffix: '',  icon: '/Icons/Stats/Movement_speed.png',         category: 'util' },
-  { key: 'PercentMovementSpeedMod', label: 'Vitesse dép. %',     suffix: '%', mult: 100, icon: '/Icons/Stats/Movement_speed.png', category: 'util' },
+  { key: 'FlatPhysicalDamageMod',   label: 'Dégâts physiques',  suffix: '',  icon: '/icons/Stats/Attack_damage.png',         category: 'off' },
+  { key: 'FlatMagicDamageMod',      label: 'Puissance (AP)',     suffix: '',  icon: '/icons/Stats/Ability_power.png',          category: 'off' },
+  { key: 'FlatCritChanceMod',       label: 'Coup critique',      suffix: '%', mult: 100, icon: '/icons/Stats/Critical_strike_chance.png', category: 'off' },
+  { key: 'PercentAttackSpeedMod',   label: "Vitesse d'attaque",  suffix: '%', mult: 100, icon: '/icons/Stats/Attack_speed.png', scale: 1.5, category: 'off' },
+  { key: 'PercentLifeStealMod',     label: 'Vol de vie',         suffix: '%', mult: 100, icon: '/icons/Stats/Life_steal.png',             category: 'off' },
+  { key: 'FlatArmorPenetrationMod', label: 'Létalité',           suffix: '',  icon: '/icons/Stats/Armor_penetration.png',      category: 'off' },
+  { key: 'FlatMagicPenetrationMod', label: 'Pén. magique',       suffix: '',  icon: '/icons/Stats/Magic_penetration.png',      category: 'off' },
+  { key: 'FlatHPPoolMod',           label: 'Points de vie',      suffix: '',  icon: '/icons/Stats/Health.png',                 category: 'def' },
+  { key: 'FlatArmorMod',            label: 'Armure',             suffix: '',  icon: '/icons/Stats/Armor.png',                  category: 'def' },
+  { key: 'FlatSpellBlockMod',       label: 'Résistance mag.',    suffix: '',  icon: '/icons/Stats/Magic_resistance.png',       category: 'def' },
+  { key: 'FlatHPRegenMod',          label: 'Régén. PV',          suffix: '',  icon: '/icons/Stats/Health_regeneration.png',    category: 'def' },
+  { key: 'FlatMPPoolMod',           label: 'Mana',               suffix: '',  icon: '/icons/Stats/Mana.png',                   category: 'util' },
+  { key: 'FlatMovementSpeedMod',    label: 'Vitesse dép.',       suffix: '',  icon: '/icons/Stats/Movement_speed.png',         category: 'util' },
+  { key: 'PercentMovementSpeedMod', label: 'Vitesse dép. %',     suffix: '%', mult: 100, icon: '/icons/Stats/Movement_speed.png', category: 'util' },
 ]
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -872,7 +872,7 @@ export default function BuildsTab() {
                     transition: 'background 0.15s, border-color 0.15s',
                   }}
                 >
-                  <img src="/Icons/Stats/Gold.png" alt="or"
+                  <img src="/icons/Stats/Gold.png" alt="or"
                     style={{ width: 14, height: 14, objectFit: 'contain',
                       filter: on ? 'none' : 'brightness(0.55)' }}
                   />

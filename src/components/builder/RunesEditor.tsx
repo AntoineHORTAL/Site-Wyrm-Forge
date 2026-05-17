@@ -15,7 +15,7 @@
  * Source des données : DDragon runesReforged.json (chargé à l'init).
  * Les stat shards sont hardcodés (Riot ne les expose pas en API).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
 
@@ -48,39 +48,51 @@ interface Props {
   onChange: (v: RunesPage) => void
 }
 
-// ── Stat shards (hardcodés — pas dans DDragon) ───────────────────────────────
-const SHARDS = {
-  // 3 lignes : Offense (0), Flex (1), Defense (2)
+// ── Stat shards (hardcodés — Riot ne les expose pas en API) ──────────────────
+// Setup actuel (Patch 14.x+) tel qu'affiché dans le client LoL :
+//   Offense  : Force adaptative / Vitesse d'attaque / Hâte de comp.
+//   Flex     : Force adaptative / Vitesse de déplacement / PV (scaling)
+//   Defense  : PV (flat) / Ténacité & Rés. ralent. / Résistance magique
+//
+// IMPORTANT : un même shard peut apparaître sur plusieurs lignes (ex: Force
+// adaptative dans Offense ET Flex). Les IDs sont les mêmes mais le contexte
+// row diffère.
+interface ShardDef { id: number; name: string; desc: string; iconKey: string }
+const SHARDS: { rows: ShardDef[][] } = {
   rows: [
     [
-      { id: 5008, name: 'Force adaptative', desc: '+9 Force adaptative' },
-      { id: 5005, name: 'Vitesse d\'attaque', desc: '+10 % vitesse d\'attaque' },
-      { id: 5007, name: 'Hâte de comp.', desc: '+8 hâte de compétence' },
+      { id: 5008, name: 'Force adaptative',  desc: '+9 Force adaptative',           iconKey: 'AdaptiveForce' },
+      { id: 5005, name: 'Vitesse d\'attaque', desc: '+10 % vitesse d\'attaque',     iconKey: 'AttackSpeed' },
+      { id: 5007, name: 'Hâte de comp.',     desc: '+8 hâte de compétence',         iconKey: 'CDRScaling' },
     ],
     [
-      { id: 5008, name: 'Force adaptative', desc: '+9 Force adaptative' },
-      { id: 5002, name: 'Armure', desc: '+6 armure' },
-      { id: 5003, name: 'Résistance magique', desc: '+8 résistance magique' },
+      { id: 5008, name: 'Force adaptative',  desc: '+9 Force adaptative',           iconKey: 'AdaptiveForce' },
+      { id: 5010, name: 'Vit. de déplacement', desc: '+2 % vitesse de déplacement', iconKey: 'MovementSpeed' },
+      { id: 5001, name: 'PV (selon niveau)', desc: '+10-180 PV (selon niveau)',     iconKey: 'HealthScaling' },
     ],
     [
-      { id: 5001, name: 'PV (scaling)', desc: '+10-180 PV (selon niveau)' },
-      { id: 5002, name: 'Armure', desc: '+6 armure' },
-      { id: 5003, name: 'Résistance magique', desc: '+8 résistance magique' },
+      { id: 5011, name: 'PV',                desc: '+65 PV',                        iconKey: 'HealthPlus' },
+      { id: 5013, name: 'Tén. & Rés. ralent.', desc: '+10 % tén. et rés. aux ralent.', iconKey: 'Tenacity' },
+      { id: 5003, name: 'Résistance magique', desc: '+8 résistance magique',         iconKey: 'MagicRes' },
     ],
   ],
 }
 
-// URLs des icônes de shards (asset Community Dragon)
-function shardIconUrl(id: number): string {
-  const map: Record<number, string> = {
-    5008: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodsadaptiveforceicon.png',
-    5005: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodsattackspeedicon.png',
-    5007: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodscdrscalingicon.png',
-    5002: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodsarmoricon.png',
-    5003: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodsmagicresicon.png',
-    5001: 'https://raw.communitydragon.org/latest/game/assets/perks/statmods/statmodshealthscalingicon.png',
+// URLs des icônes de shards (Community Dragon raw assets)
+function shardIconUrl(iconKey: string): string {
+  const base = 'https://raw.communitydragon.org/latest/game/assets/perks/statmods'
+  const map: Record<string, string> = {
+    AdaptiveForce: `${base}/statmodsadaptiveforceicon.png`,
+    AttackSpeed:   `${base}/statmodsattackspeedicon.png`,
+    CDRScaling:    `${base}/statmodscdrscalingicon.png`,
+    MovementSpeed: `${base}/statmodsmovementspeedicon.png`,
+    HealthScaling: `${base}/statmodshealthscalingicon.png`,
+    HealthPlus:    `${base}/statmodshealthplusicon.png`,
+    Tenacity:      `${base}/statmodstenacityicon.png`,
+    MagicRes:      `${base}/statmodsmagicresicon.png`,
+    Armor:         `${base}/statmodsarmoricon.png`,
   }
-  return map[id] || ''
+  return map[iconKey] || ''
 }
 
 // ── Composant ────────────────────────────────────────────────────────────────
@@ -289,9 +301,9 @@ export default function RunesEditor({ value, onChange }: Props) {
                   {SHARDS.rows[rowIdx].map(shard => {
                     const selected = value.shards?.[rowIdx] === shard.id
                     return (
-                      <button key={`${shard.id}-${rowIdx}`}
+                      <button key={`${shard.iconKey}-${rowIdx}`}
                         onClick={() => selectShard(rowIdx as 0|1|2, shard.id)}
-                        title={shard.desc}
+                        title={`${shard.name} — ${shard.desc}`}
                         style={{
                           width: 30, height: 30, borderRadius: '50%',
                           background: selected ? 'rgba(239,159,39,0.18)' : 'rgba(255,255,255,0.04)',
@@ -299,7 +311,7 @@ export default function RunesEditor({ value, onChange }: Props) {
                           cursor: 'pointer', padding: 0,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                        <img src={shardIconUrl(shard.id)} alt={shard.name}
+                        <img src={shardIconUrl(shard.iconKey)} alt={shard.name}
                           style={{ width: 22, height: 22 }}
                           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                       </button>
@@ -385,12 +397,16 @@ function RuneRow({ runes, selectedId, onSelect, size = 36, disabled }: {
   )
 }
 
-// Bouton rune avec tooltip détaillé au hover (nom + description longue de DDragon)
+// Bouton rune avec tooltip détaillé au hover (nom + description longue de DDragon).
+// Le tooltip est positionné en `fixed` à partir du bounding rect du bouton, et
+// clampé aux bords du viewport pour ne jamais déborder.
 function RuneButton({ rune, active, disabled, onClick, size }: {
   rune: Rune; active: boolean; disabled: boolean
   onClick: () => void; size: number
 }) {
   const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ left: number; top: number; placeBelow: boolean } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   // Nettoie le HTML que Riot met dans les descriptions (balises Color, etc.)
   const cleanHtml = (s?: string) => (s ?? '')
@@ -398,13 +414,36 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
     .replace(/<[^>]+>/g, '')
     .trim()
 
+  function onEnter() {
+    setHover(true)
+    if (!btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    const TOOLTIP_W = 320
+    const TOOLTIP_H = 180         // estimation grossière pour décider haut/bas
+    const MARGIN = 8
+
+    // Position horizontale : centré sur la rune, clampé aux bords
+    let left = rect.left + rect.width / 2 - TOOLTIP_W / 2
+    if (left < MARGIN) left = MARGIN
+    if (left + TOOLTIP_W > window.innerWidth - MARGIN) {
+      left = window.innerWidth - TOOLTIP_W - MARGIN
+    }
+
+    // Vertical : au-dessus si possible, sinon en dessous
+    const placeBelow = rect.top < TOOLTIP_H + MARGIN
+    const top = placeBelow ? rect.bottom + MARGIN : rect.top - MARGIN
+
+    setPos({ left, top, placeBelow })
+  }
+  function onLeave() {
+    setHover(false)
+    setPos(null)
+  }
+
   return (
-    <span
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ position: 'relative', display: 'inline-block' }}
-    >
-      <button onClick={onClick} disabled={disabled}
+    <>
+      <button ref={btnRef} onClick={onClick} disabled={disabled}
+        onMouseEnter={onEnter} onMouseLeave={onLeave}
         style={{
           width: size, height: size, borderRadius: '50%',
           background: active ? 'rgba(239,159,39,0.18)' : 'rgba(255,255,255,0.04)',
@@ -417,17 +456,19 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
           style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       </button>
 
-      {hover && (
+      {hover && pos && (
         <div role="tooltip" style={{
-          position: 'absolute',
-          bottom: `calc(100% + 8px)`, left: '50%', transform: 'translateX(-50%)',
+          position: 'fixed',
+          left: pos.left,
+          top: pos.placeBelow ? pos.top : undefined,
+          bottom: pos.placeBelow ? undefined : window.innerHeight - pos.top,
           width: 'max-content', maxWidth: 320,
           padding: '10px 12px', borderRadius: 6,
           background: 'rgba(8,5,18,0.97)',
           border: '1px solid rgba(239,159,39,0.4)',
           color: '#F5F2FA', fontSize: 11, lineHeight: 1.5,
           boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-          zIndex: 100, pointerEvents: 'none',
+          zIndex: 1000, pointerEvents: 'none',
         }}>
           <div style={{ fontWeight: 700, color: '#EF9F27', fontSize: 12, marginBottom: 5 }}>
             {rune.name}
@@ -437,6 +478,6 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
           </div>
         </div>
       )}
-    </span>
+    </>
   )
 }
