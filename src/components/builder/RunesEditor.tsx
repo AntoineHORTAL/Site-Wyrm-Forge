@@ -33,9 +33,14 @@ export interface RunesPage {
   shards: [number, number, number] | null  // 3 shards (Offense / Flex / Defense)
 }
 
+interface Rune {
+  id: number; key: string; icon: string; name: string
+  shortDesc?: string; longDesc?: string
+}
+
 interface RuneTree {
   id: number; key: string; icon: string; name: string
-  slots: { runes: { id: number; key: string; icon: string; name: string }[] }[]
+  slots: { runes: Rune[] }[]
 }
 
 interface Props {
@@ -359,7 +364,7 @@ function TreePicker({ trees, selectedId, onSelect }: {
 }
 
 function RuneRow({ runes, selectedId, onSelect, size = 36, disabled }: {
-  runes: { id: number; icon: string; name: string }[]
+  runes: Rune[]
   selectedId?: number
   onSelect: (id: number) => void
   size?: number
@@ -367,24 +372,71 @@ function RuneRow({ runes, selectedId, onSelect, size = 36, disabled }: {
 }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-      {runes.map(rune => {
-        const active = selectedId === rune.id
-        return (
-          <button key={rune.id} onClick={() => onSelect(rune.id)}
-            disabled={disabled && !active}
-            title={rune.name}
-            style={{
-              width: size, height: size, borderRadius: '50%',
-              background: active ? 'rgba(239,159,39,0.18)' : 'rgba(255,255,255,0.04)',
-              border: `2px solid ${active ? '#EF9F27' : 'rgba(255,255,255,0.1)'}`,
-              cursor: disabled && !active ? 'not-allowed' : 'pointer',
-              padding: 3, opacity: disabled && !active ? 0.3 : 1,
-            }}>
-            <img src={`${DDN}/cdn/img/${rune.icon}`} alt={rune.name}
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </button>
-        )
-      })}
+      {runes.map(rune => (
+        <RuneButton key={rune.id}
+          rune={rune}
+          active={selectedId === rune.id}
+          disabled={!!(disabled && selectedId !== rune.id)}
+          onClick={() => onSelect(rune.id)}
+          size={size}
+        />
+      ))}
     </div>
+  )
+}
+
+// Bouton rune avec tooltip détaillé au hover (nom + description longue de DDragon)
+function RuneButton({ rune, active, disabled, onClick, size }: {
+  rune: Rune; active: boolean; disabled: boolean
+  onClick: () => void; size: number
+}) {
+  const [hover, setHover] = useState(false)
+
+  // Nettoie le HTML que Riot met dans les descriptions (balises Color, etc.)
+  const cleanHtml = (s?: string) => (s ?? '')
+    .replace(/<br\s*\/?>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .trim()
+
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', display: 'inline-block' }}
+    >
+      <button onClick={onClick} disabled={disabled}
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          background: active ? 'rgba(239,159,39,0.18)' : 'rgba(255,255,255,0.04)',
+          border: `2px solid ${active ? '#EF9F27' : 'rgba(255,255,255,0.1)'}`,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          padding: 3, opacity: disabled ? 0.3 : 1, transition: 'transform 100ms',
+          transform: hover && !disabled ? 'scale(1.08)' : 'scale(1)',
+        }}>
+        <img src={`${DDN}/cdn/img/${rune.icon}`} alt={rune.name}
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      </button>
+
+      {hover && (
+        <div role="tooltip" style={{
+          position: 'absolute',
+          bottom: `calc(100% + 8px)`, left: '50%', transform: 'translateX(-50%)',
+          width: 'max-content', maxWidth: 320,
+          padding: '10px 12px', borderRadius: 6,
+          background: 'rgba(8,5,18,0.97)',
+          border: '1px solid rgba(239,159,39,0.4)',
+          color: '#F5F2FA', fontSize: 11, lineHeight: 1.5,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          zIndex: 100, pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, color: '#EF9F27', fontSize: 12, marginBottom: 5 }}>
+            {rune.name}
+          </div>
+          <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>
+            {cleanHtml(rune.longDesc || rune.shortDesc) || 'Description indisponible'}
+          </div>
+        </div>
+      )}
+    </span>
   )
 }

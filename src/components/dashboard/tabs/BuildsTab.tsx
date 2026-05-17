@@ -696,9 +696,11 @@ export default function BuildsTab() {
       }}>
         {/* Retour */}
         <button onClick={() => setView('list')} style={{
-          padding: '5px 12px', background: 'transparent',
+          height: 32, padding: '0 12px', boxSizing: 'border-box',
+          background: 'transparent',
           border: `1px solid ${border}`, borderRadius: 4,
           color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'inline-flex', alignItems: 'center',
         }}>
           ← Mes builds
         </button>
@@ -708,7 +710,7 @@ export default function BuildsTab() {
           <span style={{ color: 'var(--text-muted)' }}>Nom :</span>
           <input
             className="wf-input"
-            style={{ width: 140 }}
+            style={{ width: 140, height: 32, boxSizing: 'border-box', padding: '0 10px', fontSize: 12 }}
             value={buildName}
             onChange={e => setBuildName(e.target.value)}
             placeholder="Mon build..."
@@ -720,7 +722,8 @@ export default function BuildsTab() {
           <button
             onClick={() => setShowChampDrop(v => !v)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px',
+              height: 32, padding: '0 10px', boxSizing: 'border-box',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
               borderRadius: 6, background: bgCard, border: `1px solid ${border}`,
               color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
             }}
@@ -777,7 +780,9 @@ export default function BuildsTab() {
 
         {/* Détails */}
         <button onClick={() => setShowDetail(v => !v)} style={{
-          padding: '5px 14px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+          height: 32, padding: '0 14px', boxSizing: 'border-box',
+          display: 'inline-flex', alignItems: 'center',
+          borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
           background: showDetail ? (c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.2)') : 'transparent',
           border: `1px solid ${showDetail ? accent : border}`,
           color: showDetail ? gold : 'var(--text-muted)',
@@ -787,7 +792,9 @@ export default function BuildsTab() {
 
         {/* Sauver */}
         <button onClick={saveBuild} disabled={savingBuild} style={{
-          padding: '5px 14px', background: savingBuild ? 'rgba(127,119,221,0.4)' : 'linear-gradient(135deg,#7F77DD,#534AB7)',
+          height: 32, padding: '0 14px', boxSizing: 'border-box',
+          display: 'inline-flex', alignItems: 'center',
+          background: savingBuild ? 'rgba(127,119,221,0.4)' : 'linear-gradient(135deg,#7F77DD,#534AB7)',
           border: 'none', borderRadius: 4, color: 'white', fontSize: 12,
           fontWeight: 600, cursor: savingBuild ? 'default' : 'pointer', fontFamily: 'inherit',
           transition: 'background 0.15s',
