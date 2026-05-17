@@ -7,6 +7,7 @@ import OverlayTab from './tabs/OverlayTab'
 import TodoTab from './tabs/TodoTab'
 import JunglePathTab from './tabs/JunglePathTab'
 import BuildsTab from './tabs/BuildsTab'
+import ScenariosTab from './tabs/ScenariosTab'
 import StatsTab from './tabs/StatsTab'
 import WorkshopBuildsTab from './tabs/WorkshopBuildsTab'
 import WorkshopJungleTab from './tabs/WorkshopJungleTab'
@@ -27,6 +28,7 @@ const IconPostGame = () => <svg width="17" height="17" viewBox="0 0 24 24" fill=
 const IconTournois = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
 const IconAdmin    = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
 const IconChamps   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><path d="M9 12h6"/></svg>
+const IconScenarios= () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6l9-3 9 3"/><path d="M3 6v12l9 3 9-3V6"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>
 
 export type TabDef = {
   id: DashTab | string // tabs externes (href) ont un id libre
@@ -62,8 +64,9 @@ export const tabGroups: TabGroup[] = [
   {
     label: 'Personnalisation',
     tabs: [
-      { id: 'jungle',  label: 'Jungle Path',   shortLabel: 'Jungle',  icon: <IconJungle /> },
-      { id: 'builds',  label: 'Builder',  shortLabel: 'Builder',  icon: <IconBuilds /> },
+      { id: 'jungle',    label: 'Jungle Path', shortLabel: 'Jungle',   icon: <IconJungle /> },
+      { id: 'builds',    label: 'Builder',     shortLabel: 'Builder',  icon: <IconBuilds /> },
+      { id: 'scenarios', label: 'Scénarios',   shortLabel: 'Scénarios',icon: <IconScenarios />, locked: true },
     ],
   },
   {
@@ -99,6 +102,7 @@ const tabTitles: Record<DashTab, { title: string; subtitle: string }> = {
   overlay:          { title: 'Overlay Workshop',  subtitle: 'Gère et importe tes overlays' },
   jungle:           { title: 'Jungle Path',       subtitle: 'Crée et partage tes jungle paths' },
   builds:           { title: 'Builder',           subtitle: 'Construis tes builds : items, runes, ordre de sorts' },
+  scenarios:        { title: 'Scénarios',         subtitle: 'Planifie ta macro : wards, rotations, zones de fight' },
   'workshop-builds':{ title: 'Workshop Builds',   subtitle: 'Builds de la communauté' },
   'workshop-jungle':{ title: 'Workshop Jungle',   subtitle: 'Jungle paths de la communauté' },
   matchup:          { title: 'Match Up',          subtitle: 'Analyse tes matchups en temps réel' },
@@ -196,6 +200,11 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {activeTab === 'stats'            && <StatsTab />}
         {activeTab === 'jungle'           && <JunglePathTab />}
         {activeTab === 'builds'           && <BuildsTab />}
+        {activeTab === 'scenarios'        && (
+          (isAdmin || isProTier)
+            ? <ScenariosTab />
+            : <LockedScreen title="Scénarios" subtitle="Planifie ta macro : wards, rotations, zones de fight" c={c} badge="Pro" />
+        )}
         {activeTab === 'workshop-builds'  && <WorkshopBuildsTab />}
         {activeTab === 'workshop-jungle'  && <WorkshopJungleTab />}
 
