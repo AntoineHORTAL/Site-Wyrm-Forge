@@ -7,7 +7,7 @@
 // Réponse :
 //   { puuid, summonerId, entries: [{ queueType, tier, rank, lp, wins, losses }] }
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
-import { getUser, requireSecret } from '../_shared/auth.ts'
+import { requireSecret } from '../_shared/auth.ts'
 
 const ROUTING: Record<string, string> = {
   euw1: 'europe', eun1: 'europe', tr1: 'europe', ru: 'europe',
@@ -24,9 +24,7 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
-    const user = await getUser(req)
-    if (!user) return jsonResponse({ error: 'Non authentifié.' }, 401)
-
+    // Accès public (clé anon suffit) — pas de check JWT. Voir config.toml.
     const url = new URL(req.url)
     const gameNameRaw = url.searchParams.get('gameName')
     const tagLineRaw  = url.searchParams.get('tagLine')

@@ -6,7 +6,7 @@
 //
 // Flow : account-v1 (puuid) → match-v5 (IDs) → match-v5 (détails en parallèle) → format slim
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
-import { getUser, requireSecret } from '../_shared/auth.ts'
+import { requireSecret } from '../_shared/auth.ts'
 
 const ROUTING: Record<string, string> = {
   euw1: 'europe', eun1: 'europe', tr1: 'europe', ru: 'europe',
@@ -43,9 +43,7 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
-    // 1. Auth
-    const user = await getUser(req)
-    if (!user) return jsonResponse({ error: 'Non authentifié.' }, 401)
+    // Accès public (clé anon suffit) — pas de check JWT. Voir config.toml.
 
     // 2. Params : on accepte soit (gameName+tagLine), soit (puuid) directement.
     //    Le 2e mode évite un appel account-v1 quand on a déjà le puuid en cache.

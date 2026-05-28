@@ -6,14 +6,15 @@ project_id = "cuscgmgqakxnfwnsrhhv"
 # Pas d'auth — donnée publique (rotation des champions).
 verify_jwt = false
 
+# Les 3 fonctions Riot ci-dessous sont accessibles avec la clé anon (publique),
+# sans JWT user. Raison : l'app desktop doit fonctionner pour tout le monde sans
+# compte Wyrm Forge (comportement historique). La clé Riot reste protégée côté
+# serveur. Rate limiting à ajouter plus tard si abus.
 [functions.riot-matches]
-# Auth requise — historique de partie = donnée personnelle.
-verify_jwt = true
+verify_jwt = false
 
 [functions.riot-match-detail]
-# Auth requise — détail complet d'un match (10 joueurs, items, runes).
-verify_jwt = true
+verify_jwt = false
 
 [functions.riot-rank]
-# Auth requise — rang Solo/Duo et Flex d'un joueur.
-verify_jwt = true
+verify_jwt = false
