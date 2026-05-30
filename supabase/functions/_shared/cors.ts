@@ -14,9 +14,9 @@ export function handleCors(req: Request): Response | null {
   return null
 }
 
-export function jsonResponse(body: unknown, status = 200): Response {
+export function jsonResponse(body: unknown, status = 200, extra?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extra },
   })
 }

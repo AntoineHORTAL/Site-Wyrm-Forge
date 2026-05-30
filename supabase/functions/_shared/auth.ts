@@ -28,7 +28,8 @@ export async function getUser(req: Request): Promise<User | null> {
 export function requireSecret(name: string): string {
   const value = Deno.env.get(name)
   if (!value) {
-    throw new Error(`Secret manquant : ${name}. Lance "supabase secrets set ${name}=..."`)
+    // Do not expose the secret name in production error messages
+    throw new Error('Configuration serveur incomplète.')
   }
   return value
 }

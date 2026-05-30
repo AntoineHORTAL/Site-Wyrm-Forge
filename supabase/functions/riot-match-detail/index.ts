@@ -1,16 +1,25 @@
-// Edge Function : détail complet d'un match (les 10 joueurs + objectifs + bans).
-// AUTH REQUISE — données détaillées, on protège même si tout est public côté Riot.
+// Edge Function : détail complet d'un match (10 joueurs + objectifs + timeline).
+// Accès public — la clé Riot reste côté serveur.
+// Les matches terminés sont immutables : cache permanent (expires 2099).
 //
 // Appel : GET /functions/v1/riot-match-detail?matchId=EUW1_XXXX&platform=euw1
-// Headers : apikey, Authorization: Bearer <user_jwt>
+// Headers : apikey: <SUPABASE_ANON_KEY>
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { requireSecret } from '../_shared/auth.ts'
+import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
+import { isRateLimited } from '../_shared/rate-limit.ts'
+import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
+
+const FN = 'riot-match-detail'
 
 const ROUTING: Record<string, string> = {
   euw1: 'europe', eun1: 'europe', tr1: 'europe', ru: 'europe',
   na1: 'americas', br1: 'americas', la1: 'americas', la2: 'americas', oc1: 'americas',
   kr: 'asia', jp1: 'asia',
 }
+
+// Riot match IDs: region prefix + underscore + numeric ID (e.g. EUW1_1234567890)
+const MATCH_ID_RE = /^[A-Z0-9]+_\d+$/
 
 function sanitize(s: string): string {
   return s.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
@@ -21,33 +30,68 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
-    // Accès public (clé anon suffit) — pas de check JWT. Voir config.toml.
-    const url = new URL(req.url)
+    const url        = new URL(req.url)
     const matchIdRaw = url.searchParams.get('matchId')
     const platform   = url.searchParams.get('platform') ?? 'euw1'
+
     if (!matchIdRaw) return jsonResponse({ error: 'matchId requis.' }, 400)
+
+    // Validate platform against known list to prevent SSRF via hostname injection
+    if (!Object.hasOwn(ROUTING, platform)) {
+      return jsonResponse({ error: 'Région invalide.' }, 400)
+    }
+
     const matchId = sanitize(matchIdRaw)
 
+    // Validate matchId format to prevent path injection
+    if (!MATCH_ID_RE.test(matchId)) {
+      return jsonResponse({ error: 'Format matchId invalide.' }, 400)
+    }
+
+    // Rate limiting
+    if (await isRateLimited(req, FN)) {
+      return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)
+    }
+
+    const cacheKey = `match:${matchId}`
+
+    // Cache read — completed matches are permanent so this will almost always hit
+    const cached = await cacheGet(cacheKey)
+    if (cached !== null) {
+      return jsonResponse(cached, 200, { 'X-Cache': 'HIT' })
+    }
+
+    // Circuit breaker
+    if (await isCircuitOpen()) {
+      const stale = await cacheGetStale(cacheKey)
+      if (stale !== null) {
+        return jsonResponse(stale, 200, { 'X-Cache': 'STALE' })
+      }
+      return jsonResponse(
+        { error: 'Service temporairement indisponible.', reason: 'quota_exceeded', resets_in: secondsUntilMidnightUtc() },
+        503,
+      )
+    }
+
     const apiKey  = requireSecret('RIOT_API_KEY')
-    const routing = ROUTING[platform] ?? 'europe'
+    const routing = ROUTING[platform]
     const headers = { 'X-Riot-Token': apiKey }
 
-    // 1. Match (détails)  +  2. Timeline (pour les types de drakes) en parallèle
+    // Fetch match details + timeline in parallel (2 Riot calls)
     const [res, tlRes] = await Promise.all([
-      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`,           { headers }),
-      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline`, { headers }),
+      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(matchId)}`,           { headers }),
+      fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(matchId)}/timeline`, { headers }),
     ])
     if (!res.ok) {
       return jsonResponse({ error: `Riot API ${res.status}` }, res.status)
     }
     // deno-lint-ignore no-explicit-any
     const m: any = await res.json()
-    // Timeline est facultative — si elle échoue on poursuit sans drakes typés.
+    // Timeline is optional — continue without typed drakes if it fails
     // deno-lint-ignore no-explicit-any
     const tl: any = tlRes.ok ? await tlRes.json() : null
 
-    // ── Extraction des drakes typés par équipe depuis la timeline ──
-    // Mapping monsterSubType (Riot) → nom court (matche les noms de fichiers _xxx.png).
+    // ── Drake types by team from timeline ────────────────────────────────────
     const DRAKE_KIND: Record<string, string> = {
       WATER_DRAGON:    'oceandrake',
       FIRE_DRAGON:     'infernaldrake',
@@ -57,7 +101,6 @@ Deno.serve(async (req) => {
       CHEMTECH_DRAGON: 'chemtechdrake',
       ELDER_DRAGON:    'elderdrake',
     }
-    // Indexation participantId → teamId pour résoudre killerTeamId si absent
     // deno-lint-ignore no-explicit-any
     const participantTeam: Record<number, number> = {}
     // deno-lint-ignore no-explicit-any
@@ -65,29 +108,24 @@ Deno.serve(async (req) => {
 
     const drakesByTeam: Record<number, string[]> = { 100: [], 200: [] }
 
-    // ── Agrégation des frames timeline (1 frame ≈ 1 minute) ──
-    // Pour chaque frame, on calcule les totaux par équipe (or, xp, cs)
-    // ainsi que les valeurs par joueur (or, level) pour pouvoir tracer
-    // les courbes côté client.
+    // ── Timeline frames aggregation ──────────────────────────────────────────
     type TimelineFrame = {
       ts: number
-      teamGold:    [number, number]   // [bleu, rouge]
+      teamGold:    [number, number]
       teamXp:      [number, number]
       teamCs:      [number, number]
-      playerGold:  number[]           // index 0..9 (participantId-1)
+      playerGold:  number[]
       playerLevel: number[]
       playerXp:    number[]
       playerCs:    number[]
     }
     const timelineFrames: TimelineFrame[] = []
 
-    // Achats d'items et levels-up de sorts par participantId
     type ItemEvent  = { ts: number; itemId: number; type: 'PURCHASED' | 'SOLD' | 'UNDONE' }
-    type SkillEvent = { ts: number; slot: number /* 1=Q 2=W 3=E 4=R */ }
+    type SkillEvent = { ts: number; slot: number }
     const itemEvents:  Record<number, ItemEvent[]>  = {}
     const skillEvents: Record<number, SkillEvent[]> = {}
 
-    // Kills (events CHAMPION_KILL) + Wards (placement et destruction) au niveau global de la partie
     type Pos = { x: number; y: number }
     type KillEvent = {
       ts: number; killerId: number; victimId: number;
@@ -97,8 +135,6 @@ Deno.serve(async (req) => {
       ts: number; creatorId: number; teamId: number;
       wardType: string; action: 'PLACED' | 'KILLED'; position?: Pos
     }
-    // Events macro (tours, inhibs, drakes, baron, héraut, voidgrubs, atakhan, game end)
-    // Utilisés notamment par l'app desktop pour la timeline visuelle post-game.
     type TimelineEvent = {
       ts: number; type: string; subType?: string
       killerId?: number; teamId?: number
@@ -106,12 +142,10 @@ Deno.serve(async (req) => {
       monsterType?: string; monsterSubType?: string
       winningTeam?: number
     }
-    const kills: KillEvent[] = []
-    const wards: WardEvent[] = []
-    const events: TimelineEvent[] = []
+    const kills: KillEvent[]       = []
+    const wards: WardEvent[]       = []
+    const events: TimelineEvent[]  = []
 
-    // Helper : récupère la position d'un participant au timestamp ts (frame la plus proche AVANT ts).
-    // Utilisé pour les WARD_PLACED qui n'ont pas de position dans le payload Riot.
     function positionAt(participantId: number, ts: number): { x: number; y: number } | undefined {
       if (!tl?.info?.frames) return undefined
       let best = null, bestDelta = Infinity
@@ -130,16 +164,13 @@ Deno.serve(async (req) => {
     if (tl?.info?.frames) {
       // deno-lint-ignore no-explicit-any
       tl.info.frames.forEach((frame: any) => {
-        // 1. Events : drakes, items, skills
         // deno-lint-ignore no-explicit-any
-        (frame.events ?? []).forEach((ev: any) => {
-          // Drakes typés
+        ;(frame.events ?? []).forEach((ev: any) => {
           if (ev.type === 'ELITE_MONSTER_KILL' && ev.monsterType === 'DRAGON') {
             const teamId = ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0
             const kind   = DRAKE_KIND[ev.monsterSubType] ?? 'dragon'
             if (teamId === 100 || teamId === 200) drakesByTeam[teamId].push(kind)
           }
-          // Items
           if (ev.type === 'ITEM_PURCHASED' && ev.participantId && ev.itemId) {
             if (!itemEvents[ev.participantId]) itemEvents[ev.participantId] = []
             itemEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, itemId: ev.itemId, type: 'PURCHASED' })
@@ -152,82 +183,63 @@ Deno.serve(async (req) => {
             if (!itemEvents[ev.participantId]) itemEvents[ev.participantId] = []
             itemEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, itemId: ev.beforeId, type: 'UNDONE' })
           }
-          // Skills
           if (ev.type === 'SKILL_LEVEL_UP' && ev.participantId && ev.skillSlot) {
             if (!skillEvents[ev.participantId]) skillEvents[ev.participantId] = []
             skillEvents[ev.participantId].push({ ts: ev.timestamp ?? 0, slot: ev.skillSlot })
           }
-          // Kills (CHAMPION_KILL : a position {x,y}, killerId, victimId, assistingParticipantIds)
           if (ev.type === 'CHAMPION_KILL' && ev.position) {
-            const killerId = ev.killerId ?? 0
-            const victimId = ev.victimId ?? 0
-            const killerTeam = participantTeam[killerId] ?? 0
             kills.push({
-              ts: ev.timestamp ?? 0,
-              killerId, victimId,
+              ts:           ev.timestamp ?? 0,
+              killerId:     ev.killerId ?? 0,
+              victimId:     ev.victimId ?? 0,
               assistingIds: ev.assistingParticipantIds ?? [],
-              position: { x: ev.position.x ?? 0, y: ev.position.y ?? 0 },
-              teamId: killerTeam,
+              position:     { x: ev.position.x ?? 0, y: ev.position.y ?? 0 },
+              teamId:       participantTeam[ev.killerId ?? 0] ?? 0,
             })
           }
-          // Wards : WARD_PLACED n'a PAS de position dans match-v5.
-          // On déduit la position via la frame la plus proche (cf positionAt).
           if (ev.type === 'WARD_PLACED' && ev.creatorId) {
-            const teamId = participantTeam[ev.creatorId] ?? 0
             const pos = ev.position
               ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 }
               : positionAt(ev.creatorId, ev.timestamp ?? 0)
             wards.push({
-              ts: ev.timestamp ?? 0, creatorId: ev.creatorId, teamId,
-              wardType: ev.wardType ?? 'UNKNOWN', action: 'PLACED',
-              position: pos,
+              ts: ev.timestamp ?? 0, creatorId: ev.creatorId,
+              teamId: participantTeam[ev.creatorId] ?? 0,
+              wardType: ev.wardType ?? 'UNKNOWN', action: 'PLACED', position: pos,
             })
           }
-          // WARD_KILL : la position de la ward détruite est généralement fournie
           if (ev.type === 'WARD_KILL' && ev.killerId) {
-            const teamId = participantTeam[ev.killerId] ?? 0
             const pos = ev.position
               ? { x: ev.position.x ?? 0, y: ev.position.y ?? 0 }
               : positionAt(ev.killerId, ev.timestamp ?? 0)
             wards.push({
-              ts: ev.timestamp ?? 0, creatorId: ev.killerId, teamId,
-              wardType: ev.wardType ?? 'UNKNOWN', action: 'KILLED',
-              position: pos,
+              ts: ev.timestamp ?? 0, creatorId: ev.killerId,
+              teamId: participantTeam[ev.killerId] ?? 0,
+              wardType: ev.wardType ?? 'UNKNOWN', action: 'KILLED', position: pos,
             })
           }
-          // Events macro pour timeline post-game (app desktop) : tours, inhibs,
-          // drakes (typés), barons, hérauts, voidgrubs, atakhan, fin de partie.
           if (ev.type === 'BUILDING_KILL') {
             events.push({
               ts: ev.timestamp ?? 0, type: 'BUILDING_KILL',
-              killerId: ev.killerId ?? 0,
-              teamId:   ev.teamId   ?? 0,
-              laneType:     ev.laneType,
-              towerType:    ev.towerType,
-              buildingType: ev.buildingType,
+              killerId: ev.killerId ?? 0, teamId: ev.teamId ?? 0,
+              laneType: ev.laneType, towerType: ev.towerType, buildingType: ev.buildingType,
             })
           }
           if (ev.type === 'ELITE_MONSTER_KILL') {
             events.push({
               ts: ev.timestamp ?? 0, type: 'ELITE_MONSTER_KILL',
               killerId: ev.killerId ?? 0,
-              teamId:   ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0,
-              monsterType:    ev.monsterType,
-              monsterSubType: ev.monsterSubType,
+              teamId: ev.killerTeamId ?? participantTeam[ev.killerId] ?? 0,
+              monsterType: ev.monsterType, monsterSubType: ev.monsterSubType,
             })
           }
           if (ev.type === 'GAME_END') {
-            events.push({
-              ts: ev.timestamp ?? 0, type: 'GAME_END',
-              winningTeam: ev.winningTeam ?? 0,
-            })
+            events.push({ ts: ev.timestamp ?? 0, type: 'GAME_END', winningTeam: ev.winningTeam ?? 0 })
           }
         })
 
-        // 2. Snapshot par équipe + par joueur
-        const teamGold: [number, number] = [0, 0]
-        const teamXp:   [number, number] = [0, 0]
-        const teamCs:   [number, number] = [0, 0]
+        const teamGold:  [number, number] = [0, 0]
+        const teamXp:    [number, number] = [0, 0]
+        const teamCs:    [number, number] = [0, 0]
         const playerGold:  number[] = new Array(10).fill(0)
         const playerLevel: number[] = new Array(10).fill(1)
         const playerXp:    number[] = new Array(10).fill(0)
@@ -235,17 +247,16 @@ Deno.serve(async (req) => {
 
         // deno-lint-ignore no-explicit-any
         Object.entries(frame.participantFrames ?? {}).forEach(([pid, pf]: [string, any]) => {
-          const idx    = Number(pid) - 1
-          const teamId = participantTeam[Number(pid)]
-          const teamIdx = teamId === 100 ? 0 : 1
-          const cs = (pf.minionsKilled ?? 0) + (pf.jungleMinionsKilled ?? 0)
-          teamGold[teamIdx] += pf.totalGold ?? 0
-          teamXp[teamIdx]   += pf.xp ?? 0
-          teamCs[teamIdx]   += cs
-          playerGold[idx]    = pf.totalGold ?? 0
-          playerLevel[idx]   = pf.level ?? 1
-          playerXp[idx]      = pf.xp ?? 0
-          playerCs[idx]      = cs
+          const idx     = Number(pid) - 1
+          const teamIdx = participantTeam[Number(pid)] === 100 ? 0 : 1
+          const cs      = (pf.minionsKilled ?? 0) + (pf.jungleMinionsKilled ?? 0)
+          teamGold[teamIdx]  += pf.totalGold ?? 0
+          teamXp[teamIdx]    += pf.xp ?? 0
+          teamCs[teamIdx]    += cs
+          playerGold[idx]     = pf.totalGold ?? 0
+          playerLevel[idx]    = pf.level ?? 1
+          playerXp[idx]       = pf.xp ?? 0
+          playerCs[idx]       = cs
         })
 
         timelineFrames.push({
@@ -258,9 +269,8 @@ Deno.serve(async (req) => {
 
     // deno-lint-ignore no-explicit-any
     const participants = m.info.participants.map((p: any, idx: number) => ({
-      // participantId Riot = idx+1 — on récupère les events timeline associés.
-      itemEvents:  itemEvents[idx + 1]  ?? [],
-      skillEvents: skillEvents[idx + 1] ?? [],
+      itemEvents:      itemEvents[idx + 1]  ?? [],
+      skillEvents:     skillEvents[idx + 1] ?? [],
       puuid:           p.puuid,
       riotIdGameName:  p.riotIdGameName ?? p.summonerName ?? '',
       riotIdTagline:   p.riotIdTagline ?? '',
@@ -276,7 +286,6 @@ Deno.serve(async (req) => {
       damageDealt:     p.totalDamageDealtToChampions ?? 0,
       damageTaken:     p.totalDamageTaken ?? 0,
       damageMitigated: p.damageSelfMitigated ?? 0,
-      // Stats supplémentaires
       damageObjectives: p.damageDealtToObjectives ?? 0,
       damageTurrets:    p.damageDealtToTurrets ?? 0,
       damageBuildings:  p.damageDealtToBuildings ?? 0,
@@ -308,32 +317,36 @@ Deno.serve(async (req) => {
       win:        t.win,
       bans:       (t.bans ?? []).map((b: { championId: number; pickTurn: number }) => b.championId),
       objectives: {
-        baron:      t.objectives?.baron?.kills      ?? 0,
-        dragon:     t.objectives?.dragon?.kills     ?? 0,
-        herald:     t.objectives?.riftHerald?.kills ?? 0,
-        tower:      t.objectives?.tower?.kills      ?? 0,
-        inhibitor:  t.objectives?.inhibitor?.kills  ?? 0,
-        voidgrub:   t.objectives?.horde?.kills      ?? 0,
-        champion:   t.objectives?.champion?.kills   ?? 0,
+        baron:     t.objectives?.baron?.kills      ?? 0,
+        dragon:    t.objectives?.dragon?.kills     ?? 0,
+        herald:    t.objectives?.riftHerald?.kills ?? 0,
+        tower:     t.objectives?.tower?.kills      ?? 0,
+        inhibitor: t.objectives?.inhibitor?.kills  ?? 0,
+        voidgrub:  t.objectives?.horde?.kills      ?? 0,
+        champion:  t.objectives?.champion?.kills   ?? 0,
       },
-      // Liste des drakes pris dans l'ordre, typés (ex: ['infernaldrake', 'oceandrake', 'elderdrake'])
       drakes: drakesByTeam[t.teamId] ?? [],
     }))
 
-    return jsonResponse({
-      matchId:       m.metadata.matchId,
-      gameCreation:  m.info.gameCreation,
-      gameDuration:  m.info.gameDuration,
-      queueId:       m.info.queueId,
-      gameVersion:   m.info.gameVersion,
-      mapId:         m.info.mapId ?? 11,
+    const result = {
+      matchId:      m.metadata.matchId,
+      gameCreation: m.info.gameCreation,
+      gameDuration: m.info.gameDuration,
+      queueId:      m.info.queueId,
+      gameVersion:  m.info.gameVersion,
+      mapId:        m.info.mapId ?? 11,
       participants,
       teams,
-      timeline:      timelineFrames,
+      timeline:     timelineFrames,
       kills,
       wards,
       events,
-    })
+    }
+
+    await cacheSet(cacheKey, FN, result)
+    await incrementQuota(FN)
+
+    return jsonResponse(result, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur inconnue'
     return jsonResponse({ error: msg }, 500)
