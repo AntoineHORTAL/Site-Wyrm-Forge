@@ -134,6 +134,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
             <>
               <a onClick={() => scrollTo('features')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Fonctionnalités</a>
               <a onClick={() => scrollTo('pricing')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Tarifs</a>
+              <a onClick={() => router.push('/about')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>À propos</a>
               <a onClick={onLogin} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
               <a
                 href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
@@ -325,6 +326,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               <div style={{ flex: 1, padding: '12px 0' }}>
                 <DrawerLink label="Fonctionnalités" onClick={() => scrollTo('features')} c={c} />
                 <DrawerLink label="Tarifs" onClick={() => scrollTo('pricing')} c={c} />
+                <DrawerLink label="À propos" onClick={() => { setDrawerOpen(false); router.push('/about') }} c={c} />
                 <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
                 <DrawerLink label="Connexion" onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
               </div>

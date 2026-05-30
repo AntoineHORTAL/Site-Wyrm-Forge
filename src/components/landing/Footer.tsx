@@ -16,16 +16,23 @@ export default function Footer() {
         display: 'flex', gap: 32, justifyContent: 'center',
         marginBottom: 24, flexWrap: 'wrap',
       }}>
-        {['Mentions légales', 'Confidentialité', 'CGU', 'Contact', 'Discord'].map(link => (
+        {[
+          { label: 'À propos',        href: '/about' },
+          { label: 'Mentions légales', href: '#' },
+          { label: 'Confidentialité', href: '#' },
+          { label: 'CGU',             href: '#' },
+          { label: 'Contact',         href: 'mailto:contact@wyrm-forge.com' },
+          { label: 'Discord',         href: '#' },
+        ].map(({ label, href }) => (
           <a
-            key={link}
-            href="#"
+            key={label}
+            href={href}
             style={{
               color: theme === 'mythic' ? '#888780' : '#71717A',
               textDecoration: 'none', fontSize: 14,
             }}
           >
-            {link}
+            {label}
           </a>
         ))}
       </div>
