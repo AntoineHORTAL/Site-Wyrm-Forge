@@ -24,6 +24,7 @@ interface UserProfile {
   id: string; username: string; email: string
   tier: string; role: string; certified: boolean
   tier_expires_at: string | null; created_at: string
+  riot_puuid?:    string | null
   riot_gamename?: string | null
   riot_tagline?:  string | null
   riot_platform?: string | null

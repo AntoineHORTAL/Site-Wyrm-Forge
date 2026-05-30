@@ -28,6 +28,11 @@ export interface UserProfile {
   role: 'user' | 'admin'
   tier_expires_at: string | null
   certified?: boolean
+  riot_puuid?:    string
+  riot_gamename?: string
+  riot_tagline?:  string
+  riot_platform?: string
+  riot_rank?:     string
 }
 
 export default function Home() {

@@ -75,27 +75,47 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 
 ## 🟡 Base de données — table `profiles`
 
-```
-id              uuid (FK → auth.users)
-username        text
-email           text
-tier            text  -- apprenti | forgeron | maître | légion | architecte | architecte+
-role            text  -- 'user' | 'admin'
-certified       boolean  default false
-tier_expires_at timestamptz  -- null = à vie, sinon date d'expiration
-created_at      timestamptz
-```
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK, FK → `auth.users` |
+| `username` | `text` | NOT NULL | |
+| `email` | `text` | nullable | copié depuis `auth.users` à la création |
+| `tier` | `text` | NOT NULL | `apprenti` \| `forgeron` \| `maître` \| `légion` \| `architecte` \| `architecte+` |
+| `role` | `text` | NOT NULL | `'user'` \| `'admin'` |
+| `certified` | `boolean` | NOT NULL | default `false` |
+| `tier_expires_at` | `timestamptz` | nullable | `null` = compte à vie |
+| `created_at` | `timestamptz` | NOT NULL | |
+| `riot_puuid` | `text` | nullable | PUUID Riot, stable cross-région — indexé (`idx_profiles_riot_puuid`) |
+| `riot_gamename` | `text` | nullable | partie "nom" du Riot ID (ex : `"Faker"`) |
+| `riot_tagline` | `text` | nullable | partie "tag" du Riot ID (ex : `"T1"`) |
+| `riot_platform` | `text` | nullable | région Riot (ex : `"euw1"`) |
+| `riot_rank` | `text` | nullable | snapshot du dernier rang connu (ex : `"GOLD II"`) — écrit par l'app desktop |
 
 ### Logique abonnements
 - `tier_expires_at = null` → compte à vie (exclu des stats de répartition par tier)
 - Abonné actif = `tier !== 'apprenti'` + `tier_expires_at` défini + pas encore expiré
 - Les admins sont exclus des stats de comptage par tier
 
-### SQL à avoir appliqué
+### Logique champs Riot
+- Les colonnes `riot_*` sont peuplées progressivement — toujours tester `if (riot_gamename)` avant usage
+- `riot_puuid` est l'identifiant stable : utilise-le comme clé de cache côté Edge Functions
+- `riot_rank` est un snapshot écrit par l'app desktop ; le site l'affiche mais ne le calcule pas
+- Fallback plateforme : si `riot_platform` est `null`, utiliser `'euw1'` par défaut
+
+### Migrations appliquées
 ```sql
+-- Colonnes email + certified (existaient avant le versionnage)
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS certified BOOLEAN NOT NULL DEFAULT false;
 UPDATE profiles SET email = u.email FROM auth.users u WHERE profiles.id = u.id AND profiles.email IS NULL;
+
+-- Colonnes Riot (migration 20260530000002)
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_puuid    TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_gamename TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_tagline  TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_platform TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_rank     TEXT;
+CREATE INDEX IF NOT EXISTS idx_profiles_riot_puuid ON profiles (riot_puuid) WHERE riot_puuid IS NOT NULL;
 ```
 
 ---
