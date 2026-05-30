@@ -41,7 +41,7 @@ Application : assistant League of Legends (Next.js 16.2.4 + Supabase + Vercel). 
 
 ### Admin
 - Détection : `profile.role === 'admin'`
-- Table `admin_users` avec **RLS désactivé** pour éviter la récursion RLS dans les policies de `profiles`
+- Table `admin_users` avec **RLS activé** — `deny_anon` + `deny_authenticated` bloquent tout accès client direct ; `is_admin()` bypass via SECURITY DEFINER
 - Fonction `is_admin()` : SECURITY DEFINER, lit `admin_users` sans déclencher les policies
 - Compte admin : `admin@wyrm-forge.com` — role='admin', tier='architecte+' en DB
 
@@ -89,7 +89,7 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 | `riot_gamename` | `text` | nullable | partie "nom" du Riot ID (ex : `"Faker"`) |
 | `riot_tagline` | `text` | nullable | partie "tag" du Riot ID (ex : `"T1"`) |
 | `riot_platform` | `text` | nullable | région Riot (ex : `"euw1"`) |
-| `riot_rank` | `text` | nullable | snapshot du dernier rang connu (ex : `"GOLD II"`) — écrit par l'app desktop |
+| `riot_rank` | `text` | nullable | clé de rang choisie par l'utilisateur sur le site (ex : `'gold'`) — contrainte CHECK : `'iron'\|'bronze'\|'silver'\|'gold'\|'platinum'\|'emerald'\|'diamond'\|'master+'` ou `NULL` |
 
 ### Logique abonnements
 - `tier_expires_at = null` → compte à vie (exclu des stats de répartition par tier)
@@ -99,7 +99,7 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 ### Logique champs Riot
 - Les colonnes `riot_*` sont peuplées progressivement — toujours tester `if (riot_gamename)` avant usage
 - `riot_puuid` est l'identifiant stable : utilise-le comme clé de cache côté Edge Functions
-- `riot_rank` est un snapshot écrit par l'app desktop ; le site l'affiche mais ne le calcule pas
+- `riot_rank` est choisi par l'utilisateur sur le site (select dans /profil) — l'app desktop ne lit ni n'écrit cette colonne
 - Fallback plateforme : si `riot_platform` est `null`, utiliser `'euw1'` par défaut
 
 ### Migrations appliquées
@@ -220,3 +220,26 @@ les paywaller cassera plus de chose que ça ne rapportera.
 
 Pas urgent — la section Pricing est actuellement masquée sur la vitrine.
 Quand on la réactivera, on cadrera l'enforcement.
+
+---
+
+### Dette RLS : workshop_junglepaths sans propriétaire
+`workshop_junglepaths` n'a pas de colonne `creator_id` — seulement `creator_name`
+(texte libre, non vérifiable). L'INSERT est restreint aux utilisateurs authentifiés
+mais on ne peut pas identifier le propriétaire d'une ligne.
+**À corriger** : ajouter `creator_id UUID REFERENCES auth.users DEFAULT auth.uid()`
+puis recréer les policies `wjp_update_owner` / `wjp_delete_owner` en conséquence.
+
+---
+
+### Vecteur open redirect latent : paramètre `next` dans le callback OAuth
+Si un paramètre `next` (destination post-login) est un jour ajouté à
+`src/app/auth/callback/route.ts`, il DOIT être validé contre `NEXT_PUBLIC_SITE_URL`
+avant d'être utilisé comme cible de redirection. Un `redirect(next || home)` sans
+validation = open redirect classique. Pattern sûr :
+```ts
+const next    = searchParams.get('next') ?? '/'
+const target  = new URL(next, SITE_URL)
+if (target.origin !== new URL(SITE_URL).origin) return redirect(home)
+return redirect(target)
+```

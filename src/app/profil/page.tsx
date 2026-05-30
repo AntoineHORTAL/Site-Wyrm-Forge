@@ -24,7 +24,6 @@ interface UserProfile {
   id: string; username: string; email: string
   tier: string; role: string; certified: boolean
   tier_expires_at: string | null; created_at: string
-  riot_puuid?:    string | null
   riot_gamename?: string | null
   riot_tagline?:  string | null
   riot_platform?: string | null
@@ -80,7 +79,9 @@ export default function ProfilePage() {
 
         // Profil + compteurs Supabase en parallèle
         const [profRes, builds, todoLists, todoItems, vRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+          supabase.from('profiles')
+            .select('id, username, tier, role, certified, tier_expires_at, created_at, riot_gamename, riot_tagline, riot_platform, riot_rank')
+            .eq('id', user.id).maybeSingle(),
           supabase.from('item_builds').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
           supabase.from('todo_lists').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
           supabase.from('todo_items').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
@@ -88,8 +89,9 @@ export default function ProfilePage() {
         ])
         if (cancelled) return
 
-        const prof = profRes.data as UserProfile | null
-        if (!prof) { setError('Profil introuvable.'); return }
+        const profData = profRes.data as Omit<UserProfile, 'email'> | null
+        if (!profData) { setError('Profil introuvable.'); return }
+        const prof: UserProfile = { ...profData, email: user.email ?? '' }
         setProfile(prof)
         setBuildCount(builds.count ?? 0)
         setTodoListCount(todoLists.count ?? 0)
