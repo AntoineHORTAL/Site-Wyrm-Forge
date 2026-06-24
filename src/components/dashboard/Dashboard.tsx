@@ -12,6 +12,8 @@ import StatsTab from './tabs/StatsTab'
 import WorkshopBuildsTab from './tabs/WorkshopBuildsTab'
 import WorkshopJungleTab from './tabs/WorkshopJungleTab'
 import AdminTab from './tabs/AdminTab'
+import PatchNotesTab from './tabs/PatchNotesTab'
+import EcaillesTab from './tabs/EcaillesTab'
 import type { DashTab, UserProfile } from '@/app/page'
 
 /* ── Icons ── */
@@ -29,6 +31,9 @@ const IconTournois = () => <svg width="17" height="17" viewBox="0 0 24 24" fill=
 const IconAdmin    = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
 const IconChamps   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><path d="M9 12h6"/></svg>
 const IconScenarios= () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6l9-3 9 3"/><path d="M3 6v12l9 3 9-3V6"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>
+// Parchemin avec marteau — évoque les notes de forge/patch
+const IconPatchNotes = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+const IconEcailles = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6c-2 3-3 5-1 8"/><path d="M12 6c2 3 3 5 1 8"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
 
 export type TabDef = {
   id: DashTab | string // tabs externes (href) ont un id libre
@@ -56,9 +61,11 @@ export const tabGroups: TabGroup[] = [
   {
     label: 'Navigation',
     tabs: [
-      { id: 'todo',      label: 'To-Do Lists',  shortLabel: 'To-Do',     icon: <IconTodo /> },
-      { id: 'stats',     label: 'Stats',         shortLabel: 'Stats',     icon: <IconStats /> },
-      { id: 'champions', label: 'Champions',     shortLabel: 'Champions', icon: <IconChamps />, href: '/champions' },
+      { id: 'todo',       label: 'To-Do Lists',  shortLabel: 'To-Do',     icon: <IconTodo /> },
+      { id: 'stats',      label: 'Stats',         shortLabel: 'Stats',     icon: <IconStats /> },
+      { id: 'patchnotes', label: 'Patch Notes',   shortLabel: 'Patchs',    icon: <IconPatchNotes /> },
+      { id: 'ecailles',   label: 'La Forge',      shortLabel: 'La Forge',  icon: <IconEcailles /> },
+      { id: 'champions',  label: 'Champions',     shortLabel: 'Champions', icon: <IconChamps />, href: '/champions' },
     ],
   },
   {
@@ -108,6 +115,8 @@ const tabTitles: Record<DashTab, { title: string; subtitle: string }> = {
   matchup:          { title: 'Match Up',          subtitle: 'Analyse tes matchups en temps réel' },
   postgame:         { title: 'Post Game',         subtitle: 'Analyse détaillée après la partie' },
   tournois:         { title: 'Tournois',          subtitle: 'Bientôt disponible' },
+  patchnotes:       { title: 'Patch Notes',       subtitle: 'Résumés des mises à jour League of Legends' },
+  ecailles:         { title: 'La Forge',           subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
 }
 
 interface DashboardProps {
@@ -115,11 +124,16 @@ interface DashboardProps {
   onTabChange: (tab: DashTab) => void
   isAdmin?: boolean
   profile?: UserProfile | null
+  balance?: number
+  balanceLoading?: boolean
+  onRefreshBalance?: () => void
+  ecaillesEnabled?: boolean
+  forgeRequest?: number
 }
 
 const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
 
-export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile }: DashboardProps) {
+export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, ecaillesEnabled = false, forgeRequest = 0 }: DashboardProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const router = useRouter()
@@ -165,7 +179,9 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
                 color: '#71717A', padding: '10px 16px 4px 28px', fontWeight: 600,
               }}>{group.label}</div>
             )}
-            {group.tabs.map(tab => (
+            {group.tabs
+              .filter(tab => tab.id !== 'ecailles' || ecaillesEnabled || isAdmin)
+              .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
                 active={activeTab === tab.id} c={c}
@@ -207,6 +223,17 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         )}
         {activeTab === 'workshop-builds'  && <WorkshopBuildsTab />}
         {activeTab === 'workshop-jungle'  && <WorkshopJungleTab />}
+        {activeTab === 'patchnotes'       && <PatchNotesTab />}
+        {activeTab === 'ecailles'         && (
+          <EcaillesTab
+            isAdmin={isAdmin}
+            balance={balance}
+            balanceLoading={balanceLoading}
+            onRefreshBalance={onRefreshBalance ?? (() => {})}
+            ecaillesEnabled={ecaillesEnabled}
+            forgeRequest={forgeRequest}
+          />
+        )}
 
         {/* Locked: Analyse IA — déverrouillé pour admin et tiers maître+ */}
         {(activeTab === 'matchup' || activeTab === 'postgame') && (

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import RiotLinkBlock from '@/components/player/RiotLinkBlock'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
@@ -102,7 +103,6 @@ export default function AccueilTab() {
   // puuid de l'invocateur dont on affiche actuellement les matchs (peut être un autre que soi via la recherche).
   // Passé dans l'URL du match pour que la page de détail highlighte le bon joueur.
   const [viewedPuuid, setViewedPuuid] = useState<string>('')
-  const [savingRiot, setSavingRiot]   = useState(false)
   const [riotError, setRiotError]     = useState('')
   const [editMode, setEditMode]       = useState(false)
 
@@ -325,18 +325,6 @@ export default function AccueilTab() {
       // Le puuid renvoyé identifie l'invocateur affiché à l'écran (peut être un autre joueur si on l'a recherché)
       if (data.puuid) setViewedPuuid(data.puuid)
 
-      // Auto-migration : on stocke le puuid (identifiant Riot permanent) dans le profil
-      // SEULEMENT si on consulte SES PROPRES matchs (et pas un autre invocateur via la recherche).
-      const isViewingOwnProfile =
-        savedRiot
-        && riot.gameName.toLowerCase() === savedRiot.gameName.toLowerCase()
-        && riot.tagLine.toLowerCase()  === savedRiot.tagLine.toLowerCase()
-      if (data.puuid && userId && isViewingOwnProfile) {
-        const { data: cur } = await supabase.from('profiles').select('riot_puuid').eq('id', userId).maybeSingle()
-        if (cur?.riot_puuid !== data.puuid) {
-          await supabase.from('profiles').update({ riot_puuid: data.puuid }).eq('id', userId)
-        }
-      }
     } catch {
       setMatchError('Impossible de joindre l\'API Riot.')
     } finally {
@@ -346,29 +334,21 @@ export default function AccueilTab() {
   }
 
   // ── Sauvegarder le Riot ID ────────────────────────────────────────────────
-  async function saveRiotId() {
+  // Note : riot_gamename/riot_tagline/riot_platform sont protégés côté DB par un
+  // trigger (trg_protect_riot_columns) — seul riot-link-verify (service_role) peut
+  // les écrire. Cette fonction enregistre uniquement en state local pour la session.
+  function saveRiotId() {
     const raw = sanitize(riotInput)
     const match = raw.match(/^(.+)#(.+)$/)
     if (!match) { setRiotError('Format invalide — utilise GameName#TAG'); return }
 
     const gameName = sanitize(match[1])
     const tagLine  = sanitize(match[2])
-    setSavingRiot(true)
     setRiotError('')
-
-    if (userId) {
-      const { error } = await supabase.from('profiles').update({
-        riot_gamename: gameName,
-        riot_tagline:  tagLine,
-        riot_platform: platform,
-      }).eq('id', userId)
-      if (error) { setRiotError('Erreur lors de la sauvegarde.'); setSavingRiot(false); return }
-    }
 
     const saved = { gameName, tagLine, platform }
     setSavedRiot(saved)
     setEditMode(false)
-    setSavingRiot(false)
     loadMatches(saved)
   }
 
@@ -387,6 +367,10 @@ export default function AccueilTab() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+      {/* ══ LIAISON COMPTE RIOT ═══════════════════════════════════════════ */}
+      {/* Affiché en premier — invitation à lier le compte avant tout usage */}
+      <RiotLinkBlock theme={theme} />
 
       {/* ══ ROTATION ══════════════════════════════════════════════════════ */}
       <section>
@@ -516,14 +500,13 @@ export default function AccueilTab() {
               >
                 {PLATFORMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
-              <button onClick={saveRiotId} disabled={savingRiot} style={{
+              <button onClick={saveRiotId} style={{
                 padding: '9px 18px', borderRadius: 6,
                 background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
                 border: 'none', color: 'white', fontSize: 13, fontWeight: 600,
-                cursor: savingRiot ? 'default' : 'pointer', fontFamily: 'inherit',
-                opacity: savingRiot ? 0.6 : 1,
+                cursor: 'pointer', fontFamily: 'inherit',
               }}>
-                {savingRiot ? '…' : 'Valider'}
+                Valider
               </button>
               {editMode && (
                 <button onClick={() => { setEditMode(false); setRiotError('') }} style={{
