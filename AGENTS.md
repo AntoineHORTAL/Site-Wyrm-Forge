@@ -90,6 +90,10 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 | `riot_tagline` | `text` | nullable | partie "tag" du Riot ID (ex : `"T1"`) |
 | `riot_platform` | `text` | nullable | région Riot (ex : `"euw1"`) |
 | `riot_rank` | `text` | nullable | clé de rang choisie par l'utilisateur sur le site (ex : `'gold'`) — contrainte CHECK : `'iron'\|'bronze'\|'silver'\|'gold'\|'platinum'\|'emerald'\|'diamond'\|'master+'` ou `NULL` |
+| `riot_link_pending` | `jsonb` | nullable | challenge icône en cours — `{ target_icon, candidate_puuid, platform, game_name, tag_line }` — écrit par Edge Function, jamais par le client |
+| `riot_link_expires_at` | `timestamptz` | nullable | deadline UTC du challenge en cours — NULL si aucun challenge actif |
+
+Contrainte : `uq_profiles_riot_puuid UNIQUE (riot_puuid)` — un compte Riot par profil Wyrm Forge. Les NULLs ne violent pas la contrainte.
 
 ### Logique abonnements
 - `tier_expires_at = null` → compte à vie (exclu des stats de répartition par tier)
@@ -101,6 +105,12 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 - `riot_puuid` est l'identifiant stable : utilise-le comme clé de cache côté Edge Functions
 - `riot_rank` est choisi par l'utilisateur sur le site (select dans /profil) — l'app desktop ne lit ni n'écrit cette colonne
 - Fallback plateforme : si `riot_platform` est `null`, utiliser `'euw1'` par défaut
+- `riot_link_pending` et `riot_link_expires_at` sont transitoires — utilisés uniquement pendant le flow de vérification icône. L'app desktop ne lit ni n'écrit ces colonnes.
+
+### Protection des colonnes riot_*
+Un trigger BEFORE UPDATE (`trg_protect_riot_columns → fn_protect_riot_columns()`) bloque toute modification directe des colonnes `riot_puuid`, `riot_gamename`, `riot_tagline`, `riot_platform`, `riot_link_pending`, `riot_link_expires_at` quand `current_user = 'authenticated'` (appel client avec JWT).
+- Roles non bloqués : `service_role` (Edge Functions), `postgres` (fonctions SECURITY DEFINER).
+- Fonction `clear_riot_link()` : SECURITY DEFINER, GRANT authenticated — seul moyen propre pour un utilisateur de délier son compte Riot. Ne touche pas `riot_rank`.
 
 ### Migrations appliquées
 ```sql
@@ -116,7 +126,558 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_tagline  TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_platform TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS riot_rank     TEXT;
 CREATE INDEX IF NOT EXISTS idx_profiles_riot_puuid ON profiles (riot_puuid) WHERE riot_puuid IS NOT NULL;
+
+-- M1 — Riot link challenge (migration 20260606000004)
+ALTER TABLE public.profiles ADD CONSTRAINT uq_profiles_riot_puuid UNIQUE (riot_puuid);
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS riot_link_pending     JSONB;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS riot_link_expires_at  TIMESTAMPTZ;
+-- + trigger trg_protect_riot_columns + function clear_riot_link()
 ```
+
+---
+
+## 🟡 Base de données — table `patch_notes`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK auto-générée |
+| `version` | `text` | NOT NULL | Ex : `"26.11"` (numérotation publique Riot, pas DDragon) — UNIQUE, clé anti-doublon |
+| `title` | `text` | NOT NULL | Titre FR du résumé |
+| `summary_jsonb` | `jsonb` | NOT NULL | Résumé structuré — `{ subtitle, highlights[], counts, champions[{name, ddragon_key, type, changes[]}], items[], systeme[] }` |
+| `raw_source` | `text` | nullable | Scrape Riot brut — régénération + audit |
+| `image_url` | `text` | nullable | URL image optionnelle |
+| `status` | `text` | NOT NULL | `'draft'` \| `'published'` — default `'draft'` |
+| `source_url` | `text` | nullable | URL Riot scrapée (attribution) |
+| `model` | `text` | nullable | Modèle Anthropic utilisé (audit coût) |
+| `created_at` | `timestamptz` | NOT NULL | |
+| `updated_at` | `timestamptz` | NOT NULL | Trigger BEFORE UPDATE |
+| `published_at` | `timestamptz` | nullable | null tant que draft |
+| `published_by` | `uuid` | nullable | FK auth.users — admin qui a publié |
+
+### RLS patch_notes
+- SELECT `published` : `anon` + `authenticated`
+- SELECT `draft` : admin uniquement (`is_admin()`)
+- UPDATE : admin uniquement — édition + publication via client
+- INSERT : `service_role` uniquement (Edge Function `patch-notes-generator`)
+- DELETE : refusé par défaut
+
+### Table `app_settings`
+Réglages globaux clé/valeur.
+RLS : SELECT `authenticated`, UPDATE `is_admin()`, INSERT/DELETE bloqués côté client.
+
+Valeurs en base (migrations cumulées) :
+
+| key | value par défaut | Migration |
+|---|---|---|
+| `patch_auto_publish` | `'false'` | 20260530000009 |
+| `ecailles_enabled` | `'false'` | 20260606000001 |
+| `shop_enabled` | `'false'` | 20260606000001 |
+| `quests_enabled` | `'false'` | 20260606000001 |
+| `cap_daily_scales` | `'12'` | 20260607000001 (était '25' en 20260606000001) |
+| `streak_bonus_pct` | `'0'` | 20260606000011 (corrigé depuis '10' de 20260606000001) |
+
+---
+
+## 🟡 Base de données — table `searched_summoners`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `region` | `text` | NOT NULL | PK partielle — ex : `"euw1"` |
+| `game_name` | `text` | NOT NULL | PK partielle — partie nom du Riot ID |
+| `tag_line` | `text` | NOT NULL | PK partielle — partie tag du Riot ID |
+| `last_seen` | `timestamptz` | NOT NULL | Dernière occurrence, default `now()` |
+
+Clé primaire composite `(region, game_name, tag_line)`.
+Index `idx_ss_prefix` sur `(region, lower(game_name) text_pattern_ops)` — autocomplete prefix ILIKE insensible à la casse.
+
+### RLS searched_summoners
+- SELECT : `anon` + `authenticated` — suggestions publiques, aucun login requis
+- INSERT/UPDATE : aucune policy client — upsert via `service_role` (Edge Functions) uniquement
+- DELETE : bloqué (aucune policy)
+
+### Alimentation
+- `riot-matches` : upsert du joueur recherché après résolution Riot ID réussie
+- `riot-match-detail` : upsert fire-and-forget des 10 participants à chaque consultation de match (post-déploiement, cache v2 uniquement)
+
+---
+
+## 🟡 Base de données — table `scenarios`
+
+Éditeur de macro stratégique 5v5 (onglet « Scénarios », `src/components/dashboard/tabs/ScenariosTab.tsx`).
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK, default `gen_random_uuid()` |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE |
+| `name` | `text` | NOT NULL | Nom du scénario |
+| `allies` | `jsonb` | NOT NULL | default `'[]'` — 5 alliés (un par rôle) |
+| `drawings` | `jsonb` | NOT NULL | default `'[]'` — tracés posés sur la map |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+> ⚠️ Table **créée ad-hoc** sur le remote avant le versionnage — **codifiée a posteriori** par la migration `20260622000001_scenarios.sql` (idempotente : `CREATE TABLE IF NOT EXISTS` + `DROP/CREATE POLICY`, rejouable sans risque contre l'existant). Au prochain `db push`, soit la migration s'applique sans effet de bord, soit la marquer `applied` via `supabase migration repair`.
+
+### Contrat JSONB (partagé site ↔ app WPF — interop bidirectionnelle, noms FIGÉS)
+Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne jamais renommer un champ sans synchroniser les deux clients.
+
+- **`allies`** : `[ { role: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT', champ: { id, name, image } | null } ]` — objet champion DDragon **complet** (pas juste un id), 5 entrées.
+- **`drawings`** : `[ { id, type: 'ward'|'arrow'|'zone'|'ping'|'lane', points: [{x,y}] (POURCENTAGES 0–100), wardType?: 'yellow'|'control'|'blue', pingType?: 'danger'|'help'|'fight', laneId?: 'TOP'|'MID'|'BOT', color?, phase?: 'early'|'mid'|'late'|'all', label? } ]`
+  - Cardinalité `points` : ward/ping/zone = 1 ; arrow = 2 ; lane = 0 (laneId seul). Zone = cercle rayon fixe.
+  - Une seule liste, champ `phase` par élément (pas de listes séparées).
+- **Ennemis NON stockés** (rangée décorative fixe côté UI).
+
+### RLS scenarios (owner-based, migration 20260622000001)
+- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` (INSERT + UPDATE avec `WITH CHECK` pour bloquer la réassignation de `user_id`).
+- `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
+
+### Consommateurs
+- **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro).
+- **App WPF** : `ScenarioService` (CRUD PostgREST sous **JWT user**, calqué sur `ForgeService`) — port en cours (Lot 0 : migration + modèles miroir + service ; Lot 1 : vue lecture seule `ScenariosTab`). Carte de fond = **même art que le site** (DDragon `map11` v14.24.1, `ScenarioService.MapImageUrl`), pas la minimap in-game — garantit l'alignement des tracés.
+
+---
+
+## 🟡 Base de données — table `rank_stat_samples`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK auto-générée (GENERATED ALWAYS AS IDENTITY) |
+| `puuid` | `text` | NOT NULL | PUUID Riot — stocké pour dédup uniquement, jamais exposé |
+| `match_id` | `text` | NOT NULL | Identifiant de match Riot |
+| `region` | `text` | NOT NULL | Ex : `"euw1"` |
+| `queue` | `int` | NOT NULL | `420` = solo/duo, `440` = flex |
+| `tier` | `text` | NOT NULL | `IRON`\|`BRONZE`\|`SILVER`\|`GOLD`\|`PLATINUM`\|`EMERALD`\|`DIAMOND`\|`MASTER`\|`GRANDMASTER`\|`CHALLENGER` |
+| `role` | `text` | NOT NULL | `TOP`\|`JUNGLE`\|`MIDDLE`\|`BOTTOM`\|`UTILITY`\|`FILL` |
+| `kills` | `int` | NOT NULL | |
+| `deaths` | `int` | NOT NULL | |
+| `assists` | `int` | NOT NULL | |
+| `cs_per_min` | `numeric(5,2)` | NOT NULL | |
+| `vision_score` | `int` | NOT NULL | |
+| `damage_dealt` | `int` | NOT NULL | |
+| `gold_earned` | `int` | NOT NULL | |
+| `duration_s` | `int` | NOT NULL | Durée de la partie en secondes |
+| `win` | `boolean` | NOT NULL | |
+| `collected_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Contrainte `uq_rss_puuid_match UNIQUE (puuid, match_id)` — un sample par (joueur, partie).
+Index `idx_rss_bucket` sur `(region, queue, tier, role)` — requêtes d'agrégation.
+Index `idx_rss_collected` sur `(collected_at)` — purges temporelles.
+
+### RLS rank_stat_samples
+- SELECT/INSERT/UPDATE/DELETE : aucune policy client — anon + authenticated bloqués par défaut
+- Insertion via `service_role` (Edge Functions) uniquement — bypass RLS automatique
+- Accès aux agrégats exclusivement via `get_rank_avg()` SECURITY DEFINER
+
+### Fonction `get_rank_avg(p_region, p_queue, p_tier, p_role, p_min_samples DEFAULT 50)`
+- SECURITY DEFINER — lit `rank_stat_samples` sans déclencher les policies RLS
+- Retourne : `sample_count`, `avg_kills`, `avg_deaths`, `avg_assists`, `avg_cs_per_min`, `avg_vision_score`, `avg_damage_dealt`, `avg_gold_earned`, `avg_winrate`
+- Retourne **aucune ligne** si le bucket contient moins de `p_min_samples` échantillons (évite d'exposer des agrégats non représentatifs)
+- `GRANT EXECUTE TO anon, authenticated`
+
+### Alimentation
+- `riot-matches` : appelle `harvestRankStats()` depuis `supabase/functions/_shared/harvest-rank-stats.ts` — fire-and-forget, cache MISS + start===0 + appel by Riot ID uniquement. Lit le tier depuis `riot_cache` (clé `rank:{platform}:{gameName}:{tagLine}`).
+- Insertion via service_role — bypass RLS automatique.
+- Purge recommandée : `DELETE FROM public.rank_stat_samples WHERE collected_at < NOW() - INTERVAL '1 year'`
+
+### Consommateurs
+- **Site React** : appel `get_rank_avg()` pour comparaison de performance joueur vs bucket de rang
+- **App WPF** : peut appeler `get_rank_avg()` via la même Edge Function ou appel direct Supabase RPC
+- **Lignes brutes** : inaccessibles aux deux clients — service_role uniquement
+
+---
+
+## 🟡 Base de données — système Écailles (M0 + M2 + M3)
+
+### Feature flags — `app_settings` (M0 — migration 20260606000001)
+
+Cinq clés insérées dans la table `app_settings` existante (voir tableau ci-dessus).
+Tous les flags sont à `'false'` / valeur minimale au démarrage.
+
+---
+
+### Table `scales_ledger` (M2 — migration 20260606000002)
+
+Grand livre immuable des mouvements d'Écailles. Chaque ligne = un crédit (delta > 0) ou un débit (delta < 0). Solde = `SUM(delta)` par utilisateur.
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK GENERATED ALWAYS AS IDENTITY |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE |
+| `delta` | `bigint` | NOT NULL | positif = crédit, négatif = débit |
+| `source` | `text` | NOT NULL | `'quest'`\|`'shop'`\|`'tournament'`\|`'admin'`\|`'purchase'` |
+| `ref_id` | `text` | nullable | clé de dédup opaque — unique partiel si NOT NULL |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Index : `uq_ledger_ref` UNIQUE partiel sur `(ref_id) WHERE ref_id IS NOT NULL` (dédup INSERT ... ON CONFLICT). `idx_ledger_user_time` sur `(user_id, created_at DESC)` (solde + pagination).
+
+### RLS scales_ledger
+- SELECT `authenticated` : `user_id = auth.uid()` — lecture de ses propres lignes uniquement
+- INSERT/UPDATE/DELETE : aucune policy client — Edge Functions via service_role uniquement
+
+### Fonction `get_balance()`
+- SECURITY DEFINER, STABLE, `LANGUAGE sql`, pas de paramètre
+- Utilise `auth.uid()` en interne — impossible de lire le solde d'un autre user
+- Retourne `0` si aucune ligne (COALESCE)
+- `GRANT EXECUTE TO authenticated`
+
+### Correction d'erreur
+Ne jamais faire `INSERT` direct dans `scales_ledger` côté client. Passer toujours par une Edge Function (service_role). Pour corriger une erreur de crédit, insérer une ligne compensatrice (delta opposé) — les lignes sont immuables par design.
+
+### Règle d'idempotence — index partiel `uq_ledger_ref`
+L'index `uq_ledger_ref` est **PARTIEL** : `UNIQUE (ref_id) WHERE ref_id IS NOT NULL`. Conséquence : tout `INSERT` dans `scales_ledger` utilisant `ON CONFLICT` doit **OBLIGATOIREMENT** répéter le prédicat :
+```sql
+ON CONFLICT (ref_id) WHERE ref_id IS NOT NULL DO NOTHING
+```
+Sans le prédicat → erreur `42P10` à l'exécution. Ce bug a touché `purchase_cosmetic` ET `finalize_quest_claim` (corrigés). Toute nouvelle fonction qui crédite/débite le ledger doit suivre cette forme.
+
+---
+
+### Table `cosmetics` — catalogue (M3 — migration 20260606000003)
+
+Catalogue administré des cosmétiques disponibles à la boutique.
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK GENERATED ALWAYS AS IDENTITY |
+| `slug` | `text` | NOT NULL | UNIQUE — identifiant stable |
+| `type` | `text` | NOT NULL | `'badge'`\|`'avatar'`\|`'avatar_frame'`\|`'avatar_anim'` |
+| `name` | `text` | NOT NULL | Nom affiché |
+| `description` | `text` | nullable | |
+| `rarity` | `text` | NOT NULL | `'common'`\|`'rare'`\|`'legendary'` |
+| `price_scales` | `int` | NOT NULL | > 0 — prix en Écailles |
+| `image_url` | `text` | nullable | |
+| `available_from` | `timestamptz` | nullable | NULL = toujours disponible |
+| `available_until` | `timestamptz` | nullable | NULL = toujours disponible |
+| `is_active` | `boolean` | NOT NULL | default `true` |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### RLS cosmetics
+- SELECT `anon` + `authenticated` : `true` — catalogue public
+- INSERT/UPDATE/DELETE : aucune policy client (service_role only)
+
+---
+
+### Table `user_cosmetics` — inventaire (M3 — migration 20260606000003)
+
+Association (user, cosmétique) après achat. Un seul cosmétique équipé par type par utilisateur.
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK GENERATED ALWAYS AS IDENTITY |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE |
+| `cosmetic_id` | `bigint` | NOT NULL | FK → `cosmetics(id)` ON DELETE RESTRICT |
+| `cosmetic_type` | `text` | NOT NULL | dénormalisé depuis `cosmetics.type` à l'INSERT |
+| `is_equipped` | `boolean` | NOT NULL | default `false` |
+| `purchased_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Contrainte `uq_user_cosmetics UNIQUE (user_id, cosmetic_id)`.
+Index unique partiel `uq_equipped_type` sur `(user_id, cosmetic_type) WHERE is_equipped = true` — garantit un seul équipé par type par user au niveau DB.
+
+### RLS user_cosmetics
+- SELECT `authenticated` : `user_id = auth.uid()` — inventaire personnel uniquement
+- INSERT/UPDATE/DELETE : aucune policy client — achats par Edge Functions (service_role), équipement par fonctions SECURITY DEFINER
+
+### Fonctions cosmétiques (M3)
+
+| Fonction | GRANT | Description |
+|---|---|---|
+| `equip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe d'abord l'éventuel cosmétique du même type, puis équipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. |
+| `unequip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. |
+| `get_equipped_cosmetics(p_puuid TEXT)` | `anon, authenticated` | Retourne `(type, slug, name, image_url)` des cosmétiques équipés d'un joueur identifié par PUUID. Ne retourne jamais `user_id` ni UUID Wyrm Forge. |
+
+### Fonction `purchase_cosmetic` (M5 — migration 20260606000005)
+
+Orchestre l'achat atomique d'un cosmétique avec des Écailles.
+
+```
+purchase_cosmetic(p_user_id UUID, p_cosmetic_id BIGINT) RETURNS VOID
+```
+
+LANGUAGE plpgsql, SECURITY DEFINER, SET search_path = public.
+**Non exposée en RPC direct** — `REVOKE EXECUTE FROM PUBLIC`. Appelée exclusivement par l'Edge Function `shop-purchase` via service_role.
+
+**Logique (dans l'ordre, transaction implicite de la fonction) :**
+1. Advisory lock `pg_advisory_xact_lock(hashtext(p_user_id))` — sérialise les achats concurrents du même utilisateur.
+2. Lecture `cosmetics FOR SHARE` — vérifie `is_active`, `available_from/until`. RAISE `'cosmetic_unavailable'` si NOT FOUND.
+3. Vérification possession `user_cosmetics`. RAISE `'already_owned'` si possédé.
+4. Calcul solde `SUM(delta)` dans `scales_ledger`. RAISE `'insufficient_balance'` si solde < prix.
+5. Débit `scales_ledger` — `ref_id = 'shop:{user_id}:{cosmetic_id}'`, `ON CONFLICT (ref_id) DO NOTHING` (idempotent via `uq_ledger_ref`).
+6. INSERT `user_cosmetics` — `cosmetic_type` dénormalisé, `ON CONFLICT (user_id, cosmetic_id) DO NOTHING` (idempotent via `uq_user_cosmetics`).
+
+**Erreurs levées :**
+- `'cosmetic_unavailable'` — cosmétique inexistant, inactif ou hors période
+- `'already_owned'` — utilisateur possède déjà ce cosmétique
+- `'insufficient_balance'` — solde insuffisant
+
+**Aucun GRANT** — fonction réservée service_role.
+
+---
+
+### Système de quêtes journalières (M5 — migration 20260606000006)
+
+#### Table `quest_definitions` — catalogue
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `slug` | `text` | NOT NULL | PK — identifiant stable de la quête |
+| `name` | `text` | NOT NULL | Libellé affiché |
+| `category` | `text` | NOT NULL | `'lol'` \| `'app'` |
+| `reward` | `int` | NOT NULL | Récompense de base en Écailles (> 0) |
+| `is_active` | `boolean` | NOT NULL | default `true` |
+| `criteria` | `jsonb` | nullable | Conditions de validation — schéma ci-dessous (migration 20260606000008) |
+| `pool_eligible` | `boolean` | NOT NULL | default `true` — quête incluse dans le tirage du pool journalier (migration 20260607000001) |
+| `cost_tier` | `text` | NOT NULL | `'free'` \| `'riot_detail'` — coût API : `free` = liste de matchs uniquement ; `riot_detail` = appels match detail Riot nécessaires. CHECK constraint. default `'free'` (migration 20260607000001) |
+
+RLS : SELECT `anon` + `authenticated` (catalogue public) — INSERT/UPDATE/DELETE service_role only.
+
+Pool actif (migration 20260607000001) — 8 quêtes `lol` + 2 quêtes `app` :
+
+| slug | name | category | reward | cost_tier | criteria (résumé) |
+|---|---|---|---|---|---|
+| `lol_play_game` | Joue une partie classée | lol | 4 | free | play count=1 queue=420 |
+| `lol_win_game` | Gagne une partie classée | lol | 7 | riot_detail | win count=1 queue=420 |
+| `lol_play_flex` | Joue une partie Flex | lol | 4 | free | play count=1 queue=440 |
+| `lol_play_2_solo` | Joue 2 parties classées Solo/Duo | lol | 5 | free | play count=2 queue=420 |
+| `lol_play_2_flex` | Joue 2 parties Flex | lol | 5 | free | play count=2 queue=440 |
+| `lol_play_3_ranked` | Joue 3 parties classées | lol | 6 | free | play count=3 queue="ranked" |
+| `lol_win_ranked` | Gagne une partie classée (Solo ou Flex) | lol | 7 | riot_detail | win count=1 queue="ranked" |
+| `lol_play_2_ranked` | Joue 2 parties classées (Solo ou Flex) | lol | 5 | free | play count=2 queue="ranked" |
+| `app_view_match` | Consulte le détail d'une partie | app | 3 | free | app_event match_viewed count=1 |
+| `app_view_3_matches` | Consulte le détail de 3 parties | app | 5 | free | app_event match_viewed count=3 |
+
+Calibrage rewards (cap=12) : `play(4) + play_2(5) + app(3) = 12` pile. `play(4) + win(7) + app(3) = 14` tronqué à 12 par `finalize_quest_claim`.
+
+##### Schéma JSONB `criteria` — formes valides
+
+| `type` | Champs supplémentaires | Description |
+|---|---|---|
+| `"play"` | `count` (int), `queue` (optionnel) | Jouer N parties classées dans la fenêtre UTC du jour |
+| `"win"` | `count` (int), `queue` (optionnel) | Gagner N parties classées dans la fenêtre UTC du jour |
+| `"cs"` | `threshold` (int), `queue` (optionnel) | Atteindre ≥ threshold CS dans une partie classée du jour — non activé en prod |
+| `"app_event"` | `event` (string), `count` (int) | N occurrences de cet `event_type` dans `app_events` pour le jour UTC |
+
+Champ `queue` optionnel (applicable aux types `play`, `win`, `cs`) :
+- `420` (int) : Solo/Duo uniquement
+- `440` (int) : Flex uniquement
+- `"ranked"` (string) : union Solo/Duo + Flex — interprété par quest-claim
+- absent : défaut implicite `420` (comportement historique hardcodé de quest-claim)
+
+Extensible : ajouter une nouvelle quête = simple `INSERT` avec le `criteria` correspondant, zéro redéploiement.
+
+#### Table `quest_completions` — dédup journalier
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK GENERATED ALWAYS AS IDENTITY |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE |
+| `quest_slug` | `text` | NOT NULL | FK → `quest_definitions(slug)` |
+| `day` | `date` | NOT NULL | Date UTC serveur — jamais la date client |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Contrainte `uq_completion UNIQUE (user_id, quest_slug, day)`.
+Index `idx_qc_user_day` sur `(user_id, day DESC)` — lecture des complétions du jour.
+
+RLS : SELECT `authenticated` = `user_id = auth.uid()` — INSERT/UPDATE/DELETE service_role only.
+
+#### Table `quest_streaks` — streak par compte
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `user_id` | `uuid` | NOT NULL | PK, FK → `auth.users` ON DELETE CASCADE |
+| `current_streak` | `int` | NOT NULL | Nombre de jours consécutifs, default `0` |
+| `last_day` | `date` | nullable | Dernier jour où une quête a été complétée |
+
+RLS : SELECT `authenticated` = `user_id = auth.uid()` — INSERT/UPDATE/DELETE service_role only.
+
+#### Table `app_events` — empreintes serveur (quêtes `app`)
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `bigint` | NOT NULL | PK GENERATED ALWAYS AS IDENTITY |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE |
+| `event_type` | `text` | NOT NULL | Type d'événement — valeurs définies : `'match_viewed'` (loggé par `riot-match-detail`) |
+| `ref_id` | `text` | nullable | Référence externe (ex : matchId) |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Index `idx_app_events_lookup` sur `(user_id, event_type, created_at DESC)`.
+
+RLS : aucune policy client — SELECT/INSERT/UPDATE/DELETE via service_role uniquement. Le client ne lit jamais cette table directement.
+
+#### Clés `app_settings` ajoutées (M5)
+
+| Clé | Valeur courante | Description |
+|---|---|---|
+| `cap_daily_scales` | `'12'` | Plafond d'Écailles gagnables par quêtes en un jour (recalibré en 20260607000001, était '25') |
+| `streak_bonus_pct` | `'0'` | Bonus streak en % par jour de streak (0 = désactivé) |
+
+#### Fonction `finalize_quest_claim` (M5)
+
+```
+finalize_quest_claim(p_user_id UUID, p_quest_slug TEXT, p_day DATE, p_reward INT) RETURNS VOID
+```
+
+LANGUAGE plpgsql, SECURITY DEFINER, SET search_path = public.
+**Non exposée en RPC direct** — `REVOKE EXECUTE FROM PUBLIC`. Appelée exclusivement par l'Edge Function `quest-claim` via service_role.
+
+**Logique (dans l'ordre, transaction implicite) :**
+1. Advisory lock `pg_advisory_xact_lock(hashtext(p_user_id))` — sérialise les claims concurrents du même utilisateur.
+2. Dédup authoritative : SELECT dans `quest_completions`. RAISE `'already_claimed'` si trouvé.
+3. Plafond journalier : `SUM(qd.reward)` des complétions du jour. RAISE `'daily_cap_reached'` si `v_today_sum + p_reward > cap_daily_scales`.
+4. Lecture streak + calcul bonus : `v_total = p_reward + (p_reward * streak * bonus_pct / 100)`.
+5. Débit `scales_ledger` — `ref_id = 'quest:{user_id}:{quest_slug}:{day}'`, `ON CONFLICT (ref_id) DO NOTHING` (idempotent).
+6. INSERT `quest_completions` — `ON CONFLICT (user_id, quest_slug, day) DO NOTHING` (idempotent).
+7. Mise à jour streak :
+   - `last_day IS NULL` → streak = 1 (premier claim historique)
+   - `last_day = p_day - 1` → streak + 1 (jour consécutif)
+   - `last_day = p_day` → no-op (déjà compté ce jour)
+   - `last_day < p_day - 1` → reset streak = 1 (jour(s) manqué(s))
+
+**Erreurs levées :**
+- `'already_claimed'` — quête déjà complétée ce jour
+- `'daily_cap_reached'` — plafond journalier atteint
+
+**Aucun GRANT** — fonction réservée service_role.
+
+**Comportement `daily_cap_reached` côté EF (déviation intentionnelle)** : `finalize_quest_claim` est une transaction atomique — si elle raise `daily_cap_reached`, rien n'est inscrit (ni ledger, ni completion, ni streak). L'EF `quest-claim` mappe cette erreur en HTTP 200 `{ success: false, capped: true, reward: 0 }` pour ne pas afficher d'erreur rouge côté client. Conséquence : **le streak n'est PAS incrémenté quand le plafond est atteint**. Pour implémenter "créditer 0 mais compter le streak", il faudrait découper `finalize_quest_claim` en étapes séparables (hors scope actuel).
+
+**Comportement du plafond ACTÉ** (déviation définitive, voir `docs/economie-ecailles §12`) : le cap fonctionne en rejet, pas en troncature. Acceptable car aucune quête seule ne vaut ≥ cap (le premier claim du jour réussit toujours → streak jamais perdu) et le front désactive les boutons au plafond. **Règle de calibrage à respecter pour toute nouvelle quête** : `max(reward) < cap_daily_scales`.
+
+---
+
+### Consommateurs Écailles
+- **Site React** : `get_balance()` (solde affiché), `equip_cosmetic()` / `unequip_cosmetic()` (profil), `get_equipped_cosmetics()` (page `/summoner/...`), `quest_definitions` (catalogue quêtes), `quest_completions` + `quest_streaks` (état journalier)
+- **App WPF** : `get_equipped_cosmetics()` (affichage profil joueur) — lecture catalogue `cosmetics` et `quest_definitions` possible via anon
+- **Edge Function `shop-purchase`** : appelle `purchase_cosmetic()` via service_role — seul point d'entrée pour les achats Écailles
+- **Edge Function `quest-claim`** : appelle `finalize_quest_claim()` via service_role — seul point d'entrée pour valider une quête
+- **Lignes brutes `scales_ledger`** : inaccessibles aux deux clients — service_role uniquement
+- **Lignes brutes `app_events`** : inaccessibles aux deux clients — service_role uniquement
+
+---
+
+## 🟡 Base de données — module Tournois (migrations 20260611000001-000005)
+
+### Table `tournaments`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK, `gen_random_uuid()` |
+| `slug` | `text` | NOT NULL | UNIQUE — identifiant URL |
+| `name` | `text` | NOT NULL | Nom affiché |
+| `format` | `text` | NOT NULL | default `'2V2'` |
+| `map` | `text` | NOT NULL | default `'ARAM'` |
+| `status` | `text` | NOT NULL | `'draft'`\|`'registration'`\|`'live'`\|`'finished'` — default `'draft'` |
+| `starts_at` | `timestamptz` | nullable | Date de début prévue |
+| `max_teams` | `int` | NOT NULL | default `8` — plafond d'équipes |
+| `cashprize_label` | `text` | nullable | Libellé du cashprize affiché |
+| `cashprize_bonus` | `text` | nullable | Bonus cashprize texte libre |
+| `caster_name` | `text` | nullable | Nom du caster |
+| `twitch_url` | `text` | nullable | URL stream Twitch |
+| `hero_image_url` | `text` | nullable | URL image bannière |
+| `rules` | `jsonb` | NOT NULL | default `'[]'` — liste de règles |
+| `created_by` | `uuid` | NOT NULL | FK `auth.users` |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### RLS tournaments
+- SELECT `status != 'draft'` : `anon` + `authenticated`
+- SELECT `status = 'draft'` : `authenticated` si `created_by = auth.uid()` OU `is_admin()`
+- INSERT/UPDATE/DELETE : aucune policy client — Edge Functions via service_role
+
+### Table `tournament_teams`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
+| `name` | `text` | NOT NULL | 3-24 chars — UNIQUE par tournoi `(tournament_id, name)` |
+| `seed` | `int` | nullable | Attribué par `seed_bracket` |
+| `status` | `text` | NOT NULL | `'pending'`\|`'validated'`\|`'rejected'` — default `'pending'` |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### RLS tournament_teams
+- SELECT : `anon` + `authenticated` — toutes les équipes visibles publiquement
+- INSERT/UPDATE/DELETE : aucune policy client
+
+### Table `tournament_players`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `team_id` | `uuid` | NOT NULL | FK `tournament_teams` ON DELETE CASCADE |
+| `riot_pseudo` | `text` | NOT NULL | Format `gameName#TAG`, validé par l'EF |
+| `discord_pseudo` | `text` | NOT NULL | Confidentiel — ne jamais exposer en SELECT direct |
+| `user_id` | `uuid` | nullable | FK `auth.users` — lié si JWT présent à l'inscription |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### RLS tournament_players
+- SELECT `authenticated` : `user_id = auth.uid()` — lecture de ses propres lignes (profil)
+- INSERT/UPDATE/DELETE : aucune policy client
+- Lecture publique via la vue `tournament_players_public` (SECURITY DEFINER, sans `discord_pseudo`)
+
+### Table `matches`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
+| `code` | `text` | NOT NULL | `'M1'`..'M14'` — UNIQUE par tournoi |
+| `bracket` | `text` | NOT NULL | `'winner'`\|`'loser'`\|`'final'` |
+| `round` | `int` | NOT NULL | Numéro de round dans le bracket |
+| `position` | `int` | NOT NULL | Position dans le round |
+| `team_a` | `uuid` | nullable | FK `tournament_teams` |
+| `team_b` | `uuid` | nullable | FK `tournament_teams` |
+| `winner_id` | `uuid` | nullable | FK `tournament_teams` — null tant que non joué |
+| `next_match_id` | `uuid` | nullable | FK `matches` — destination du gagnant |
+| `next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
+| `loser_next_match_id` | `uuid` | nullable | FK `matches` — destination du perdant (loser bracket) |
+| `loser_next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
+| `status` | `text` | NOT NULL | `'pending'`\|`'ready'`\|`'in_progress'`\|`'finished'` — default `'pending'` (migration 20260612000001) |
+| `started_at` | `timestamptz` | nullable | posé par `start_match()`, remis à NULL si le match repasse pending/ready |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### Statut de match — trigger `trg_match_auto_status` (migration 20260612000001)
+Le statut est DÉRIVÉ des données par un trigger BEFORE INSERT OR UPDATE (`fn_match_auto_status`), sauf `'in_progress'` qui est posé par `start_match()` et préservé :
+- `winner_id NOT NULL` → `'finished'`
+- `team_a` OU `team_b` NULL → `'pending'` (+ `started_at = NULL`)
+- deux équipes, pas de vainqueur, status ∈ (pending, finished) → `'ready'` (couvre l'undo)
+
+Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'écrivent JAMAIS `status` — la propagation des équipes/résultats le met à jour automatiquement. Toute nouvelle écriture sur `matches` hérite de ce comportement.
+
+### RLS matches
+- SELECT : `anon` + `authenticated` — bracket public
+- INSERT/UPDATE/DELETE : aucune policy client
+
+### Vues publiques
+- `tournament_standings` : classement par tournoi (wins/losses/points/riot_pseudos). GRANT `anon, authenticated`.
+- `tournament_players_public` : joueurs sans `discord_pseudo`. GRANT `anon, authenticated`.
+
+### Fonctions SECURITY DEFINER (tournois)
+
+| Fonction | GRANT | Description |
+|---|---|---|
+| `seed_bracket(p_tournament_id UUID)` | aucun (REVOKE FROM PUBLIC) | Génère les 14 matchs DE 8 équipes + câblage FK. Advisory lock xact. Erreurs : `bracket_wrong_team_count`, `bracket_already_seeded`, `tournament_wrong_status`. Appelée par `tournament-admin` via userDb (JWT user). |
+| `report_match_result(p_match_id UUID, p_winner_id UUID)` | aucun (REVOKE FROM PUBLIC) | Enregistre le résultat + propage gagnant/perdant. Clôt le tournoi si M14. Erreurs : `match_teams_not_set`, `winner_not_in_match`, `already_reported`. |
+| `undo_match_result(p_match_id UUID)` | aucun (REVOKE FROM PUBLIC) | Annule le résultat si aucun match aval joué. Erreur : `downstream_played`. |
+| `start_match(p_match_id UUID)` | aucun (REVOKE FROM PUBLIC) | Lance un match : exige `status='ready'`, pose `in_progress` + `started_at=now()`. Advisory lock xact. Refuse explicitement `auth.uid() IS NULL`. Erreurs : `match_not_found`, `match_forbidden`, `match_wrong_status`. (migration 20260612000001) |
+
+**Point critique** : ces fonctions utilisent `auth.uid()` en interne pour vérifier les droits. Elles DOIVENT être appelées via un client Supabase initialisé avec le JWT utilisateur — jamais via service_role seul (qui a `auth.uid() = NULL`).
+
+### Consommateurs Tournois
+- **Site React** : `tournaments` (liste/détail), `tournament_teams` (équipes), `tournament_players_public` (joueurs sans discord), `matches` (bracket), `tournament_standings` (classement)
+- **App WPF** : `tournament_standings` + `tournament_players_public` (affichage lecture seule)
+- **Edge Function `tournament-register`** : INSERT `tournament_teams` + `tournament_players` via service_role — seul point d'entrée pour les inscriptions
+- **Edge Function `tournament-admin`** : UPDATE `tournaments` + `tournament_teams` via service_role ; appelle `seed_bracket` / `start_match` / `report_match_result` / `undo_match_result` via userDb — seul point d'entrée pour l'administration
+- `discord_pseudo` : jamais exposé aux clients — stocké en DB, visible uniquement via service_role (accès orga)
+
+### État de déploiement Tournois (12/06/2026)
+- Migrations 20260611000001-000004, 20260611000006 et 20260612000001 : **appliquées sur le remote**.
+- ⚠️ Migration `20260611000005_tournaments_demo.sql` (seed démo) : **JAMAIS exécutée sur le remote** — marquée `applied` via `supabase migration repair` pour que `db push` la saute (le fichier porte un bandeau « NE PAS APPLIQUER EN PRODUCTION »). Les données du tournoi `demo-noel-2024` ont été injectées en remote **ad-hoc** via `supabase db query` pour la QA visuelle — réversible : `DELETE FROM public.tournaments WHERE slug = 'demo-noel-2024';` (CASCADE équipes/joueurs/matchs).
+- EF `tournament-register` + `tournament-admin` : **déployées** (`verify_jwt = false` dans config.toml pour les deux — JWT vérifié dans le code de tournament-admin, getUser → 401).
+
+### Front Tournois (étape 4 — câblage)
+- `src/lib/tournois.ts` : types DB + `callTournamentEF` (token optionnel) + filtres `?statut=` (`tous`/`avenir`/`encours`/`termines`) + `parseRules` + `remainingSlots`.
+- `/tournois` : SSR, charge TOUS les tournois non-draft (table petite, jamais tronquée) puis filtre serveur selon `?statut=` ; stats hero calculées sur les données réelles.
+- `/tournois/[slug]` : SSR (tournoi puis teams+matches+standings en parallèle), `notFound()` si absent/draft (RLS masque les drafts aux non-propriétaires). Bandeau brouillon pour le créateur.
+- `TournamentLive` (client) : détient l'état vivant + **UN SEUL channel Realtime** par page sur `matches` (filtre tournament_id), patch local + refetch débounce standings/teams. Reste monté à travers les changements de tab (le tab est une prop).
+- Bracket v2 : `bracket-layout.ts` (géométrie PURE calculée depuis les données matches — testée par `bracket-layout.test.ts`, `npm test` / vitest) + `BracketView.tsx` (cartes 2 lignes liées vers `/tournois/[slug]/match/M{n}`, connecteurs SVG orthogonaux `--xv2-blue` 40% → 100% sur le chemin du vainqueur, badge EN COURS pulsant, mobile : scroll horizontal + snap + ancres WB/LB/Finale).
+- `RegistrationForm` (client) → EF `tournament-register` (JWT optionnel) ; `AdminPanel` (client) → EF `tournament-admin` (toutes actions dont `start_match`) ; garde serveur `/tournois/[slug]/admin` : `created_by` OU `profiles.role='admin'`.
 
 ---
 
@@ -139,12 +700,49 @@ CREATE INDEX IF NOT EXISTS idx_profiles_riot_puuid ON profiles (riot_puuid) WHER
 | Stats | UI placeholder |
 | Jungle Path | Fonctionnel (données locales) |
 | Builds Items | Fonctionnel (données locales) |
-| Workshop Builds | UI placeholder |
-| Workshop Jungle | UI placeholder |
+| Workshop Builds | Fonctionnel (données Supabase) |
+| Workshop Jungle | Fonctionnel (données Supabase) |
+| Patch Notes | Fonctionnel — onglet dashboard + page publique `/patch-notes` (SSR) |
 | Match Up | Verrouillé — dev preview admin |
 | Post Game | Verrouillé — dev preview admin |
 | Tournois | Soon screen |
 | Admin | Fonctionnel (gestion users, tiers, certification) |
+
+## 🔵 Pages publiques (hors dashboard)
+
+| Route | État |
+|---|---|
+| `/patch-notes` | Fonctionnel — liste publique SSR |
+| `/match/[platform]/[matchId]` | Fonctionnel — vue détail avec Impact d'items (Vue 1 stats + Vue 2 Meraki) |
+| `/summoner/[region]/[gameName]/[tagLine]` | Fonctionnel — historique joueur public, autocomplete `searched_summoners`, comparaison de rang (Vue A percentile + Vue B vs avg) |
+| `/tournois` | Fonctionnel — liste SSR + filtres `?statut=` |
+| `/tournois/[slug]` | Fonctionnel — poster/règles SSR + bracket v2 + classement, Realtime sur `matches` |
+| `/tournois/[slug]/admin` | Fonctionnel — panneau organisateur (garde created_by/admin), actions via EF `tournament-admin` |
+| `/tournois/[slug]/match/[code]` | À FAIRE (étape D) — les cartes du bracket pointent déjà dessus |
+| `/tournois/creer` | À FAIRE (étape E) |
+
+### Impact d'items (`/match/...`) — précisions techniques
+- **Cache v2** : `riot-match-detail` utilise `match:v2:${matchId}`. Matchs pré-déploiement → cache permanent v1, Vue 1 stats indisponible (dégradé propre).
+- **Vue 1 Timeline** : métrique sélectionnable (Or / PA / AD / Armure / RM / PV max / Hâte / Dégâts champs). Courbes par frame (~1 min). Activée si `playerStats` présents (cache v2) + `queueId ∈ {420, 440}`.
+- **Vue 2 Importance** : part d'or (DDragon) + stats Meraki par item avec contribution % si `playerStats` disponibles. Route handler `/api/external/items` — cache 24h, fallback silencieux. Bandeau si Meraki daté.
+- **Helper partagé** : `src/lib/external-fetch.ts` + `src/app/api/external/items/route.ts`.
+
+### Page joueur (`/summoner/...`) — précisions techniques
+- Client Component — rate limit distribué par IP visiteur.
+- Appelle `riot-rank` **puis** `riot-matches` en **séquentiel** (intentionnel) : le rang doit être en cache `riot_cache` avant que `riot-matches` soit appelé, pour que le harvest `harvestRankStats` puisse y lire le tier sans appel Riot supplémentaire.
+- `riot-rank` retourne désormais `profileIconId` + `summonerLevel`.
+- Autocomplete via `searched_summoners` (Supabase anon SELECT), alimentée par `riot-matches` + `riot-match-detail`.
+- Jour 1 : recherche exacte fonctionnelle. Autocomplete opérationnel dès que la table se remplit organiquement.
+
+### Comparaison de rang (`/summoner/...`) — précisions techniques
+- Bloc affiché si `soloEntry || flexEntry` (joueur classé uniquement).
+- **Vue A — Percentile** : estimation "Top X%" basée sur la distribution de rang publique LeagueOfGraphs S1 2026. Calcul purement client, aucune DB.
+- **Vue B — Vs ton rang** : compare les stats du joueur (dernières parties chargées) aux agrégats de la DB via `get_rank_avg()`.
+  - Rôle dominant déterminé : Solo/Duo prioritaire, puis Flex. Si aucun rôle détecté, le message le signale.
+  - Métriques comparées : CS/min, Vision, Dégâts, KDA. Indicateurs ↑/↓/≈ si écart ≥ 5%.
+  - Fetch non bloquant — si la DB est vide pour ce bucket, message dégradé gracieux.
+- **Alimentation de la DB** : `riot-matches` appelle `harvestRankStats` (fire-and-forget, `_shared/harvest-rank-stats.ts`) sur cache MISS + page 0 + appel by Riot ID. Lit le tier depuis `riot_cache` (pas d'appel Riot supplémentaire).
+- **Seuil de représentativité** : `get_rank_avg()` ne retourne rien si `< 50 samples` dans le bucket — empêche les comparaisons biaisées.
 
 ---
 
@@ -168,10 +766,32 @@ CREATE INDEX IF NOT EXISTS idx_profiles_riot_puuid ON profiles (riot_puuid) WHER
   dans les .env Vercel. Toutes les requêtes Riot passent par des Edge
   Functions Supabase qui font office de proxy.
 - Edge Functions actives : `riot-rotation`, `riot-matches`, `riot-match-detail`,
-  `riot-rank`. Déploiement auto via GitHub Action sur push.
+  `riot-rank`, `riot-link-init`, `shop-purchase`, `quest-claim`, `quest-status`. Déploiement auto via GitHub Action sur push.
+- ⚠️ **Piège backend — validation PUUID dans `riot-matches`** (résolu 23/06/2026) : la fonction accepte `?puuid=` OU `?gameName=&tagLine=`. La regex `PUUID_RE` validait à l'origine un **UUID v4 (36 car., format `8-4-4-4-12`)** — or ce format est précisément le **GUID anonymisé du LCU**, PAS un vrai PUUID Riot (**78 car.**, charset `[A-Za-z0-9_-]`). Conséquence : tout appel `?puuid=` avec un vrai PUUID renvoyait `400 {"error":"Format PUUID invalide."}`. Le chemin `gameName/tagLine` n'était PAS touché (le puuid y est résolu côté serveur via account-v1 et n'est jamais soumis à `PUUID_RE`), d'où un bug **latent** : le site n'utilise que le chemin Riot ID, et le 1er consommateur `?puuid=` (app WPF `WyrmBackendService.GetMatchIdsByPuuidAsync`) l'a révélé. **Correctif** : `PUUID_RE = /^[A-Za-z0-9_-]{70,128}$/` (charset borné → anti path-injection ; le puuid est en plus `encodeURIComponent`'d avant l'appel Riot). **Règle** : toute validation de PUUID côté backend cible ce format, JAMAIS un UUID.
+- `patch-notes-generator` : génère un résumé FR via Claude (déclenchement : pg_cron quotidien + bouton admin) — auth double : JWT admin OU `X-Internal-Token: <PATCH_CRON_SECRET>`
+  - Secrets Supabase requis : `ANTHROPIC_API_KEY` (clé Anthropic), `PATCH_CRON_SECRET` (token cron), `SUPABASE_SERVICE_ROLE_KEY` (automatique)
+  - Modèle épinglé : `claude-sonnet-4-6`
+  - Retourne `{ skipped: true }` si le patch est déjà en base (protection contre les doubles appels)
+- `patch-notes` : lecture publique des patch notes publiés (site + app desktop) — `verify_jwt = false`
+- `shop-purchase` : achat d'un cosmétique (POST, JWT obligatoire) — body `{ cosmetic_id: number }`. Vérifie `shop_enabled` via `isFeatureEnabled` avant le JWT, appelle `purchase_cosmetic` SECURITY DEFINER via service_role. Codes HTTP : 402 solde insuffisant, 404 cosmétique indisponible, 409 déjà possédé, 403 boutique désactivée.
+  - ⚠️ **Pas d'`app_event` dans `shop-purchase`** : `shop-purchase` ne doit PAS émettre d'app_event (notamment `cosmetic_purchased`). Décision actée : la quête `app_buy_cosmetic` a été écartée (incitation perverse — dépenser des Écailles pour en regagner moins), donc aucun consommateur n'existe pour cet événement. Ne pas instrumenter, même si un ancien plan le mentionne.
+- `quest-claim` : réclamation d'une quête journalière (POST, JWT obligatoire) — body `{ quest_slug: string }`. Flow : `quests_enabled` flag → **rate limit IP** → auth → chargement pool complet → **garde-fou set du jour** (`selectDailySet`) → dédup préventif → vérification action data-driven (dispatch sur `criteria.type`) → `finalize_quest_claim` SECURITY DEFINER. Codes HTTP : 400 condition non remplie, 403 flag off / pas de compte Riot lié / quête hors set, 404 quête inconnue, 409 déjà réclamée, 429 rate limit Riot/IP.
+  - Logique `criteria.type` : `'play'` (count matchs), `'win'` (count victoires, break-early), `'cs'` (threshold CS, break-early), `'app_event'` (count app_events du jour).
+  - `resolveQueue(queue)` : `420` → `[420]`, `440` → `[440]`, `"ranked"` → `[420, 440]`, défaut → `[420]`.
+  - `fetchMatchIds` : appels Riot en parallèle si multi-queue, IDs dédupliqués.
+  - Réponse succès : `{ success: true, quest_name, reward, capped: false }`. Réponse plafond : `{ success: false, capped: true, reward: 0 }` (HTTP 200, pas d'erreur rouge côté client).
+  - `riot-match-detail` logue `event_type='match_viewed'` dans `app_events` (fire-and-forget, uniquement si JWT présent) — alimente la vérification de `app_view_match`.
+- `quest-status` : lecture de l'état des quêtes du jour (GET ou POST, JWT obligatoire). Retourne `{ day, streak, earned_today, cap, quests[] }` avec `completed_today` et `progress` par quête. Le flag `quests_enabled` N'est PAS vérifié — lecture pure disponible même quand les quêtes sont off. Quatre requêtes DB en parallèle (`quest_definitions` pool_eligible + `quest_completions` + `quest_streaks` + `app_settings` cap). `streak` = null si jamais de complétion. `earned_today` = somme des rewards des complétions du jour. `progress` = `{ current, target }` pour les quêtes `app_event` (lecture `app_events`), `null` pour les quêtes `lol` (pas d'appel Riot). Consommé par le dashboard web (M7) et le futur overlay desktop.
+- `tournament-register` : inscription publique d'une équipe (POST, JWT optionnel) — body `{ tournament_id, team_name, players[2] }`. Rate limit IP. Validation complète des inputs (UUID, nom, riot_pseudo, discord_pseudo). Vérifie `status = 'registration'` et `count(pending+validated) < max_teams`. INSERT `tournament_teams` + `tournament_players` via service_role. Codes HTTP : 400 validation, 403 tournoi non ouvert, 409 complet/nom pris, 429 rate limit, 201 succès.
+- `tournament-admin` : actions d'administration d'un tournoi (POST, JWT obligatoire — vérifié DANS LE CODE, `verify_jwt = false` dans config.toml) — body `{ action, tournament_id, ... }`. Vérifie `created_by === user.id OR is_admin()`. Les RPC SECURITY DEFINER (`seed_bracket`, `start_match`, `report_match_result`, `undo_match_result`) sont appelées via `userDb` (client JWT utilisateur) car elles utilisent `auth.uid()` en interne. Actions : `open_registration`, `close_registration`, `validate_team`, `reject_team`, `seed_bracket`, `start_match`, `report_result`, `undo_result`, `set_status`. Codes HTTP : 400 état/payload invalide, 401 JWT absent, 403 non autorisé, 404 tournoi/match non trouvé, 409 conflit.
+
+### Module partagé `_shared/daily-quests.ts`
+- Export : `selectDailySet(dayStr, pool, K=3) → QuestDef[]`
+- Algorithme déterministe : tri par slug → hash FNV-1a 32 bits du `dayStr` → 2 quêtes lol (≤1 `riot_detail`) + 1 quête app.
+- Importé par `quest-claim` ET `quest-status` — garantit le même set au même instant sans état partagé.
+- Export type : `QuestDef` (interface avec `slug`, `category`, `cost_tier`, index signature).
 - L'app desktop (`Logiciel-Assistant-LOL`) consomme aussi les Edge Functions
   via `WyrmBackendService.cs` — clé Riot **plus du tout** côté client.
-- Tournament API : non encore demandée.
 
 ---
 
@@ -229,6 +849,122 @@ Quand on la réactivera, on cadrera l'enforcement.
 mais on ne peut pas identifier le propriétaire d'une ligne.
 **À corriger** : ajouter `creator_id UUID REFERENCES auth.users DEFAULT auth.uid()`
 puis recréer les policies `wjp_update_owner` / `wjp_delete_owner` en conséquence.
+
+---
+
+---
+
+## 🟡 Base de données — module Tournois (migrations 20260611000001-000005)
+
+### Table `tournaments`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK default gen_random_uuid() |
+| `slug` | `text` | NOT NULL | UNIQUE — identifiant URL stable |
+| `name` | `text` | NOT NULL | Nom affiché |
+| `format` | `text` | NOT NULL | default `'2V2'` |
+| `map` | `text` | NOT NULL | default `'ARAM'` |
+| `status` | `text` | NOT NULL | `'draft'`\|`'registration'`\|`'live'`\|`'finished'` |
+| `starts_at` | `timestamptz` | nullable | |
+| `max_teams` | `int` | NOT NULL | default `8` |
+| `cashprize_label` | `text` | nullable | Ex : `'60€'` |
+| `cashprize_bonus` | `text` | nullable | Ex : `'+ ARÈNE PASS XV2'` |
+| `caster_name` | `text` | nullable | |
+| `twitch_url` | `text` | nullable | |
+| `hero_image_url` | `text` | nullable | Slot visuel organisateur |
+| `rules` | `jsonb` | NOT NULL | Liste ordonnée de strings, default `'[]'` |
+| `created_by` | `uuid` | NOT NULL | FK `auth.users` |
+| `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+### RLS `tournaments`
+- SELECT non-draft : `anon` + `authenticated` — `status <> 'draft'`
+- SELECT draft : `authenticated` — `created_by = auth.uid() OR is_admin()`
+- INSERT/UPDATE/DELETE : aucune policy client (service_role only)
+
+### Table `tournament_teams`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
+| `name` | `text` | NOT NULL | 3-24 caractères, UNIQUE par tournoi |
+| `seed` | `int` | nullable | null avant seeding |
+| `status` | `text` | NOT NULL | `'pending'`\|`'validated'`\|`'rejected'`, default `'pending'` |
+| `created_at` | `timestamptz` | NOT NULL | |
+
+Contrainte `uq_team_name_per_tournament UNIQUE (tournament_id, name)`.
+
+### RLS `tournament_teams`
+- SELECT : `anon` + `authenticated` — toutes équipes
+- INSERT/UPDATE/DELETE : aucune policy client
+
+### Table `tournament_players`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `team_id` | `uuid` | NOT NULL | FK `tournament_teams` ON DELETE CASCADE |
+| `riot_pseudo` | `text` | NOT NULL | Format `'gameName#TAG'`, validé côté EF |
+| `discord_pseudo` | `text` | NOT NULL | **Ne jamais exposer en SELECT public** |
+| `user_id` | `uuid` | nullable | FK `auth.users` |
+| `created_at` | `timestamptz` | NOT NULL | |
+
+### RLS `tournament_players`
+- SELECT : `authenticated` — `user_id = auth.uid()` uniquement
+- Lecture publique : passer par la vue `tournament_players_public` (sans `discord_pseudo`)
+- INSERT/UPDATE/DELETE : aucune policy client
+
+### Table `matches`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK |
+| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
+| `code` | `text` | NOT NULL | `'M1'`..`'M14'`, UNIQUE par tournoi |
+| `bracket` | `text` | NOT NULL | `'winner'`\|`'loser'`\|`'final'` |
+| `round` | `int` | NOT NULL | |
+| `position` | `int` | NOT NULL | |
+| `team_a` | `uuid` | nullable | FK `tournament_teams` |
+| `team_b` | `uuid` | nullable | FK `tournament_teams` |
+| `winner_id` | `uuid` | nullable | FK `tournament_teams` |
+| `next_match_id` | `uuid` | nullable | FK self — destination gagnant |
+| `next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
+| `loser_next_match_id` | `uuid` | nullable | FK self — destination perdant (LB) |
+| `loser_next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
+| `status` | `text` | NOT NULL | `'pending'`\|`'ready'`\|`'in_progress'`\|`'finished'` — dérivé par trigger `trg_match_auto_status` (migration 20260612000001), `'in_progress'` posé par `start_match()` |
+| `started_at` | `timestamptz` | nullable | posé par `start_match()` |
+| `created_at` | `timestamptz` | NOT NULL | |
+
+Contrainte `uq_match_code_per_tournament UNIQUE (tournament_id, code)`.
+Realtime activé : `REPLICA IDENTITY FULL` + publication `supabase_realtime`.
+
+### RLS `matches`
+- SELECT : `anon` + `authenticated`
+- INSERT/UPDATE/DELETE : aucune policy client
+
+### Vues publiques
+- `tournament_standings` : classement par tournoi (wins, losses, points, pseudos Riot). GRANT SELECT `anon, authenticated`.
+- `tournament_players_public` : joueurs sans `discord_pseudo`. GRANT SELECT `anon, authenticated`.
+
+### Fonctions SQL (toutes SECURITY DEFINER, REVOKE EXECUTE FROM PUBLIC)
+
+| Fonction | Description |
+|---|---|
+| `seed_bracket(p_tournament_id UUID)` | Génère les 14 matchs DE 8 équipes, seed les équipes, passe en `'live'`. Advisory lock sur tournament_id. |
+| `report_match_result(p_match_id UUID, p_winner_id UUID)` | Enregistre résultat + propage gagnant/perdant. Advisory lock sur tournament_id. |
+| `undo_match_result(p_match_id UUID)` | Annule résultat si aucun match aval joué. Advisory lock sur tournament_id. |
+| `start_match(p_match_id UUID)` | Lance un match `ready` → `in_progress` + `started_at`. Advisory lock sur tournament_id. Refuse `auth.uid() IS NULL`. |
+
+Erreurs levées par `seed_bracket` : `'tournament_not_found'`, `'tournament_forbidden'`, `'tournament_wrong_status'`, `'bracket_wrong_team_count'`, `'bracket_already_seeded'`.
+Erreurs levées par `report_match_result` : `'match_not_found'`, `'match_forbidden'`, `'match_teams_not_set'`, `'winner_not_in_match'`, `'already_reported'`.
+Erreurs levées par `undo_match_result` : `'match_not_found'`, `'match_forbidden'`, `'downstream_played'`.
+Erreurs levées par `start_match` : `'match_not_found'`, `'match_forbidden'`, `'match_wrong_status'`.
+
+### Consommateurs Tournois
+- **Site React** : lecture `tournaments`, `tournament_teams`, `tournament_players_public`, `matches`, `tournament_standings` (anon/auth)
+- **App WPF** : lecture `tournament_standings` + `tournament_players_public` (anon/auth)
+- **Edge Functions** : écriture via service_role — `seed_bracket`, `report_match_result`, `undo_match_result`
 
 ---
 
