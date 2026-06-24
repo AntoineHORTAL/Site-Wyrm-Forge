@@ -4,11 +4,13 @@
 //
 // Appel : GET /functions/v1/riot-match-detail?matchId=EUW1_XXXX&platform=euw1
 // Headers : apikey: <SUPABASE_ANON_KEY>
+import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
-import { requireSecret } from '../_shared/auth.ts'
+import { requireSecret, getUser }   from '../_shared/auth.ts'
 import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
+import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
 
 const FN = 'riot-match-detail'
 
@@ -23,6 +25,27 @@ const MATCH_ID_RE = /^[A-Z0-9]+_\d+$/
 
 function sanitize(s: string): string {
   return s.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
+}
+
+// Fire-and-forget : enregistre un événement match_viewed pour les quêtes app.
+// Appelé sur HIT, STALE et MISS pour que toute consultation authentifiée compte.
+// deno-lint-ignore no-explicit-any
+function logMatchViewed(user: any, matchId: string): void {
+  if (!user) return
+  createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+    .from('app_events')
+    // Idempotent : un même (user, match_viewed, matchId) ne crée qu'une ligne.
+    // S'appuie sur la contrainte UNIQUE uq_app_events_dedup (totale → pas de
+    // prédicat WHERE requis dans onConflict). Ferme le farm d'events de quête.
+    .upsert(
+      { user_id: user.id, event_type: 'match_viewed', ref_id: matchId },
+      { onConflict: 'user_id,event_type,ref_id', ignoreDuplicates: true },
+    )
+    .then()
+    .catch(() => {})
 }
 
 Deno.serve(async (req) => {
@@ -53,11 +76,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)
     }
 
-    const cacheKey = `match:${matchId}`
+    const cacheKey = `match:v2:${matchId}`
 
-    // Cache read — completed matches are permanent so this will almost always hit
-    const cached = await cacheGet(cacheKey)
+    // Résolution parallèle : cache + user JWT — getUser est nécessaire sur HIT aussi
+    // (match_viewed doit être loggé quelle que soit la provenance du résultat)
+    const [cached, questUser] = await Promise.all([
+      cacheGet(cacheKey),
+      getUser(req),
+    ])
+
     if (cached !== null) {
+      logMatchViewed(questUser, matchId)
       return jsonResponse(cached, 200, { 'X-Cache': 'HIT' })
     }
 
@@ -65,6 +94,7 @@ Deno.serve(async (req) => {
     if (await isCircuitOpen()) {
       const stale = await cacheGetStale(cacheKey)
       if (stale !== null) {
+        logMatchViewed(questUser, matchId)
         return jsonResponse(stale, 200, { 'X-Cache': 'STALE' })
       }
       return jsonResponse(
@@ -109,6 +139,14 @@ Deno.serve(async (req) => {
     const drakesByTeam: Record<number, string[]> = { 100: [], 200: [] }
 
     // ── Timeline frames aggregation ──────────────────────────────────────────
+    type PlayerFrameStats = {
+      ap: number; ad: number; armor: number; mr: number
+      hp: number; hpMax: number; attackSpeed: number; moveSpeed: number
+      haste: number; omnivamp: number
+      dmgChampions: number; physToChampions: number
+      magicToChampions: number; trueToChampions: number
+      currentGold: number
+    }
     type TimelineFrame = {
       ts: number
       teamGold:    [number, number]
@@ -118,6 +156,7 @@ Deno.serve(async (req) => {
       playerLevel: number[]
       playerXp:    number[]
       playerCs:    number[]
+      playerStats?: PlayerFrameStats[]
     }
     const timelineFrames: TimelineFrame[] = []
 
@@ -244,6 +283,7 @@ Deno.serve(async (req) => {
         const playerLevel: number[] = new Array(10).fill(1)
         const playerXp:    number[] = new Array(10).fill(0)
         const playerCs:    number[] = new Array(10).fill(0)
+        const framePlayerStats: (PlayerFrameStats | null)[] = new Array(10).fill(null)
 
         // deno-lint-ignore no-explicit-any
         Object.entries(frame.participantFrames ?? {}).forEach(([pid, pf]: [string, any]) => {
@@ -257,12 +297,30 @@ Deno.serve(async (req) => {
           playerLevel[idx]    = pf.level ?? 1
           playerXp[idx]       = pf.xp ?? 0
           playerCs[idx]       = cs
+          const cstat = pf.championStats
+          const dstat = pf.damageStats
+          if (cstat) {
+            framePlayerStats[idx] = {
+              ap: cstat.abilityPower ?? 0,   ad: cstat.attackDamage ?? 0,
+              armor: cstat.armor ?? 0,       mr: cstat.magicResist ?? 0,
+              hp: cstat.health ?? 0,         hpMax: cstat.healthMax ?? 0,
+              attackSpeed: cstat.attackSpeed ?? 0, moveSpeed: cstat.movementSpeed ?? 0,
+              haste: cstat.abilityHaste ?? 0,    omnivamp: cstat.omnivamp ?? 0,
+              dmgChampions:    dstat?.totalDamageDoneToChampions       ?? 0,
+              physToChampions: dstat?.physicalDamageDoneToChampions    ?? 0,
+              magicToChampions: dstat?.magicDamageDoneToChampions      ?? 0,
+              trueToChampions: dstat?.trueDamageDoneToChampions        ?? 0,
+              currentGold: pf.currentGold ?? 0,
+            }
+          }
         })
 
+        const hasStats = framePlayerStats.some(s => s !== null)
         timelineFrames.push({
           ts: frame.timestamp ?? 0,
           teamGold, teamXp, teamCs,
           playerGold, playerLevel, playerXp, playerCs,
+          ...(hasStats ? { playerStats: framePlayerStats as PlayerFrameStats[] } : {}),
         })
       })
     }
@@ -286,9 +344,12 @@ Deno.serve(async (req) => {
       damageDealt:     p.totalDamageDealtToChampions ?? 0,
       damageTaken:     p.totalDamageTaken ?? 0,
       damageMitigated: p.damageSelfMitigated ?? 0,
-      damageObjectives: p.damageDealtToObjectives ?? 0,
-      damageTurrets:    p.damageDealtToTurrets ?? 0,
-      damageBuildings:  p.damageDealtToBuildings ?? 0,
+      damageObjectives:    p.damageDealtToObjectives ?? 0,
+      damageTurrets:       p.damageDealtToTurrets ?? 0,
+      damageBuildings:     p.damageDealtToBuildings ?? 0,
+      physicalDamageDealt: p.physicalDamageDealtToChampions ?? 0,
+      magicDamageDealt:    p.magicDamageDealtToChampions   ?? 0,
+      trueDamageDealt:     p.trueDamageDealtToChampions     ?? 0,
       totalHeal:        p.totalHeal ?? 0,
       healOnTeammates:  p.totalHealsOnTeammates ?? 0,
       timeCcOthers:     p.timeCCingOthers ?? 0,
@@ -345,10 +406,17 @@ Deno.serve(async (req) => {
 
     await cacheSet(cacheKey, FN, result)
     await incrementQuota(FN)
+    // Alimente searched_summoners avec les 10 participants du match (fire-and-forget)
+    // deno-lint-ignore no-explicit-any
+    result.participants.forEach((p: any) => {
+      if (p.riotIdGameName) upsertSearchedSummoner(platform, p.riotIdGameName, p.riotIdTagline)
+    })
+
+    logMatchViewed(questUser, matchId)
 
     return jsonResponse(result, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Erreur inconnue'
-    return jsonResponse({ error: msg }, 500)
+    console.error('riot-match-detail: unhandled exception', e instanceof Error ? e.message : String(e))
+    return jsonResponse({ error: 'Erreur serveur inattendue.' }, 500)
   }
 })

@@ -18,3 +18,41 @@ verify_jwt = false
 
 [functions.riot-rank]
 verify_jwt = false
+
+# Patch notes publiques — pas d'auth requise, données filtrées sur status='published'
+[functions.patch-notes]
+verify_jwt = false
+
+# Génération des patch notes via Anthropic — réservée aux admins ou au cron interne
+[functions.patch-notes-generator]
+verify_jwt = true
+
+# Module Tournois
+# tournament-register : inscription publique (JWT optionnel — lié si présent)
+[functions.tournament-register]
+verify_jwt = false
+
+# tournament-admin : actions orga — JWT vérifié DANS LE CODE (getUser → 401),
+# pas par la plateforme (convention projet : verify_jwt=false + check applicatif)
+[functions.tournament-admin]
+verify_jwt = false
+
+# ── Fonctions nécessitant un user connecté ───────────────────────────────────
+# verify_jwt = true déclaré EXPLICITEMENT (était le défaut implicite). La clé anon
+# reste un JWT valide accepté par la plateforme ; la vérification du VRAI user est
+# faite dans le code via getUser() → 401. Les checks pré-auth (feature flag, rate
+# limit) s'exécutent donc toujours pour les requêtes porteuses de la clé anon.
+[functions.shop-purchase]
+verify_jwt = true
+
+[functions.quest-claim]
+verify_jwt = true
+
+[functions.quest-status]
+verify_jwt = true
+
+[functions.riot-link-init]
+verify_jwt = true
+
+[functions.riot-link-verify]
+verify_jwt = true

@@ -94,7 +94,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Riot API ${sumRes.status}` }, sumRes.status)
     }
     const sum = await sumRes.json()
-    const summonerId: string = sum.id ?? ''
+    const summonerId: string    = sum.id              ?? ''
+    const profileIconId: number = sum.profileIconId   ?? 29
+    const summonerLevel: number = sum.summonerLevel   ?? 1
 
     // 3. Entries league-v4
     const leagueRes = await fetch(
@@ -121,13 +123,13 @@ Deno.serve(async (req) => {
       inactive:  e.inactive ?? false,
     }))
 
-    const result = { puuid, summonerId, entries }
+    const result = { puuid, summonerId, profileIconId, summonerLevel, entries }
     await cacheSet(cacheKey, FN, result)
     await incrementQuota(FN)
 
     return jsonResponse(result, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Erreur inconnue'
-    return jsonResponse({ error: msg }, 500)
+    console.error('riot-rank: unhandled exception', e instanceof Error ? e.message : String(e))
+    return jsonResponse({ error: 'Erreur serveur inattendue.' }, 500)
   }
 })

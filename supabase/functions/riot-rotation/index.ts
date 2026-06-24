@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse(data, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Erreur inconnue'
-    return jsonResponse({ error: msg }, 500)
+    console.error('riot-rotation: unhandled exception', e instanceof Error ? e.message : String(e))
+    return jsonResponse({ error: 'Erreur serveur inattendue.' }, 500)
   }
 })

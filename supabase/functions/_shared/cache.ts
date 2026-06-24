@@ -3,10 +3,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const TTL_MS: Record<string, number> = {
-  'riot-rotation':     6 * 60 * 60 * 1000, // 6 hours — weekly rotation
-  'riot-rank':             5 * 60 * 1000,  // 5 min   — rank changes per game
-  'riot-matches':          3 * 60 * 1000,  // 3 min   — list changes after each game
-  'riot-match-detail':            -1,      // permanent — completed matches are immutable
+  'riot-rotation':          6 * 60 * 60 * 1000, // 6 hours — weekly rotation
+  'riot-rank':                  5 * 60 * 1000,  // 5 min   — rank changes per game
+  'riot-matches':               3 * 60 * 1000,  // 3 min   — list changes after each game
+  'riot-match-detail':                    -1,   // permanent — completed matches are immutable
+  'patch-notes-generator': 24 * 60 * 60 * 1000, // 24h — DDragon versions list changes rarely
+  'patch-notes':            1 * 60 * 60 * 1000, // 1h  — published patch notes list
 }
 
 function db() {
