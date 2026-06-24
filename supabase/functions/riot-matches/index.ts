@@ -11,6 +11,8 @@ import { requireSecret } from '../_shared/auth.ts'
 import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
+import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
+import { harvestRankStats } from '../_shared/harvest-rank-stats.ts'
 
 const FN = 'riot-matches'
 
@@ -20,8 +22,12 @@ const ROUTING: Record<string, string> = {
   kr: 'asia', jp1: 'asia',
 }
 
-// UUID v4 format used by Riot for PUUIDs
-const PUUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Real Riot PUUIDs are ~78-char URL-safe strings ([A-Za-z0-9_-]), NOT UUID v4.
+// (The 36-char "8-4-4-4-12" UUID shape is the LCU's *anonymized* GUID — invalid for
+//  Riot APIs. The previous /^[0-9a-f]{8}-...{12}$/i regex rejected every real PUUID,
+//  breaking the by-puuid path. Charset-bounded to prevent path injection; puuid is
+//  also encodeURIComponent'd before use below.)
+const PUUID_RE = /^[A-Za-z0-9_-]{70,128}$/
 
 /**
  * Strips invisible Unicode characters (zero-width, bidi marks, BOM) that
@@ -192,10 +198,20 @@ Deno.serve(async (req) => {
     const result = { puuid, matches }
     await cacheSet(cacheKey, FN, result)
     await incrementQuota(FN, riotCalls)
+    // Alimente searched_summoners avec le joueur recherché (fire-and-forget)
+    if (gameNameRaw && tagLineRaw) {
+      upsertSearchedSummoner(platform, sanitize(gameNameRaw), sanitize(tagLineRaw))
+    }
+
+    // Alimente rank_stat_samples pour la comparaison de rang (fire-and-forget)
+    // Condition : page 0 + appel par Riot ID (pas by-puuid) + cache MISS (déjà garanti ici)
+    if (start === 0 && gameNameRaw && tagLineRaw) {
+      harvestRankStats(platform, sanitize(gameNameRaw), sanitize(tagLineRaw), puuid, matches as any[])
+    }
 
     return jsonResponse(result, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Erreur inconnue'
-    return jsonResponse({ error: msg }, 500)
+    console.error('riot-matches: unhandled exception', e instanceof Error ? e.message : String(e))
+    return jsonResponse({ error: 'Erreur serveur inattendue.' }, 500)
   }
 })
