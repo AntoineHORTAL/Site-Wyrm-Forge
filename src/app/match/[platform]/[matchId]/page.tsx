@@ -49,6 +49,7 @@ interface Participant {
   damageDealt: number; damageTaken: number; damageMitigated: number; goldEarned: number
   // Stats supplémentaires
   damageObjectives?: number; damageTurrets?: number; damageBuildings?: number
+  physicalDamageDealt?: number; magicDamageDealt?: number; trueDamageDealt?: number
   totalHeal?: number; healOnTeammates?: number
   timeCcOthers?: number; longestLife?: number
   summoner1Id: number; summoner2Id: number
@@ -61,6 +62,14 @@ interface Participant {
   itemEvents?: ItemEvent[]
   skillEvents?: SkillEvent[]
 }
+interface PlayerFrameStats {
+  ap: number; ad: number; armor: number; mr: number
+  hp: number; hpMax: number; attackSpeed: number; moveSpeed: number
+  haste: number; omnivamp: number
+  dmgChampions: number; physToChampions: number
+  magicToChampions: number; trueToChampions: number
+  currentGold: number
+}
 interface TimelineFrame {
   ts: number
   teamGold:    [number, number]
@@ -70,6 +79,7 @@ interface TimelineFrame {
   playerLevel: number[]
   playerXp?:   number[]
   playerCs?:   number[]
+  playerStats?: PlayerFrameStats[]
 }
 interface Team {
   teamId: number; win: boolean; bans: number[]
@@ -1007,7 +1017,7 @@ function PersonalSection({ me, detail, champMap, spellMap, version, myRank }: {
         }}>▶</span>
         {expanded
           ? 'REPLIER LES DÉTAILS'
-          : 'DÉROULER : PROGRESSION · BUILD · SKILL ORDER · SORTS'}
+          : 'DÉROULER : PROGRESSION · BUILD · IMPACT ITEMS · SKILL ORDER · SORTS'}
       </button>
 
       {/* Section dépliable */}
@@ -1019,6 +1029,10 @@ function PersonalSection({ me, detail, champMap, spellMap, version, myRank }: {
 
           <div style={{ marginTop: 14 }}>
             <BuildTimeline me={me} detail={detail} version={version} />
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <ItemImpact me={me} detail={detail} version={version} />
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -1760,6 +1774,365 @@ function BuildTimeline({ me, detail, version }: {
             ))}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Impact d'items : deux vues complémentaires ──
+
+const STAT_LABELS: Partial<Record<string, string>> = {
+  abilityPower: 'PA', attackDamage: 'AD', armor: 'Armure', magicResistance: 'RM',
+  health: 'PV', abilityHaste: 'Hâte', lethality: 'Létalité',
+  criticalStrikeChance: 'Crit', omnivamp: 'Omnivamp',
+  attackSpeed: 'Vit. att.', movespeed: 'Vit. mvt',
+}
+const STAT_TO_PLAYER: Partial<Record<string, keyof PlayerFrameStats>> = {
+  abilityPower: 'ap', attackDamage: 'ad', armor: 'armor', magicResistance: 'mr',
+  health: 'hpMax', abilityHaste: 'haste', attackSpeed: 'attackSpeed',
+  movespeed: 'moveSpeed', omnivamp: 'omnivamp',
+}
+function fmtStatValue(key: string, v: number): string {
+  if (key === 'criticalStrikeChance') return v < 1 ? `+${Math.round(v * 100)}%` : `+${Math.round(v)}%`
+  if (key === 'omnivamp' || key === 'attackSpeed') return `+${Math.round(v)}%`
+  return `+${Math.round(v)}`
+}
+type MerakiStatMap = Partial<Record<string, number>>
+type MerakiItemsResponse = {
+  stats: Record<string, MerakiStatMap>; outdated: boolean
+  ddPatch: string; merakiPatch: string; error?: boolean
+}
+
+function ItemImpact({ me, detail, version }: {
+  me: Participant; detail: MatchDetail; version: string
+}) {
+  const [view,         setView]         = useState<'timeline' | 'importance'>('timeline')
+  const [metric,       setMetric]       = useState<string>('gold')
+  const [itemData,     setItemData]     = useState<Record<string, { name: string; gold: { total: number } }>>({})
+  const [itemLoaded,   setItemLoaded]   = useState(false)
+  const [merakiData,   setMerakiData]   = useState<MerakiItemsResponse | null>(null)
+  const [merakiLoaded, setMerakiLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!version || itemLoaded) return
+    fetch(`${DDN}/cdn/${version}/data/fr_FR/item.json`)
+      .then(r => r.json())
+      .then(j => { setItemData(j.data ?? {}); setItemLoaded(true) })
+      .catch(() => setItemLoaded(true))
+  }, [version, itemLoaded])
+
+  useEffect(() => {
+    if (merakiLoaded) return
+    fetch('/api/external/items')
+      .then(r => r.json())
+      .then((j: MerakiItemsResponse) => { setMerakiData(j); setMerakiLoaded(true) })
+      .catch(() => setMerakiLoaded(true))
+  }, [merakiLoaded])
+
+  const frames = detail.timeline ?? []
+  const myIdx  = detail.participants.findIndex(p => p.puuid === me.puuid)
+
+  // Vue 1 enrichie : playerStats présents (cache v2) + match classé
+  const hasPlayerStats = frames.some(f => f.playerStats && f.playerStats.length > 0)
+  const isRanked       = detail.queueId === 420 || detail.queueId === 440
+  const showVue1       = hasPlayerStats && isRanked
+
+  // Achats nets (PURCHASED − UNDONE) — même logique que BuildTimeline
+  const cleanedPurchases: ItemEvent[] = []
+  ;(me.itemEvents ?? []).forEach(ev => {
+    if (ev.type === 'UNDONE') {
+      for (let i = cleanedPurchases.length - 1; i >= 0; i--) {
+        if (cleanedPurchases[i].type === 'PURCHASED' && cleanedPurchases[i].itemId === ev.itemId) {
+          cleanedPurchases.splice(i, 1); break
+        }
+      }
+    } else if (ev.type === 'PURCHASED') {
+      cleanedPurchases.push(ev)
+    }
+  })
+
+  // ── VUE 1 : Timeline SVG ──
+  function TimelineView() {
+    if (frames.length === 0 || myIdx < 0) {
+      return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Données timeline non disponibles.</div>
+    }
+
+    type MetricDef = { key: string; label: string; color: string; getValue: (f: TimelineFrame) => number }
+    const METRICS: MetricDef[] = [
+      { key: 'gold',  label: 'Or',          color: '#EF9F27', getValue: f => f.playerGold[myIdx] ?? 0 },
+      ...(showVue1 ? [
+        { key: 'ap',    label: 'PA',          color: '#7F77DD', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.ap ?? 0 },
+        { key: 'ad',    label: 'AD',          color: '#E24B4A', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.ad ?? 0 },
+        { key: 'armor', label: 'Armure',      color: '#5DCAA5', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.armor ?? 0 },
+        { key: 'mr',    label: 'RM',          color: '#3A8AC9', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.mr ?? 0 },
+        { key: 'hpMax', label: 'PV max',      color: '#BA7517', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.hpMax ?? 0 },
+        { key: 'haste', label: 'Hâte',        color: '#A8A3E8', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.haste ?? 0 },
+        { key: 'dmg',   label: 'Dégâts champs', color: '#E24B4A', getValue: (f: TimelineFrame) => f.playerStats?.[myIdx]?.dmgChampions ?? 0 },
+      ] as MetricDef[] : []),
+    ]
+
+    const sel    = METRICS.find(m => m.key === metric) ?? METRICS[0]
+    const values = frames.map(f => sel.getValue(f))
+    const maxVal = Math.max(...values, 1)
+
+    const W = 800, H = 220, PADL = 54, PADR = 18, PADT = 32, PADB = 26
+    const innerW = W - PADL - PADR
+    const innerH = H - PADT - PADB
+    const lastTs  = frames[frames.length - 1].ts || 1
+    const xForTs  = (ts: number) => PADL + (ts / lastTs) * innerW
+    const xForIdx = (i: number)  => PADL + (frames[i].ts / lastTs) * innerW
+    const yFor    = (v: number)  => PADT + innerH - (v / maxVal) * innerH
+    const path    = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xForIdx(i).toFixed(1)} ${yFor(v).toFixed(1)}`).join(' ')
+
+    const totalMin = Math.ceil(lastTs / 60000)
+    const xTicks: number[] = []
+    for (let m = 0; m <= totalMin; m += 5) xTicks.push(m)
+
+    type PurchaseGroup = { ts: number; items: number[] }
+    const groups: PurchaseGroup[] = []
+    cleanedPurchases.forEach(ev => {
+      const last = groups[groups.length - 1]
+      if (last && ev.ts - last.ts < 5000) last.items.push(ev.itemId)
+      else groups.push({ ts: ev.ts, items: [ev.itemId] })
+    })
+    const ICON = 22, ICON_GAP = 2
+
+    const isCorrelation = metric === 'gold' || metric === 'dmg'
+    const fmtY = (v: number) =>
+      metric === 'gold' ? `${(v / 1000).toFixed(1)}K`
+      : (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(Math.round(v)))
+
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
+          {METRICS.map(m => {
+            const active = metric === m.key
+            return (
+              <button key={m.key} onClick={() => setMetric(m.key)} style={{
+                padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+                background: active ? 'rgba(127,119,221,0.18)' : 'rgba(255,255,255,0.03)',
+                border: active ? `1px solid ${m.color}` : '1px solid rgba(255,255,255,0.08)',
+                color: active ? m.color : 'var(--text-muted)', fontWeight: active ? 600 : 400,
+                transition: 'all 100ms',
+              }}>{m.label}</button>
+            )
+          })}
+        </div>
+        {!showVue1 && (
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 6 }}>
+            Courbes PA/AD/Armure/RM/PV max disponibles pour les matchs classés consultés après le dernier déploiement.
+          </div>
+        )}
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          style={{ width: '100%', height: 220, display: 'block', overflow: 'visible' }}>
+          {[0.25, 0.5, 0.75].map(p => (
+            <line key={p} x1={PADL} y1={PADT + innerH * p} x2={W - PADR} y2={PADT + innerH * p}
+              stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+          ))}
+          {groups.map((g, gi) => (
+            <line key={gi}
+              x1={xForTs(g.ts)} y1={PADT} x2={xForTs(g.ts)} y2={PADT + innerH}
+              stroke="rgba(239,159,39,0.25)" strokeWidth="1" strokeDasharray="3,3" />
+          ))}
+          <path d={path} fill="none" stroke={sel.color} strokeWidth="2.5" strokeLinecap="round" />
+          {groups.map((g, gi) => {
+            const x = xForTs(g.ts)
+            const totalW = g.items.length * (ICON + ICON_GAP) - ICON_GAP
+            return (
+              <g key={gi}>
+                {g.items.map((id, ii) => (
+                  <image key={ii}
+                    href={itemImg(version, id)}
+                    x={x - totalW / 2 + ii * (ICON + ICON_GAP)} y={PADT - ICON - 4}
+                    width={ICON} height={ICON}
+                    onError={(e) => { (e.currentTarget as SVGImageElement).style.display = 'none' }} />
+                ))}
+              </g>
+            )
+          })}
+          {xTicks.map(min => {
+            const x = PADL + (min * 60000 / lastTs) * innerW
+            if (x > W - PADR) return null
+            return (
+              <g key={min}>
+                <line x1={x} y1={PADT + innerH} x2={x} y2={PADT + innerH + 3} stroke="rgba(255,255,255,0.2)" />
+                <text x={x} y={PADT + innerH + 14} textAnchor="middle" fill="var(--text-dim)" fontSize="10">{min}m</text>
+              </g>
+            )
+          })}
+          {[0, 0.5, 1].map(p => (
+            <text key={p} x={PADL - 6} y={PADT + innerH * p + 3}
+              textAnchor="end" fill="var(--text-dim)" fontSize="10">{fmtY(maxVal * (1 - p))}</text>
+          ))}
+        </svg>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', marginTop: 4 }}>
+          <span style={{ color: sel.color, fontWeight: 600 }}>━ {sel.label}</span>
+          {'  ┊  '}
+          <span style={{ color: 'rgba(239,159,39,0.6)' }}>┊ Achat item</span>
+          {isCorrelation && <>{' · '}<span style={{ fontStyle: 'italic' }}>corrélation — pas causalité</span></>}
+          {showVue1 && !isCorrelation && <>{' · '}<span style={{ fontStyle: 'italic' }}>valeurs réelles par frame (~1 min)</span></>}
+        </div>
+      </div>
+    )
+  }
+
+  // ── VUE 2 : Importance relative ──
+  function ImportanceView() {
+    const finalItems = [...me.items, me.trinket]
+      .filter(id => id > 0)
+      .map(id => ({
+        id,
+        cost:      itemData[String(id)]?.gold?.total ?? 0,
+        name:      itemData[String(id)]?.name ?? String(id),
+        itemStats: merakiData?.stats[String(id)] ?? null,
+      }))
+    const totalCost = finalItems.reduce((s, i) => s + i.cost, 0) || 1
+    const allZero   = finalItems.every(i => i.cost === 0)
+
+    const lastFrame = frames[frames.length - 1]
+    const myStats   = lastFrame?.playerStats?.[myIdx] ?? null
+
+    const phys  = me.physicalDamageDealt ?? 0
+    const magic = me.magicDamageDealt    ?? 0
+    const tru   = me.trueDamageDealt     ?? 0
+    const dmgTotal = phys + magic + tru
+
+    return (
+      <div>
+        {merakiData?.outdated && (
+          <div style={{
+            fontSize: 10, color: '#EF9F27', padding: '4px 10px', borderRadius: 4,
+            background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)',
+            marginBottom: 10,
+          }}>
+            ⚠ Stats potentiellement datées — Meraki patch {merakiData.merakiPatch}, patch live {merakiData.ddPatch}.
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+          Part d&apos;or par item (build final)
+        </div>
+        {!itemLoaded ? (
+          <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Chargement…</div>
+        ) : finalItems.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Aucun item dans le build final.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {finalItems.map(item => {
+              const pct = allZero ? 0 : Math.round((item.cost / totalCost) * 100)
+              const statEntries = item.itemStats
+                ? Object.entries(item.itemStats).filter(([, v]) => v && v !== 0)
+                : []
+              return (
+                <div key={item.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: statEntries.length > 0 ? 4 : 0 }}>
+                    <img src={itemImg(version, item.id)} alt=""
+                      style={{ width: 28, height: 28, borderRadius: 3, flexShrink: 0 }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', width: 130, flexShrink: 0,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.name}
+                    </div>
+                    <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${pct}%`, height: '100%', borderRadius: 4,
+                        background: item.cost > 0 ? '#7F77DD' : 'rgba(255,255,255,0.1)',
+                        transition: 'width 400ms ease',
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: item.cost > 0 ? 'var(--text-muted)' : 'var(--text-dim)',
+                      minWidth: 70, textAlign: 'right', flexShrink: 0 }}>
+                      {item.cost > 0 ? `${item.cost.toLocaleString('fr-FR')} g · ${pct}%` : '?'}
+                    </div>
+                  </div>
+                  {statEntries.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, paddingLeft: 36 }}>
+                      {statEntries.map(([k, v]) => {
+                        const label     = STAT_LABELS[k]
+                        if (!label || !v) return null
+                        const playerKey = STAT_TO_PLAYER[k]
+                        const total     = (playerKey && myStats) ? (myStats[playerKey] as number) : 0
+                        const contrib   = total > 0 ? Math.round((v / total) * 100) : null
+                        return (
+                          <span key={k} style={{
+                            padding: '1px 6px', borderRadius: 3, fontSize: 10,
+                            background: 'rgba(127,119,221,0.08)',
+                            border: '1px solid rgba(127,119,221,0.18)',
+                            color: 'var(--text-muted)',
+                          }}>
+                            {fmtStatValue(k, v)} {label}
+                            {contrib !== null && contrib > 0 && contrib <= 100 && (
+                              <span style={{ color: 'var(--text-dim)', marginLeft: 3 }}>({contrib}%)</span>
+                            )}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>
+            Profil de dégâts global
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 8 }}>
+            Données réelles, niveau joueur — pas par item
+          </div>
+          {dmgTotal > 0 ? (
+            <>
+              <div style={{ height: 12, borderRadius: 6, overflow: 'hidden', display: 'flex', marginBottom: 6 }}>
+                <div style={{ width: `${(phys / dmgTotal) * 100}%`, background: '#E24B4A' }} title={`Physique : ${(phys / 1000).toFixed(1)}K`} />
+                <div style={{ width: `${(magic / dmgTotal) * 100}%`, background: '#7F77DD' }} title={`Magique : ${(magic / 1000).toFixed(1)}K`} />
+                <div style={{ width: `${(tru / dmgTotal) * 100}%`, background: 'rgba(245,242,250,0.85)' }} title={`Vrai : ${(tru / 1000).toFixed(1)}K`} />
+              </div>
+              <div style={{ display: 'flex', gap: 12, fontSize: 10, color: 'var(--text-dim)', flexWrap: 'wrap' }}>
+                <span><span style={{ color: '#E24B4A', fontWeight: 700 }}>■</span> Physique : {(phys / 1000).toFixed(1)}K ({Math.round((phys / dmgTotal) * 100)}%)</span>
+                <span><span style={{ color: '#7F77DD', fontWeight: 700 }}>■</span> Magique : {(magic / 1000).toFixed(1)}K ({Math.round((magic / dmgTotal) * 100)}%)</span>
+                {tru > 0 && <span><span style={{ color: 'rgba(245,242,250,0.85)', fontWeight: 700 }}>■</span> Vrai : {(tru / 1000).toFixed(1)}K ({Math.round((tru / dmgTotal) * 100)}%)</span>}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+              Profil de dégâts non disponible pour ce match (données historiques).
+              {me.damageDealt > 0 && (
+                <span style={{ marginLeft: 6, color: 'var(--text-muted)', fontStyle: 'normal' }}>
+                  Total : {(me.damageDealt / 1000).toFixed(1)}K dégâts aux champions.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        Impact d&apos;items
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+        {([
+          { key: 'timeline',   label: showVue1 ? 'Timeline (stats + achats)' : 'Timeline (or + achats)' },
+          { key: 'importance', label: 'Importance relative' },
+        ] as { key: 'timeline' | 'importance'; label: string }[]).map(v => {
+          const active = view === v.key
+          return (
+            <button key={v.key} onClick={() => setView(v.key)} style={{
+              padding: '3px 10px', borderRadius: 5, fontSize: 11,
+              cursor: 'pointer', transition: 'all 120ms',
+              background: active ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.03)',
+              border: active ? '1px solid #7F77DD' : '1px solid rgba(255,255,255,0.08)',
+              color: active ? '#F5F2FA' : 'var(--text-muted)',
+              fontWeight: active ? 600 : 400,
+            }}>{v.label}</button>
+          )
+        })}
+      </div>
+      <div style={{ padding: 12, borderRadius: 6, background: 'rgba(0,0,0,0.2)' }}>
+        {view === 'timeline' ? <TimelineView /> : <ImportanceView />}
       </div>
     </div>
   )

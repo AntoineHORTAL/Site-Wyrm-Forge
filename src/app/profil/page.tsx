@@ -416,37 +416,25 @@ function ProfileSettings({ profile, onProfileUpdate }: {
             return 'Mot de passe mis à jour.'
           }}
         />
-        <EditableField
-          label="Compte Riot"
-          currentValue={profile.riot_gamename
-            ? `${profile.riot_gamename}#${profile.riot_tagline} · ${(profile.riot_platform ?? 'euw1').toUpperCase()}`
-            : 'Non lié'
-          }
-          placeholder="GameName#TAG"
-          customForm={(value, setValue) => (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <input
-                type="text"
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                placeholder="GameName#TAG"
-                style={inputStyle}
-              />
+        <div style={{
+          padding: '10px 14px', borderRadius: 6,
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>
+            Compte Riot
+          </div>
+          {profile.riot_gamename ? (
+            <div style={{ fontSize: 14, color: '#F5F2FA' }}>
+              {profile.riot_gamename}<span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>#{profile.riot_tagline}</span>
+              {' '}<span style={{ color: 'var(--text-dim)', fontSize: 12 }}>· {(profile.riot_platform ?? 'euw1').toUpperCase()}</span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+              Aucun compte Riot lié — lier depuis l&apos;onglet Accueil.
             </div>
           )}
-          onSave={async (newValue) => {
-            const clean = newValue.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
-            const m = clean.match(/^(.+)#(.+)$/)
-            if (!m) throw new Error('Format attendu : GameName#TAG')
-            const [, gameName, tagLine] = m
-            const { error } = await supabase.from('profiles')
-              .update({ riot_gamename: gameName, riot_tagline: tagLine })
-              .eq('id', profile.id)
-            if (error) throw new Error('Échec : ' + error.message)
-            onProfileUpdate({ ...profile, riot_gamename: gameName, riot_tagline: tagLine })
-            return 'Compte Riot mis à jour.'
-          }}
-        />
+        </div>
         <EditableField
           label="Rang League (pour comparaisons)"
           currentValue={

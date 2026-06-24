@@ -22,7 +22,12 @@ interface ChampionData {
   stats: Record<string, number>
   tags: string[] // ex: Fighter, Tank
   passive: { name: string; description: string; image: { full: string } }
-  spells: { id: string; name: string; description: string; image: { full: string }; cooldownBurn: string; costBurn: string; rangeBurn: string; tooltip: string }[]
+  spells: {
+    id: string; name: string; description: string; image: { full: string }
+    cooldownBurn: string; costBurn: string; rangeBurn: string; tooltip: string
+    effectBurn: string[]
+    vars: { key: string; link: string; coeff: number | number[] }[]
+  }[]
   skins: { id: string; num: number; name: string }[]
   allytips: string[]
   enemytips: string[]
@@ -240,11 +245,13 @@ export default function ChampionPage() {
                 <SpellCard key={i}
                   slot={['Q','W','E','R'][i]}
                   name={sp.name}
-                  description={cleanHtml(sp.tooltip ?? sp.description)}
+                  description={cleanHtml(sp.description)}
                   imgSrc={`${DDN}/cdn/${version}/img/spell/${sp.image.full}`}
                   cooldown={sp.cooldownBurn}
                   cost={sp.costBurn}
                   range={sp.rangeBurn}
+                  effectBurn={sp.effectBurn}
+                  vars={sp.vars}
                 />
               ))}
             </div>
@@ -420,11 +427,35 @@ function TagBadge({ tag }: { tag: string }) {
   )
 }
 
+const RATIO_LABELS: Record<string, string> = {
+  spelldamage:          'AP',
+  attackdamage:         'AD',
+  bonusattackdamage:    'Bonus AD',
+  armor:                'Armure',
+  bonusarmor:           'Armure bonus',
+  maxhealth:            'PV max',
+  bonushealth:          'PV bonus',
+  critdamage:           'Crit',
+}
+
+function formatCoeff(coeff: number | number[]): string {
+  if (typeof coeff === 'number') return `${Math.round(coeff * 100)}%`
+  const uniq = [...new Set(coeff.map(c => Math.round(c * 100)))]
+  return uniq.length === 1 ? `${uniq[0]}%` : `${uniq[0]}–${uniq[uniq.length - 1]}%`
+}
+
 // ── Sous-composant : une carte de sort ──
-function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range }: {
+function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range, effectBurn, vars }: {
   slot: string; name: string; description: string; imgSrc: string
   cooldown?: string; cost?: string; range?: string
+  effectBurn?: string[]; vars?: { key: string; link: string; coeff: number | number[] }[]
 }) {
+  const dmg = effectBurn?.find(e => e && e !== '0') ?? null
+
+  const ratios = (vars ?? [])
+    .filter(v => v.link in RATIO_LABELS)
+    .map(v => `${formatCoeff(v.coeff)} ${RATIO_LABELS[v.link]}`)
+
   return (
     <div style={{
       display: 'flex', gap: 10, padding: 12, borderRadius: 6,
@@ -447,7 +478,26 @@ function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range }: {
             {range    && <span>📏 {range}</span>}
           </div>
         )}
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, whiteSpace: 'pre-wrap', maxHeight: 140, overflowY: 'auto' }}>
+        {(dmg || ratios.length > 0) && (
+          <div style={{ fontSize: 11, marginBottom: 5, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {dmg && (
+              <span style={{
+                padding: '1px 7px', borderRadius: 3,
+                background: 'rgba(239,159,39,0.12)', border: '1px solid rgba(239,159,39,0.3)',
+                color: '#EF9F27', fontWeight: 600, letterSpacing: 0.2,
+              }}>⚔ {dmg}</span>
+            )}
+            {ratios.map((r, i) => (
+              <span key={i} style={{
+                padding: '1px 7px', borderRadius: 3,
+                background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)',
+                color: '#A8A3E8', fontWeight: 600,
+              }}>+{r}</span>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, whiteSpace: 'pre-wrap', maxHeight: 140, overflowY: 'auto' }}
+          className="thin-scroll">
           {description}
         </div>
       </div>
