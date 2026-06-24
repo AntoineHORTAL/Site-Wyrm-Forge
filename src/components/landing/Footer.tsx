@@ -1,57 +1,131 @@
 'use client'
 
+import Image from 'next/image'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+
+/* Colonnes de liens du footer.
+   - Routes inexistantes pour l'instant → '#' (placeholder, à brancher plus tard)
+   - Liens fonctionnels : ancres de la home (#features, #communaute) + téléchargement
+   - Réseaux sociaux : '#' tant que les URLs ne sont pas fournies */
+const columns: { title: string; links: { label: string; href: string; download?: boolean }[] }[] = [
+  {
+    title: 'Produit',
+    links: [
+      { label: 'Fonctionnalités', href: '/#features' },
+      { label: 'Télécharger', href: WINDOWS_DOWNLOAD_URL, download: true },
+      { label: 'Communauté', href: '/#communaute' },
+      { label: 'Changelog', href: '#' },
+    ],
+  },
+  {
+    title: 'Ressources',
+    links: [
+      { label: 'Guides', href: '#' },
+      { label: 'Builds', href: '#' },
+      { label: 'Jungle paths', href: '#' },
+      { label: 'API Riot', href: '#' },
+    ],
+  },
+  {
+    title: 'Communauté',
+    links: [
+      { label: 'Discord', href: '#' },
+      { label: 'Twitter / X', href: '#' },
+      { label: 'Reddit', href: '#' },
+      { label: 'YouTube', href: '#' },
+    ],
+  },
+]
+
+function FooterLink({ label, href, download, c }: { label: string; href: string; download?: boolean; c: boolean }) {
+  return (
+    <a
+      href={href}
+      {...(download ? { download: true } : {})}
+      className="land-footer-link"
+      style={{
+        display: 'block',
+        color: c ? '#888780' : '#71717A',
+        textDecoration: 'none',
+        fontSize: 14,
+        lineHeight: 2,
+      }}
+    >
+      {label}
+    </a>
+  )
+}
 
 export default function Footer() {
   const { theme } = useTheme()
+  const c = theme === 'mythic'
 
   return (
-    <footer style={{
-      background: theme === 'mythic' ? '#050309' : '#09090B',
-      padding: '48px',
-      borderTop: theme === 'mythic' ? '1px solid rgba(186,117,23,0.2)' : '1px solid #1F1F23',
-      textAlign: 'center',
-    }}>
-      <div style={{
-        display: 'flex', gap: 32, justifyContent: 'center',
-        marginBottom: 24, flexWrap: 'wrap',
-      }}>
-        {[
-          { label: 'À propos',        href: '/about' },
-          { label: 'Mentions légales', href: '#' },
-          { label: 'Confidentialité', href: '#' },
-          { label: 'CGU',             href: '#' },
-          { label: 'Contact',         href: 'mailto:contact@wyrm-forge.com' },
-          { label: 'Discord',         href: '#' },
-        ].map(({ label, href }) => (
-          <a
-            key={label}
-            href={href}
-            style={{
-              color: theme === 'mythic' ? '#888780' : '#71717A',
-              textDecoration: 'none', fontSize: 14,
-            }}
-          >
-            {label}
-          </a>
+    <footer
+      style={{
+        background: c ? '#050309' : '#09090B',
+        padding: '56px 32px 32px',
+        borderTop: c ? '1px solid rgba(186,117,23,0.2)' : '1px solid #1F1F23',
+      }}
+    >
+      {/* ── Grille principale : marque + 3 colonnes de liens ── */}
+      <div className="land-footer-grid">
+        {/* Colonne marque */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <Image src="/wyrm-logo.ico" alt="Wyrm Forge" width={34} height={34}
+              style={{ borderRadius: 8, objectFit: 'cover' }} />
+            <span className="font-mythic" style={{ fontSize: 18 }}>
+              Wyrm <span className="accent-text">Forge</span>
+            </span>
+          </div>
+          <p style={{ color: c ? '#888780' : '#71717A', fontSize: 14, lineHeight: 1.6, maxWidth: 260, margin: 0 }}>
+            L&apos;assistant ultime pour grimper sur League of Legends. Forge ton ascension.
+          </p>
+        </div>
+
+        {/* Colonnes de liens */}
+        {columns.map((col) => (
+          <div key={col.title}>
+            <h3 style={{
+              fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase',
+              color: c ? '#BA7517' : '#A1A1AA', fontWeight: 600, margin: '0 0 12px',
+            }}>
+              {col.title}
+            </h3>
+            {col.links.map((l) => (
+              <FooterLink key={l.label} label={l.label} href={l.href} download={l.download} c={c} />
+            ))}
+          </div>
         ))}
       </div>
-      <div style={{ color: theme === 'mythic' ? '#5F5E5A' : '#52525B', fontSize: 12, marginBottom: 10 }}>
-        © 2026 Wyrm Forge. Tous droits réservés.
-      </div>
-      {/* Mention obligatoire Riot Games (cf. Developer Agreement) */}
+
+      {/* ── Barre basse : copyright + liens légaux ── */}
       <div style={{
-        color: theme === 'mythic' ? '#5F5E5A' : '#52525B',
-        fontSize: 11, lineHeight: 1.6,
-        maxWidth: 720, margin: '0 auto',
+        maxWidth: 1180, margin: '40px auto 0', paddingTop: 24,
+        borderTop: c ? '1px solid rgba(186,117,23,0.12)' : '1px solid #1F1F23',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+      }}>
+        <span style={{ color: c ? '#5F5E5A' : '#52525B', fontSize: 12 }}>
+          © 2026 Wyrm Forge. Non affilié à Riot Games.
+        </span>
+        <div style={{ display: 'flex', gap: 24 }}>
+          <a href="#" style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>Conditions</a>
+          <a href="#" style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>Confidentialité</a>
+        </div>
+      </div>
+
+      {/* ── Mention légale Riot (obligatoire — Developer Agreement) ── */}
+      <div style={{
+        maxWidth: 760, margin: '20px auto 0', textAlign: 'center',
+        color: c ? '#5F5E5A' : '#52525B', fontSize: 11, lineHeight: 1.6,
       }}>
         Wyrm Forge n&apos;est pas affilié, sponsorisé ni endossé par Riot Games, Inc. ou
         l&apos;une de ses filiales. League of Legends et Riot Games sont des marques ou
         marques déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.
         <br />
-        <span style={{ color: theme === 'mythic' ? '#888780' : '#71717A' }}>
-          Powered by the Riot Games API.
-        </span>
+        <span style={{ color: c ? '#888780' : '#71717A' }}>Powered by the Riot Games API.</span>
       </div>
     </footer>
   )

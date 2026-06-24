@@ -1,13 +1,37 @@
 'use client'
 
+import { useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
-const tiers = [
+const WindowsIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <rect x="3" y="3" width="8" height="8" rx="1" />
+    <rect x="13" y="3" width="8" height="8" rx="1" />
+    <rect x="3" y="13" width="8" height="8" rx="1" />
+    <rect x="13" y="13" width="8" height="8" rx="1" />
+  </svg>
+)
+
+// Réduction annuelle (-10%, validé). Apprenti reste à 0€ dans les deux modes.
+const ANNUAL_FACTOR = 0.9
+
+// Listes de features = offre planifiée (réutilisées telles quelles, choix validé).
+// ⚠️ Vitrine tarifaire — AUCUN paiement réel : Apprenti → téléchargement, payants désactivés.
+interface Tier {
+  name: string
+  tagline: string
+  monthly: number // 0 = gratuit
+  features: string[]
+  cta: 'download' | 'soon'
+  popular?: boolean
+}
+
+const tiers: Tier[] = [
   {
     name: 'Apprenti',
     tagline: 'Pour découvrir',
-    price: 'Gratuit',
-    period: '',
+    monthly: 0,
     features: [
       'Overlay : 3 blocs actifs',
       '5 imports workshop / sem',
@@ -15,15 +39,12 @@ const tiers = [
       '3 builds custom',
       '3 jungle paths',
     ],
-    cta: 'Commencer',
-    popular: false,
-    popularLabel: '',
+    cta: 'download',
   },
   {
     name: 'Forgeron',
     tagline: 'Pour progresser',
-    price: '2€',
-    period: '/mois',
+    monthly: 2,
     features: [
       'Overlay : 6 blocs actifs',
       '20 imports workshop / sem',
@@ -32,15 +53,12 @@ const tiers = [
       '10 jungle paths',
       'Publication workshop',
     ],
-    cta: 'Choisir',
-    popular: false,
-    popularLabel: '',
+    cta: 'soon',
   },
   {
     name: 'Maître',
     tagline: 'Pour grimper',
-    price: '5€',
-    period: '/mois',
+    monthly: 5,
     features: [
       'Overlay illimité',
       'Workshop illimité',
@@ -49,197 +67,189 @@ const tiers = [
       'Comparaison rangs supérieurs',
       'Analyse vidéo (à venir)',
     ],
-    cta: 'Choisir',
+    cta: 'soon',
     popular: true,
-    popularLabel: 'Recommandé',
-  },
-  {
-    name: 'Légion',
-    tagline: 'Pour les équipes',
-    price: '20€',
-    period: '/mois',
-    features: [
-      'Maître pour 5 joueurs',
-      'Dashboard équipe',
-      'Builds privés équipe',
-      'MMR collectif',
-      'Stats croisées & synergies',
-    ],
-    cta: 'Choisir',
-    popular: false,
-    popularLabel: '',
-  },
-  {
-    name: 'Architecte',
-    tagline: 'Tournois jusqu\'à 100p',
-    price: '30€',
-    period: '/mois',
-    features: [
-      'Maître inclus',
-      'Tournois privés illimités',
-      'Brackets personnalisés',
-      'Analyse post-tournoi',
-      'Branding sur mesure',
-      '5% commission',
-    ],
-    cta: 'Choisir',
-    popular: false,
-    popularLabel: '',
-  },
-  {
-    name: 'Architecte+',
-    tagline: 'Tournois jusqu\'à 300p',
-    price: '50€',
-    period: '/mois',
-    features: [
-      'Tout Architecte inclus',
-      'Jusqu\'à 300 participants',
-      'Outils analytics avancés',
-      'Streaming intégré',
-      'Support prioritaire',
-      '10% commission',
-    ],
-    cta: 'Choisir',
-    popular: false,
-    popularLabel: '',
   },
 ]
 
-export default function Pricing({ onLogin }: { onLogin: () => void }) {
+// Format euro FR : entier sans décimale (2 → "2"), sinon 2 décimales (1.8 → "1,80")
+const eur = (n: number) =>
+  n.toLocaleString('fr-FR', {
+    minimumFractionDigits: n % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })
+
+export default function Pricing() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const [annual, setAnnual] = useState(false)
+
+  const segBtn = (active: boolean): React.CSSProperties => ({
+    padding: '7px 16px',
+    borderRadius: 100,
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    fontWeight: 600,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    background: active
+      ? c ? 'linear-gradient(135deg, var(--gold-light), var(--gold-pale))' : '#FAFAFA'
+      : 'transparent',
+    color: active ? (c ? '#1a0f02' : '#09090B') : 'var(--text-muted)',
+    transition: 'background 0.15s, color 0.15s',
+  })
 
   return (
-    <section id="pricing" style={{ padding: '80px 48px', background: 'var(--bg)' }}>
-      <h2 className="font-mythic" style={{
-        fontSize: c ? 40 : 36, fontWeight: 600,
-        textAlign: 'center', margin: '0 0 16px', color: '#F5F2FA',
-      }}>
-        Choisis ta <span className="accent-text">forge</span>
-      </h2>
-      <p style={{
-        textAlign: 'center', color: 'var(--text-muted)', fontSize: 16,
-        maxWidth: 600, margin: '0 auto 56px',
-      }}>
-        Du gratuit aux organisateurs de tournois. Évolue quand tu en as besoin.
-      </p>
+    <section
+      id="tarifs"
+      style={{
+        padding: '88px 32px',
+        background: c ? '#0A0612' : '#0F0F11',
+        borderTop: c ? undefined : '1px solid #1F1F23',
+        borderBottom: c ? undefined : '1px solid #1F1F23',
+      }}
+    >
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <span className="land-eyebrow">Tarifs</span>
+        <h2
+          className="font-mythic"
+          style={{ fontSize: c ? 'clamp(28px, 4.5vw, 42px)' : 'clamp(24px, 4vw, 36px)', fontWeight: 600, margin: '0 0 14px', color: '#F5F2FA', letterSpacing: c ? undefined : '-0.5px' }}
+        >
+          Choisis ta <span className="accent-text">forge</span>.
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 16, maxWidth: 520, margin: '0 auto' }}>
+          Commence gratuitement, passe à la vitesse supérieure quand tu en as besoin.
+        </p>
+      </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-        gap: 16, maxWidth: 1400, margin: '0 auto',
-      }}>
-        {tiers.map((tier) => (
-          <div
-            key={tier.name}
-            style={{
-              borderRadius: 12,
-              padding: '28px 22px',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              background: tier.popular
-                ? c
-                  ? 'linear-gradient(180deg, rgba(58,30,90,0.5) 0%, rgba(21,8,40,0.7) 100%)'
-                  : '#1A1530'
-                : 'var(--bg-card)',
-              border: tier.popular
-                ? c ? '2px solid #BA7517' : '1px solid #7F77DD'
-                : `1px solid var(--border)`,
-            }}
-          >
-            {tier.popular && (
-              <div style={{
-                position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)',
-                fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 20,
-                letterSpacing: 1, textTransform: 'uppercase',
-                background: c
-                  ? 'linear-gradient(135deg, #BA7517, #EF9F27)'
-                  : '#7F77DD',
-                color: c ? '#0A0612' : 'white',
-                whiteSpace: 'nowrap',
-              }}>
-                {tier.popularLabel}
-              </div>
-            )}
+      {/* Toggle Mensuel / Annuel */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 44 }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            padding: 4,
+            gap: 4,
+            borderRadius: 100,
+            background: c ? 'rgba(20,10,35,0.6)' : '#18181B',
+            border: c ? '1px solid rgba(186,117,23,0.25)' : '1px solid #27272A',
+          }}
+        >
+          <button onClick={() => setAnnual(false)} style={segBtn(!annual)}>Mensuel</button>
+          <button onClick={() => setAnnual(true)} style={segBtn(annual)}>
+            Annuel
+            <span style={{ fontSize: 11, fontWeight: 700, color: annual ? 'inherit' : (c ? '#EF9F27' : '#7F77DD') }}>−10%</span>
+          </button>
+        </div>
+      </div>
 
-            {/* Tier name */}
-            <div style={{
-              fontSize: 18, fontWeight: 700, marginBottom: 6,
-              color: c ? '#BA7517' : '#A1A1AA',
-              ...((!c) ? { textTransform: 'uppercase' as const, letterSpacing: 1, fontSize: 13 } : {}),
-            }}>
-              {tier.name}
-            </div>
-
-            {/* Tagline */}
-            <div style={{
-              fontSize: 13, color: 'var(--text-dim)', marginBottom: 20, minHeight: 20,
-            }}>
-              {tier.tagline}
-            </div>
-
-            {/* Price */}
-            <div style={{
-              fontSize: c ? 32 : 36,
-              color: '#F5F2FA', marginBottom: 4, fontWeight: 700,
-              letterSpacing: c ? undefined : '-1px',
-            }}>
-              {tier.price}
-              {tier.period && (
-                <small style={{ fontSize: 14, color: 'var(--text-dim)', fontWeight: 400 }}>
-                  {' '}{tier.period}
-                </small>
-              )}
-            </div>
-
-            {/* Features */}
-            <ul style={{ listStyle: 'none', padding: 0, margin: '20px 0', flex: 1 }}>
-              {tier.features.map((f, i) => (
-                <li key={i} style={{
-                  fontSize: 13, color: 'var(--text-muted)',
-                  padding: '5px 0', paddingLeft: 20, position: 'relative',
-                  lineHeight: 1.4,
-                }}>
-                  <span style={{
-                    position: 'absolute', left: 0,
-                    top: c ? 8 : 6,
-                    color: c ? '#BA7517' : '#7F77DD',
-                    fontSize: c ? 9 : 11,
-                    fontWeight: 700,
-                  }}>
-                    {c ? '◆' : '✓'}
-                  </span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-
-            {/* CTA */}
-            <button
-              onClick={onLogin}
+      <div className="land-pricing-grid">
+        {tiers.map((t, i) => {
+          const isFree = t.monthly === 0
+          const perMonth = annual ? t.monthly * ANNUAL_FACTOR : t.monthly
+          return (
+            <div
+              key={t.name}
+              className="wf-card land-reveal"
               style={{
-                width: '100%',
-                background: tier.popular
-                  ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)'
-                  : c
-                    ? 'transparent'
-                    : '#27272A',
-                color: tier.popular ? 'white' : 'var(--text)',
-                padding: '12px 0', borderRadius: 8,
-                border: tier.popular
-                  ? 'none'
-                  : `1px solid ${c ? 'rgba(186,117,23,0.35)' : 'transparent'}`,
-                fontSize: 14, fontWeight: tier.popular ? 700 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'opacity 0.15s, background 0.15s',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                padding: '28px 24px',
+                animationDelay: `${i * 0.07}s`,
+                ...(t.popular
+                  ? {
+                      border: c ? '1.5px solid var(--gold)' : '1.5px solid #7F77DD',
+                      background: c
+                        ? 'linear-gradient(180deg, rgba(58,30,90,0.45) 0%, rgba(21,8,40,0.6) 100%)'
+                        : '#1A1530',
+                    }
+                  : {}),
               }}
             >
-              {tier.cta}
-            </button>
-          </div>
-        ))}
+              {t.popular && (
+                <div
+                  style={{
+                    position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
+                    fontSize: 11, fontWeight: 700, padding: '4px 14px', borderRadius: 20,
+                    letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap',
+                    background: c ? 'linear-gradient(135deg, var(--gold), var(--gold-light))' : '#7F77DD',
+                    color: c ? '#0A0612' : 'white',
+                  }}
+                >
+                  Populaire
+                </div>
+              )}
+
+              {/* Nom + tagline */}
+              <div style={{ fontSize: c ? 20 : 16, fontWeight: 700, color: c ? '#EF9F27' : '#A1A1AA', fontFamily: c ? 'var(--font-serif)' : undefined, letterSpacing: c ? '0.3px' : 1, textTransform: c ? undefined : 'uppercase', marginBottom: 4 }}>
+                {t.name}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 18 }}>{t.tagline}</div>
+
+              {/* Prix */}
+              <div style={{ minHeight: 64, marginBottom: 18 }}>
+                {isFree ? (
+                  <div style={{ fontSize: 32, fontWeight: 700, color: '#F5F2FA', lineHeight: 1.1 }}>Gratuit</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: '#F5F2FA', lineHeight: 1.1 }}>
+                      {eur(perMonth)}€
+                      <small style={{ fontSize: 14, color: 'var(--text-dim)', fontWeight: 400 }}> /mois</small>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, minHeight: 16 }}>
+                      {annual ? `Facturé ${eur(t.monthly * 12 * ANNUAL_FACTOR)}€/an` : 'Sans engagement'}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Features */}
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {t.features.map((f) => (
+                  <li key={f} style={{ fontSize: 13, color: 'var(--text-muted)', paddingLeft: 22, position: 'relative', lineHeight: 1.4 }}>
+                    <span style={{ position: 'absolute', left: 0, top: 1, color: c ? '#BA7517' : '#7F77DD', fontSize: 12, fontWeight: 700 }}>
+                      {c ? '◆' : '✓'}
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA — aucun paiement réel */}
+              {t.cta === 'download' ? (
+                <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold" style={{ justifyContent: 'center' }}>
+                  <WindowsIcon />
+                  Télécharger gratuitement
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title="Le paiement sera disponible prochainement"
+                  style={{
+                    width: '100%', padding: '12px 0', borderRadius: 8, cursor: 'not-allowed',
+                    fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
+                    background: 'transparent',
+                    color: 'var(--text-dim)',
+                    border: `1px solid ${c ? 'rgba(186,117,23,0.25)' : '#3F3F46'}`,
+                    opacity: 0.7,
+                  }}
+                >
+                  Bientôt disponible
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
+
+      {/* Paliers à venir — sobre, sans promesse de date */}
+      <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, marginTop: 36 }}>
+        D&apos;autres paliers (Architecte, Architecte+) arrivent prochainement.
+      </p>
     </section>
   )
 }

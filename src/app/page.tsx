@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Nav from '@/components/nav/Nav'
 import Hero from '@/components/landing/Hero'
 import Features from '@/components/landing/Features'
-// import Pricing from '@/components/landing/Pricing' // masqué pendant examen Riot
+import Community from '@/components/landing/Community'
+import Pricing from '@/components/landing/Pricing'
+import FinalCTA from '@/components/landing/FinalCTA'
 import FAQ from '@/components/landing/FAQ'
 import Footer from '@/components/landing/Footer'
 import AuthModal from '@/components/auth/AuthModal'
@@ -19,6 +21,8 @@ export type DashTab =
   | 'workshop-builds' | 'workshop-jungle'
   | 'matchup' | 'postgame'
   | 'tournois'
+  | 'patchnotes'
+  | 'ecailles'
   | 'admin'
 
 export interface UserProfile {
@@ -41,7 +45,18 @@ export default function Home() {
   const [showAuth, setShowAuth] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState<DashTab>('accueil')
+  const [balance, setBalance]             = useState(0)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [ecaillesEnabled, setEcaillesEnabled] = useState(false)
+  const [forgeRequest, setForgeRequest]   = useState(0)
   const supabase = createClient()
+
+  const loadBalance = useCallback(async () => {
+    setBalanceLoading(true)
+    const { data } = await supabase.rpc('get_balance')
+    setBalance(typeof data === 'number' ? data : 0)
+    setBalanceLoading(false)
+  }, [supabase])
 
   async function fetchProfile(uid: string) {
     const { data } = await supabase
@@ -68,6 +83,20 @@ export default function Home() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Charge solde + flag écailles quand l'utilisateur change
+  useEffect(() => {
+    if (!user) { setBalance(0); setEcaillesEnabled(false); return }
+    setBalanceLoading(true)
+    Promise.all([
+      supabase.from('app_settings').select('value').eq('key', 'ecailles_enabled').maybeSingle(),
+      supabase.rpc('get_balance'),
+    ]).then(([{ data: flagData }, { data: balData }]) => {
+      setEcaillesEnabled(flagData?.value === 'true')
+      setBalance(typeof balData === 'number' ? balData : 0)
+      setBalanceLoading(false)
+    })
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stop loading once profile (or absence) is confirmed
   useEffect(() => {
@@ -99,6 +128,13 @@ export default function Home() {
         onLogout={() => supabase.auth.signOut()}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        balance={balance}
+        balanceLoading={balanceLoading}
+        ecaillesEnabled={ecaillesEnabled}
+        onNavigateToForge={() => {
+          setForgeRequest(r => r + 1)
+          setActiveTab('ecailles')
+        }}
       />
 
       {user ? (
@@ -107,16 +143,19 @@ export default function Home() {
           onTabChange={setActiveTab}
           isAdmin={isAdmin}
           profile={profile}
+          balance={balance}
+          balanceLoading={balanceLoading}
+          onRefreshBalance={loadBalance}
+          ecaillesEnabled={ecaillesEnabled}
+          forgeRequest={forgeRequest}
         />
       ) : (
         <>
           <Hero onLogin={() => setShowAuth(true)} />
           <Features />
-          {/* Section Pricing temporairement masquée pendant l'examen de la
-              demande Personal API Key Riot Games. Wyrm Forge se présente
-              comme un projet 100% gratuit et non-commercial pendant cette
-              période. À réactiver une fois la clé validée. */}
-          {/* <Pricing onLogin={() => setShowAuth(true)} /> */}
+          <Community />
+          <Pricing />
+          <FinalCTA />
           <FAQ />
           <Footer />
         </>

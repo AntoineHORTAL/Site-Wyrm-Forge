@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext } from 'react'
 
 type Theme = 'mythic' | 'classic'
 
@@ -9,24 +9,16 @@ interface ThemeCtx {
   setTheme: (t: Theme) => void
 }
 
+// Thème fixé sur 'mythic' — seul thème actif depuis le retrait du toggle du header.
+// L'API (theme / setTheme) est volontairement conservée pour ne pas casser les ~30
+// composants qui consomment useTheme() via `const c = theme === 'mythic'`.
+// `setTheme` est un no-op : plus aucune bascule possible côté UI.
 const Ctx = createContext<ThemeCtx>({ theme: 'mythic', setTheme: () => {} })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('mythic')
-
-  useEffect(() => {
-    const saved = localStorage.getItem('wf-theme') as Theme | null
-    if (saved === 'classic' || saved === 'mythic') setThemeState(saved)
-  }, [])
-
-  function setTheme(t: Theme) {
-    setThemeState(t)
-    localStorage.setItem('wf-theme', t)
-  }
-
   return (
-    <Ctx.Provider value={{ theme, setTheme }}>
-      <div data-theme={theme} style={{ minHeight: '100vh' }}>
+    <Ctx.Provider value={{ theme: 'mythic', setTheme: () => {} }}>
+      <div data-theme="mythic" style={{ minHeight: '100vh' }}>
         {children}
       </div>
     </Ctx.Provider>

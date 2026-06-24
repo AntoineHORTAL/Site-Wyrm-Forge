@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { tabGroups } from '@/components/dashboard/Dashboard'
 import type { DashTab } from '@/app/page'
+import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   label: string; icon: React.ReactNode; onClick: () => void
@@ -46,23 +47,45 @@ interface NavProps {
   onLogout?: () => void
   activeTab?: DashTab
   onTabChange?: (tab: DashTab) => void
+  balance?: number
+  balanceLoading?: boolean
+  ecaillesEnabled?: boolean
+  onNavigateToForge?: () => void
 }
 
 const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
 
-export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange }: NavProps) {
-  const { theme, setTheme } = useTheme()
+export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, ecaillesEnabled, onNavigateToForge }: NavProps) {
+  const { theme } = useTheme()
   const c = theme === 'mythic'
   const isProTier = TIER_ORDER.indexOf(tier ?? 'apprenti') >= TIER_ORDER.indexOf('maître')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [activeSection, setActiveSection] = useState<string | null>(null)
+  const [dot, setDot] = useState<{ x: number; visible: boolean }>({ x: 0, visible: false })
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const linkEls = useRef<Record<string, HTMLButtonElement | null>>({})
   const router = useRouter()
   const pathname = usePathname()
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  // Liens centrés de la vitrine. Scroll-spy actif uniquement là où les sections existent.
+  const navLinks = [
+    { id: 'accueil', label: 'Accueil' },
+    { id: 'features', label: 'Fonctionnalités' },
+    { id: 'communaute', label: 'Communauté' },
+    { id: 'tarifs', label: 'Tarifs' },
+    { id: 'telecharger', label: 'Télécharger' },
+    { id: 'faq', label: 'FAQ' },
+  ]
+  const spyEnabled = mode === 'visitor' && pathname === '/'
+
+  // Scroll doux sur la home, ancre cross-page (/#features) ailleurs
+  const goToSection = (id: string) => {
     setDrawerOpen(false)
+    if (pathname === '/') document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+    else router.push(`/#${id}`)
   }
 
   useEffect(() => {
@@ -79,35 +102,58 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
     return () => { document.body.style.overflow = '' }
   }, [drawerOpen])
 
-  const ThemeToggle = () => (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', width: 'fit-content',
-      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-      borderRadius: 100, padding: 3, gap: 2,
-    }}>
-      {(['mythic', 'classic'] as const).map(t => (
-        <button key={t} onClick={() => setTheme(t)} style={{
-          padding: '5px 12px',
-          background: theme === t ? (theme === 'classic' ? '#FAFAFA' : 'rgba(127,119,221,0.3)') : 'transparent',
-          border: 'none',
-          color: theme === t ? (theme === 'classic' ? '#09090B' : '#FAFAFA') : 'rgba(255,255,255,0.5)',
-          fontSize: 12, fontWeight: 500, cursor: 'pointer',
-          borderRadius: 100, transition: 'all 0.2s', fontFamily: 'inherit',
-        }}>
-          {t === 'mythic' ? 'Mythique' : 'Classique'}
-        </button>
-      ))}
-    </div>
-  )
+  // Effets de scroll regroupés en UN seul listener (throttle RAF) :
+  //  - fond du header : transparent en haut, --nav-bg + blur au-delà de 64px
+  //  - scroll-spy : section active = celle qui contient la ligne-sonde (40% du viewport).
+  //    Méthode déterministe par rects → fiable quelles que soient les hauteurs de section
+  //    (Hero plein écran, FinalCTA court), et garantit l'ordre accueil→…→faq sans zone morte.
+  useEffect(() => {
+    let ticking = false
+    const update = () => {
+      setScrolled(window.scrollY > 64)
+      if (!spyEnabled) { setActiveSection(null); return }
+      const probe = window.innerHeight * 0.4
+      let current: string | null = null
+      for (const l of navLinks) {
+        const el = document.getElementById(l.id)
+        if (!el) continue
+        const r = el.getBoundingClientRect()
+        if (r.top <= probe && r.bottom > probe) { current = l.id; break }
+      }
+      setActiveSection(current)
+    }
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => { update(); ticking = false })
+    }
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [spyEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Position du point indicateur sous le lien actif (recalcul au changement d'état + au resize)
+  useEffect(() => {
+    function place() {
+      const track = trackRef.current
+      const link = activeSection ? linkEls.current[activeSection] : null
+      if (!track || !link) { setDot(d => ({ ...d, visible: false })); return }
+      const lr = link.getBoundingClientRect()
+      const tr = track.getBoundingClientRect()
+      setDot({ x: lr.left - tr.left + lr.width / 2 - 3, visible: true })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [activeSection])
 
   return (
     <>
-      <nav style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '12px 32px', backdropFilter: 'blur(8px)',
-        position: 'sticky', top: 0, zIndex: 50, background: 'var(--nav-bg)',
-        borderBottom: c ? '1px solid rgba(186,117,23,0.2)' : '1px solid #1F1F23',
-      }}>
+      <nav className={`wf-nav${scrolled ? ' wf-nav--scrolled' : ''}`}>
         {/* Logo : clic → page principale.
             - Hors de '/' (champion, profil, match, etc.) : navigation vers /
             - Sur '/' connecté : switch sur l'onglet Accueil
@@ -127,30 +173,74 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
           </span>
         </div>
 
+        {/* ── Liens centrés + scroll-spy (vitrine) ── */}
+        {mode === 'visitor' && (
+          <div className="nav-center">
+            <div className="nav-center-links">
+              {navLinks.map(l => (
+                <button
+                  key={l.id}
+                  ref={el => { linkEls.current[l.id] = el }}
+                  className="nav-center-link"
+                  data-active={activeSection === l.id}
+                  onClick={() => goToSection(l.id)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            {/* Barre + point : le point glisse sous la section visible (translateX animé) */}
+            <div className="nav-spy-track" ref={trackRef}>
+              <div
+                className="nav-spy-dot"
+                style={{ transform: `translateX(${dot.x}px)`, opacity: dot.visible ? 1 : 0 }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* ── DESKTOP right side ── */}
         <div className="nav-desktop" style={{ gap: 20, alignItems: 'center', fontSize: 14 }}>
-          <ThemeToggle />
           {mode === 'visitor' ? (
             <>
-              <a onClick={() => scrollTo('features')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Fonctionnalités</a>
-              <a onClick={() => scrollTo('pricing')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Tarifs</a>
-              <a onClick={() => router.push('/about')} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>À propos</a>
-              <a onClick={onLogin} style={{ color: 'var(--text-muted)', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
+              <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
               <a
-                href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
+                href={WINDOWS_DOWNLOAD_URL}
                 download
-                style={{
-                  background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
-                  color: c ? 'white' : '#09090B',
-                  padding: c ? '8px 18px' : '7px 14px',
-                  borderRadius: 8, border: 'none',
-                  fontSize: c ? 14 : 13, fontWeight: 500, cursor: 'pointer',
-                  textDecoration: 'none', display: 'inline-block',
-                }}
+                className="wf-btn-gold"
+                style={{ padding: '8px 18px', fontSize: 14, fontWeight: 500 }}
               >Télécharger</a>
             </>
           ) : (
-            <div ref={dropdownRef} style={{ position: 'relative' }}>
+            <>
+              {/* ── Chip Écailles ── visible si feature on (ou admin) */}
+              {(ecaillesEnabled || isAdmin) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 10px 5px 8px', borderRadius: 7,
+                    background: c ? 'rgba(186,117,23,0.1)' : 'rgba(127,119,221,0.08)',
+                    border: `1px solid ${c ? 'rgba(186,117,23,0.25)' : 'rgba(127,119,221,0.2)'}`,
+                    fontSize: 13, fontWeight: 600, color: c ? '#EF9F27' : '#7F77DD',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    🐉 {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}
+                  </div>
+                  <button
+                    onClick={onNavigateToForge}
+                    title="Gagner des Écailles — La Forge"
+                    style={{
+                      width: 28, height: 28, borderRadius: 7, border: 'none',
+                      background: c ? 'rgba(186,117,23,0.15)' : 'rgba(127,119,221,0.12)',
+                      color: c ? '#EF9F27' : '#7F77DD',
+                      cursor: 'pointer', fontSize: 18, fontWeight: 600, lineHeight: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'inherit',
+                    }}
+                  >+</button>
+                </div>
+              )}
+              <div ref={dropdownRef} style={{ position: 'relative' }}>
               <div onClick={() => setDropdownOpen(v => !v)} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 background: 'rgba(127,119,221,0.15)',
@@ -197,6 +287,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                 </div>
               )}
             </div>
+            </>
           )}
         </div>
 
@@ -273,6 +364,20 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                   </div>
                   <div style={{ fontSize: 11, color: c ? '#BA7517' : '#7F77DD', textTransform: 'uppercase', letterSpacing: 1 }}>{tier || 'Apprenti'}</div>
                 </div>
+                {(ecaillesEnabled || isAdmin) && (
+                  <button
+                    onClick={() => { setDrawerOpen(false); onNavigateToForge?.() }}
+                    style={{
+                      marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5,
+                      background: 'transparent', border: 'none', padding: '2px 4px',
+                      color: c ? '#EF9F27' : '#7F77DD',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    🐉 {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -299,7 +404,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                         {group.label}
                       </div>
                     )}
-                    {group.tabs.map(tab => (
+                    {group.tabs
+                      .filter(tab => tab.id !== 'ecailles' || (ecaillesEnabled ?? false) || !!isAdmin)
+                      .map(tab => (
                       <DrawerTabBtn
                         key={tab.id} tab={tab}
                         active={activeTab === tab.id} c={c}
@@ -324,9 +431,11 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
             {/* ── VISITOR NAVIGATION ── */}
             {mode === 'visitor' && (
               <div style={{ flex: 1, padding: '12px 0' }}>
-                <DrawerLink label="Fonctionnalités" onClick={() => scrollTo('features')} c={c} />
-                <DrawerLink label="Tarifs" onClick={() => scrollTo('pricing')} c={c} />
-                <DrawerLink label="À propos" onClick={() => { setDrawerOpen(false); router.push('/about') }} c={c} />
+                <DrawerLink label="Accueil" onClick={() => goToSection('accueil')} c={c} />
+                <DrawerLink label="Fonctionnalités" onClick={() => goToSection('features')} c={c} />
+                <DrawerLink label="Communauté" onClick={() => goToSection('communaute')} c={c} />
+                <DrawerLink label="Tarifs" onClick={() => goToSection('tarifs')} c={c} />
+                <DrawerLink label="FAQ" onClick={() => goToSection('faq')} c={c} />
                 <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
                 <DrawerLink label="Connexion" onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
               </div>
@@ -334,26 +443,14 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 
             {/* ── BOTTOM SECTION ── */}
             <div style={{ flexShrink: 0, borderTop: `1px solid ${c ? 'rgba(186,117,23,0.15)' : '#27272A'}` }}>
-              {/* Theme toggle */}
-              <div style={{ padding: '14px 16px' }}>
-                <p style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Thème</p>
-                <ThemeToggle />
-              </div>
-
               {mode === 'visitor' && (
                 <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <a
-                    href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
+                    href={WINDOWS_DOWNLOAD_URL}
                     download
                     onClick={() => setDrawerOpen(false)}
-                    style={{
-                      width: '100%', padding: '13px',
-                      background: c ? 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)' : '#FAFAFA',
-                      color: c ? 'white' : '#09090B',
-                      border: 'none', borderRadius: 8,
-                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                      textDecoration: 'none', textAlign: 'center', display: 'block',
-                    }}
+                    className="wf-btn-gold"
+                    style={{ width: '100%', padding: '13px', fontSize: 14, fontWeight: 600, justifyContent: 'center' }}
                   >Télécharger</a>
                   <button onClick={() => { setDrawerOpen(false); onLogin?.() }} style={{
                     width: '100%', padding: '11px',

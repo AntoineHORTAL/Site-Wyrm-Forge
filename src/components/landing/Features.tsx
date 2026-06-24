@@ -2,166 +2,141 @@
 
 import { useTheme } from '@/components/providers/ThemeProvider'
 
-const features = [
+interface Feature {
+  icon: React.ReactNode
+  title: string
+  desc: string
+  tags?: string[]
+}
+
+const features: Feature[] = [
   {
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
       </svg>
     ),
     title: 'Overlay personnalisable',
-    desc: 'Glisse, redimensionne et configure chaque bloc. Timer de jungle, cooldowns, CS/min — affiche ce qui compte pour toi.',
+    desc: 'Glisse-dépose tes modules : timers de jungle, CS tracker, vision score. Compose l\'overlay parfait, pixel par pixel.',
+    tags: ['Timer Dragon', 'CS/min', 'Vision', 'Cooldowns', 'Gold diff'],
   },
   {
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+        <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
       </svg>
     ),
-    title: 'Communauté & partage',
-    desc: 'Importe les builds et jungle paths de la communauté. Partage tes créations, vote pour les meilleures.',
+    title: 'Jungle paths communautaires',
+    desc: 'Des milliers de chemins de jungle et builds optimisés, partagés et notés par les meilleurs joueurs.',
   },
   {
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" />
+        <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
+        <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
+        <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
+        <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
       </svg>
     ),
     title: 'Analyses IA',
-    desc: 'Détecte tes patterns de jeu, identifie tes erreurs récurrentes et propose des axes d\'amélioration concrets.',
+    desc: 'Une IA décortique tes parties : erreurs de positionnement, timings manqués, conseils ciblés pour grimper plus vite.',
   },
   {
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
       </svg>
     ),
-    title: 'Builder de builds',
-    desc: 'Crée tes builds items champion par champion avec les vraies icônes LoL. Sauvegarde, duplique, partage.',
+    title: 'Builds en temps réel',
+    desc: 'Les meilleurs items et runes affichés en jeu, adaptés à ton champion et à la composition ennemie.',
   },
   {
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polygon points="3 11 22 2 13 21 11 13 3 11" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
     ),
-    title: 'Jungle paths',
-    desc: 'Dessine tes jungle paths sur la vraie map. Définis l\'ordre des camps, les côtés, les invades et partage-les.',
-  },
-  {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
-      </svg>
-    ),
-    title: 'To-do listes',
-    desc: 'Crée tes listes de points à travailler. Checklists de warm-up, objectifs de ranked, habitudes à prendre.',
+    title: '100% sécurisé',
+    desc: 'Basé sur l\'API officielle Riot. Aucune injection, aucun risque de ban. Joue l\'esprit tranquille.',
   },
 ]
 
 export default function Features() {
   const { theme } = useTheme()
+  const c = theme === 'mythic'
 
   return (
     <section
       id="features"
       style={{
-        padding: '80px 48px',
-        background: theme === 'mythic'
-          ? 'linear-gradient(180deg, #0A0612 0%, #150828 50%, #0A0612 100%)'
-          : '#0F0F11',
-        borderTop: theme === 'classic' ? '1px solid #1F1F23' : undefined,
-        borderBottom: theme === 'classic' ? '1px solid #1F1F23' : undefined,
+        padding: '88px 32px',
+        background: c ? '#0A0612' : '#0F0F11',
+        borderTop: c ? undefined : '1px solid #1F1F23',
+        borderBottom: c ? undefined : '1px solid #1F1F23',
       }}
     >
-      <h2 className="font-mythic" style={{
-        fontSize: theme === 'mythic' ? 40 : 36, fontWeight: 600,
-        textAlign: 'center', margin: '0 0 16px', color: '#F5F2FA',
-        letterSpacing: theme === 'classic' ? '-0.5px' : undefined,
-      }}>
-        Pensé pour les <span className="accent-text">vrais</span> joueurs
-      </h2>
-      <p style={{
-        textAlign: 'center', color: 'var(--text-muted)', fontSize: 16,
-        maxWidth: 600, margin: '0 auto 56px',
-      }}>
-        Tout ce dont tu as besoin pour comprendre, progresser et dominer.
-      </p>
-
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: 20, maxWidth: 1100, margin: '0 auto',
-      }}>
-        {features.map((f, i) => (
-          <div key={i} className="wf-card" style={{ padding: '28px 24px' }}>
-            <div style={{
-              width: 48, height: 48, borderRadius: 12,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: 20,
-              background: theme === 'mythic'
-                ? 'linear-gradient(135deg, rgba(127,119,221,0.2), rgba(83,74,183,0.2))'
-                : '#18181B',
-              border: theme === 'mythic'
-                ? '1px solid rgba(127,119,221,0.3)'
-                : '1px solid #27272A',
-              color: theme === 'mythic' ? '#BA7517' : '#7F77DD',
-            }}>
-              {f.icon}
-            </div>
-            <h3 style={{
-              fontSize: theme === 'mythic' ? 20 : 17,
-              fontWeight: 600, margin: '0 0 12px',
-              color: theme === 'mythic' ? '#F5F2FA' : '#FAFAFA',
-            }}>{f.title}</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.6 }}>
-              {f.desc}
-            </p>
-          </div>
-        ))}
+      <div style={{ maxWidth: 1180, margin: '0 auto 48px' }}>
+        <span className="land-eyebrow">L&apos;arsenal du grimpeur</span>
+        <h2
+          className="font-mythic"
+          style={{ fontSize: c ? 'clamp(30px, 5vw, 46px)' : 'clamp(26px, 4.5vw, 38px)', fontWeight: 600, margin: '0 0 14px', color: '#F5F2FA', maxWidth: 640, letterSpacing: c ? undefined : '-0.5px' }}
+        >
+          Tout pour <span className="accent-text">dominer</span> la faille.
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 16, maxWidth: 540, margin: 0 }}>
+          Un overlay forgé pour les invocateurs ambitieux. Modulaire, nourri par la communauté
+          et augmenté par l&apos;IA.
+        </p>
       </div>
 
-      {/* Overlay demo */}
-      <div style={{
-        maxWidth: 900, margin: '40px auto 0',
-        border: theme === 'mythic' ? '1px solid rgba(186,117,23,0.3)' : '1px solid #27272A',
-        borderRadius: 12, padding: 32,
-        background: theme === 'mythic'
-          ? 'linear-gradient(135deg, #1a0a30 0%, #0A0612 100%)'
-          : '#09090B',
-      }}>
-        <p style={{ color: 'var(--text-dim)', fontSize: 12, textAlign: 'center', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 }}>
-          Aperçu overlay
-        </p>
-        <div style={{
-          background: theme === 'mythic' ? 'rgba(20,10,35,0.6)' : 'transparent',
-          borderRadius: 8, padding: theme === 'mythic' ? 20 : 0,
-          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
-        }}>
-          {[
-            { label: 'CS/min', value: '8.4' },
-            { label: 'Vision', value: '1.2' },
-            { label: 'KDA', value: '6.2' },
-            { label: 'Dragon', value: '02:14' },
-            { label: 'Baron', value: '05:00' },
-            { label: 'Rang', value: 'Or II' },
-          ].map((b, i) => (
-            <div key={i} style={{
-              background: theme === 'mythic' ? 'rgba(42,21,71,0.4)' : '#18181B',
-              border: theme === 'mythic' ? '1px solid rgba(186,117,23,0.2)' : '1px solid #27272A',
-              borderRadius: 6, padding: theme === 'mythic' ? 12 : '14px 16px',
-            }}>
-              <div style={{
-                color: theme === 'mythic' ? '#BA7517' : '#71717A',
-                fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
-              }}>{b.label}</div>
-              <div style={{ color: '#F5F2FA', fontSize: theme === 'classic' ? 18 : 16, fontWeight: 600 }}>
-                {b.value}
-              </div>
+      <div className="land-features-grid">
+        {features.map((f, i) => (
+          <div key={i} className="wf-card" style={{ padding: '26px 24px' }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 11,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 18,
+                background: c ? 'rgba(186,117,23,0.12)' : '#18181B',
+                border: c ? '1px solid rgba(186,117,23,0.3)' : '1px solid #27272A',
+                color: c ? '#EF9F27' : '#7F77DD',
+              }}
+            >
+              {f.icon}
             </div>
-          ))}
-        </div>
+            <h3 style={{ fontSize: c ? 19 : 16, fontWeight: 600, margin: '0 0 10px', color: '#F5F2FA', fontFamily: c ? 'var(--font-serif)' : undefined, letterSpacing: c ? '0.3px' : undefined }}>
+              {f.title}
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.6, margin: f.tags ? '0 0 14px' : 0 }}>
+              {f.desc}
+            </p>
+            {f.tags && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {f.tags.map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      fontSize: 11,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      color: 'var(--text-muted)',
+                      background: c ? 'rgba(20,10,35,0.6)' : '#1B1B1F',
+                      border: c ? '1px solid rgba(186,117,23,0.2)' : '1px solid #27272A',
+                    }}
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </section>
   )

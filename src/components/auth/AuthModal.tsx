@@ -357,13 +357,10 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               </div>
             )}
 
-            {/* Submit */}
-            <button type="submit" disabled={loading} style={{
-              width: '100%', padding: '13px',
-              background: 'linear-gradient(135deg, #7F77DD 0%, #534AB7 100%)',
-              border: 'none', borderRadius: 8, color: 'white', fontSize: 15, fontWeight: 600,
+            {/* Submit — style braise (.wf-btn-gold) */}
+            <button type="submit" disabled={loading} className="wf-btn-gold" style={{
+              width: '100%', padding: '13px', justifyContent: 'center', fontSize: 15, marginTop: 4,
               cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1,
-              fontFamily: 'inherit', marginTop: 4, transition: 'opacity 0.15s',
             }}>
               {loading ? '...' : mode === 'login' ? 'Se connecter' : mode === 'signup' ? 'Créer mon compte' : 'Envoyer le lien'}
             </button>
