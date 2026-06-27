@@ -1015,7 +1015,63 @@ Contrainte `uq_tracked_players_profile UNIQUE (profile_id)` — **un seul dossie
 
 **`remove_tracking` — cascade `tracked_matches` :** le DELETE du dossier `tracked_players` cascadera vers `tracked_matches` au **chantier 3** (FK `tracked_player_id ... ON DELETE CASCADE`). Contrat figé, **pas encore actif** (table `tracked_matches` non créée à ce stade) — rien à faire côté `remove_tracking` aujourd'hui.
 
-> `respond_consent` (réponse du joueur : accept/decline/revoke) arrive au **lot B** — non livré dans le lot A.
+### Réponse du joueur (chantier 2, lot B — migration 20260627000001)
+
+Fonction **`respond_consent(p_decision text) RETURNS text`** — pendant *côté joueur* du couple admin `request_tracking`/`remove_tracking`. Même style que les fonctions du lot A : SECURITY DEFINER, `SET search_path = public`, `REVOKE EXECUTE FROM PUBLIC` + `GRANT authenticated`.
+
+- **Cible = `auth.uid()` uniquement** : la fonction n'a **aucun paramètre d'id**. Elle lit/écrit la seule ligne `WHERE profile_id = auth.uid()` (verrouillée `FOR UPDATE` pour sérialiser double-clic / appels concurrents). Répondre pour un autre profil est **impossible par construction**.
+- **Retour** : le nouveau `status` (text).
+
+#### Machine d'états (transitions valides — tout le reste → `invalid_transition`)
+
+| `p_decision` | statut courant | → nouveau statut |
+|---|---|---|
+| `accept` | `pending` | `accepted` |
+| `accept` | `revoked` | `accepted` (ré-acceptation après révocation) |
+| `decline` | `pending` | `declined` |
+| `revoke` | `accepted` | `revoked` |
+
+Toute autre combinaison (`accept` sur `accepted`/`declined`, `decline` hors `pending`, `revoke` hors `accepted`, etc.) lève `invalid_transition`. `declined` est **terminal côté joueur** : seul l'admin via `request_tracking` (lot A) le rouvre vers `pending`.
+
+Sur transition valide : `UPDATE status = <nouveau>, responded_at = now()` (le trigger `trg_tracked_players_updated_at` bumpe `updated_at`).
+
+#### Erreurs levées
+
+| Exception | Déclencheur |
+|---|---|
+| `invalid_action` | `p_decision` hors `('accept','decline','revoke')` — levée **avant** tout accès à la ligne |
+| `no_consent_request` | aucun dossier `tracked_players` pour `auth.uid()` |
+| `invalid_transition` | décision incompatible avec le statut courant (voir tableau) |
+
+> ⚠️ **Purge `tracked_matches` sur `revoke` : PAS implémentée ici.** La table `tracked_matches` n'existe pas encore. Un commentaire SQL dans le corps de `respond_consent` marque le contrat figé : au **chantier 3**, un trigger AFTER UPDATE purgera les matchs du joueur révoqué (`accepted → revoked`). À ne pas oublier à la création de la table.
+
+### Lot C — page `/consent` + bandeau dashboard
+
+Interface **joueur** du flow de consentement. Vit côté **site public** (`src/app/consent/page.tsx`), **hors `src/app/prac/`** → aucune garde `prac_admins` : le joueur n'est pas admin prac. Client component calqué sur `/profil` (`src/app/profil/page.tsx`) — palette fixe, cards inline, pas de design system dédié. Lecture **directe** du dossier via la policy RLS `tp_select` du lot A (`.eq('profile_id', user.id).maybeSingle()`, **aucune nouvelle policy**) ; écriture via RPC `supabase.rpc('respond_consent', { p_decision })` (lot B).
+
+#### Machine d'affichage `/consent` (statut → rendu → boutons)
+
+| Statut du dossier | Affichage | Boutons (→ `respond_consent`) |
+|---|---|---|
+| **aucun dossier** | message neutre « aucune demande en cours » | — |
+| `pending` | explication + date de demande | **Accepter** (`accept`) / **Refuser** (`decline`) |
+| `accepted` | pill verte « Suivi actif » | **Révoquer** (`revoke`) |
+| `declined` | pill grise « Demande refusée » | **aucun** |
+| `revoked` | pill grise « Suivi révoqué » | **Réactiver** (`accept`) |
+
+- `declined` est **terminal côté joueur** : **pas de bouton Accepter** (la fonction lèverait `invalid_transition` ; seul l'admin rouvre via `request_tracking`).
+- `revoked` a un bouton **Réactiver** car `accept: revoked → accepted` est une transition valide.
+- **Gestion d'erreur RPC** : toute exception (`no_consent_request`, `invalid_transition`, `invalid_action`) est traduite en FR **et déclenche un re-`load()` de resync** — couvre la concurrence (état changé / dossier retiré par l'admin entre l'affichage et le clic) sans crash. Resync DB après chaque action réussie.
+- Non connecté → carte « Connecte-toi » (pas d'erreur).
+
+#### `ConsentBanner` (bandeau dashboard) — `src/components/dashboard/ConsentBanner.tsx`
+
+Signale une demande **en attente** depuis n'importe quel onglet du dashboard.
+
+- **Condition d'affichage** : **uniquement** `status='pending'` pour `auth.uid()`. Tout autre état (ou aucun dossier) → invisible.
+- **Emplacement** : tout en haut de `<main className="dash-main">` dans `Dashboard.tsx`, au-dessus du header de titre → visible quel que soit l'onglet actif.
+- **Motif réutilisé** : `DeletionRequest` de `/profil` — composant **isolé** avec son propre `useEffect`, `return null` tant que `loading` **et** si pas de dossier pending (aucun flash, aucun layout shift).
+- **Check non bloquant** : point-lookup `.eq('profile_id', user.id).eq('status','pending').maybeSingle()` (le `profile_id` unique-indexé rend le lookup ponctuel), exécuté **dans le composant**, **jamais** en `await` dans le chemin de chargement principal de `page.tsx` → coût imperceptible pour les joueurs sans dossier (immense majorité). Lien vers `/consent`.
 
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.

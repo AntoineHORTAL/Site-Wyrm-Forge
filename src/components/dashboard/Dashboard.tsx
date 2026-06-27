@@ -14,6 +14,7 @@ import WorkshopJungleTab from './tabs/WorkshopJungleTab'
 import AdminTab from './tabs/AdminTab'
 import PatchNotesTab from './tabs/PatchNotesTab'
 import EcaillesTab from './tabs/EcaillesTab'
+import ConsentBanner from './ConsentBanner'
 import type { DashTab, UserProfile } from '@/app/page'
 
 /* ── Icons ── */
@@ -195,6 +196,9 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
 
       {/* ── MAIN CONTENT ── */}
       <main className="dash-main">
+        {/* Bandeau demande de suivi prac en attente — auto-masqué si aucun dossier pending */}
+        <ConsentBanner />
+
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           marginBottom: 24, paddingBottom: 16,
