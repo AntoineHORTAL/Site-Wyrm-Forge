@@ -968,6 +968,63 @@ Erreurs levées par `start_match` : `'match_not_found'`, `'match_forbidden'`, `'
 
 ---
 
+## 🟡 Module prac (prac.wyrm-forge.com) — suivi de joueurs (interne)
+
+Outil interne réservé aux **admins prac** (HORTAL/Ewen) pour suivre la performance de joueurs Wyrm Forge dans le temps. Partage la base d'utilisateurs (pas d'identité séparée). Découpage : **1) socle** (fait) → 2) roster+consentement → 3) tracking (résolution par créneau + désambiguïsation) → 4) pages (liste, top-5 winrate, détail joueur) → 5) email Resend.
+
+### Socle (chantier 1 — migration 20260626000001)
+- **Table `prac_admins`** (`user_id` PK → `auth.users`, `granted_by`, `created_at`) : allowlist **plate**, sans scopes (≠ `tournament_admins` volontairement — pas de hiérarchie). RLS : SELECT self-only (`pa_select_self`) ; aucune écriture client (service_role uniquement). **Amorçage manuel** (BOOTSTRAP commenté dans la migration).
+- **Fonction `is_prac_admin(p_uid)`** : SECURITY DEFINER, STABLE, `REVOKE FROM PUBLIC` + `GRANT authenticated`. Lit `prac_admins` en bypass RLS.
+- **Sous-domaine** : `proxy.ts` — `NEXT_PUBLIC_PRAC_HOST` → rewrite interne `/prac/*` (CAS 3) ; host principal + `/prac*` → 308 vers le sous-domaine (CAS 4). Routes **plates** (pas de normalisation de casse, contrairement à tournois). En local/preview (host non câblé), `/prac/*` fonctionne en direct.
+- **Garde d'accès** : `src/app/prac/layout.tsx` (server, `force-dynamic`) — non connecté ou non admin prac → redirect `NEXT_PUBLIC_SITE_URL`. Détection via lecture directe `prac_admins` (RLS self-read).
+
+### Roster & consentement (chantier 2, lot A — migration 20260626000002)
+
+#### Table `tracked_players`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK, default `gen_random_uuid()` |
+| `profile_id` | `uuid` | NOT NULL | FK → `profiles(id)` (= `auth.users.id`) ON DELETE CASCADE — joueur tracké |
+| `added_by` | `uuid` | NOT NULL | FK → `auth.users` — admin prac demandeur |
+| `status` | `text` | NOT NULL | `'pending'`\|`'accepted'`\|`'declined'`\|`'revoked'` — CHECK constraint, default `'pending'` |
+| `requested_at` | `timestamptz` | NOT NULL | default `now()` — (ré)ouverture de la demande |
+| `responded_at` | `timestamptz` | nullable | posé à la réponse du joueur (lot B), remis à `NULL` à la réouverture |
+| `updated_at` | `timestamptz` | NOT NULL | default `now()` — trigger `trg_tracked_players_updated_at → fn_set_updated_at()` |
+
+Contrainte `uq_tracked_players_profile UNIQUE (profile_id)` — **un seul dossier par joueur** (pas d'historique de demandes ; la réouverture réécrit la ligne existante).
+
+#### Frontière de sécurité — RLS only
+- **RLS activée**, une **seule** policy : `tp_select` (SELECT) = `is_prac_admin(auth.uid()) OR auth.uid() = profile_id`. L'admin prac voit tout le roster ; un joueur voit uniquement sa propre ligne.
+- **Aucune policy INSERT/UPDATE/DELETE** → deny total pour les rôles client (RLS activée + absence de policy). `GRANT SELECT` à `authenticated` uniquement (`anon` : aucun accès).
+- **Toute écriture passe par des fonctions SECURITY DEFINER** (owned `postgres` → bypass RLS, droits re-vérifiés en interne via `is_prac_admin(auth.uid())`). La garde n'est PAS le layout Next — c'est la RLS + les fonctions.
+
+#### Fonctions (SECURITY DEFINER, `SET search_path = public`, `REVOKE FROM PUBLIC` + `GRANT authenticated`)
+
+| Fonction | Description |
+|---|---|
+| `request_tracking(p_profile_id uuid) → uuid` | Admin crée OU rouvre une demande. Vérifie `is_prac_admin` (sinon `RAISE 'not_prac_admin'`). Retourne l'id du dossier. |
+| `remove_tracking(p_profile_id uuid) → void` | Admin retire le joueur du roster (DELETE du dossier). Vérifie `is_prac_admin` (sinon `RAISE 'not_prac_admin'`). |
+
+**`request_tracking` — comportement par statut existant :**
+- **absence de dossier** → INSERT (`status='pending'`, `added_by=auth.uid()`).
+- **`pending` / `accepted`** (déjà actif) → `RAISE EXCEPTION 'already_tracked'`.
+- **`declined` / `revoked`** → **réouverture** : la ligne repasse `status='pending'`, `added_by`/`requested_at` réécrits, `responded_at = NULL`.
+
+> ⚠️ **`revoked` est réouvrable exactement comme `declined`** — décision de cadrage actée (lot A), **pas un oubli**. Un joueur qui a révoqué son consentement peut être re-sollicité par l'admin (nouvelle demande `pending`), à lui de réaccepter ou non.
+
+**`remove_tracking` — cascade `tracked_matches` :** le DELETE du dossier `tracked_players` cascadera vers `tracked_matches` au **chantier 3** (FK `tracked_player_id ... ON DELETE CASCADE`). Contrat figé, **pas encore actif** (table `tracked_matches` non créée à ce stade) — rien à faire côté `remove_tracking` aujourd'hui.
+
+> `respond_consent` (réponse du joueur : accept/decline/revoke) arrive au **lot B** — non livré dans le lot A.
+
+### Décisions de cadrage actées
+- **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
+- **Révocation** : purge des `tracked_matches` du joueur.
+- **Ajout manuel par créneau** (pas de cron auto en V1). Plateforme = `profiles.riot_platform` (fallback `euw1`).
+- Détail de match = **réutilisation** du rendu existant (`/match/...`) ; seul le lien « clic sur un joueur » diffère (→ page joueur prac, pas `/summoner`). Détail joueur prac = historique des **matchs trackés uniquement** + agrégats (≠ `/summoner` qui montre tout l'historique Riot).
+
+---
+
 ### Vecteur open redirect latent : paramètre `next` dans le callback OAuth
 Si un paramètre `next` (destination post-login) est un jour ajouté à
 `src/app/auth/callback/route.ts`, il DOIT être validé contre `NEXT_PUBLIC_SITE_URL`

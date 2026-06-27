@@ -25,6 +25,17 @@ function tournoisHostname(): string | null {
   }
 }
 
+// Sous-domaine prac (outil interne de suivi de joueurs) — routes plates sous /prac.
+function pracHostname(): string | null {
+  const h = process.env.NEXT_PUBLIC_PRAC_HOST
+  if (!h) return null
+  try {
+    return new URL(/^https?:\/\//.test(h) ? h : `https://${h}`).hostname
+  } catch {
+    return null
+  }
+}
+
 // Met en minuscule les segments serie (idx) et slug (idx+1), sauf si le segment
 // serie est la route statique 'manage'. Laisse intacts les segments suivants
 // (notamment le code de match M7). Retourne null si rien à changer.
@@ -70,6 +81,7 @@ export async function proxy(request: NextRequest) {
   const hostname = (request.headers.get('host') ?? '').split(':')[0].toLowerCase()
   const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1'
   const tHost    = tournoisHostname()
+  const pHost    = pracHostname()
   const { pathname, search } = request.nextUrl
 
   // ── CAS 1 — sous-domaine tournois ────────────────────────────────────────────
@@ -103,6 +115,23 @@ export async function proxy(request: NextRequest) {
     if (normalized) {
       return NextResponse.redirect(new URL(`/${normalized.join('/')}${search}`, request.url), 308)
     }
+  }
+
+  // ── CAS 3 — sous-domaine prac ────────────────────────────────────────────────
+  // Rewrite interne /X → /prac/X (URL inchangée). Pas de normalisation de casse
+  // (routes plates). La garde d'accès (is_prac_admin) est faite dans le layout /prac.
+  if (pHost && !isLocal && hostname === pHost) {
+    const url = request.nextUrl.clone()
+    url.pathname = pathname === '/' ? '/prac' : `/prac${pathname}`
+    const rewriteResponse = NextResponse.rewrite(url, { request })
+    supabaseResponse.cookies.getAll().forEach((c) => rewriteResponse.cookies.set(c))
+    return rewriteResponse
+  }
+
+  // ── CAS 4 — host principal + /prac* → 308 vers le sous-domaine ───────────────
+  if (pHost && !isLocal && (pathname === '/prac' || pathname.startsWith('/prac/'))) {
+    const rest = pathname.slice('/prac'.length) || '/'
+    return NextResponse.redirect(new URL(`https://${pHost}${rest}${search}`), 308)
   }
 
   // ── Garde /dashboard ────────────────────────────────────────────────────────
