@@ -1073,6 +1073,89 @@ Signale une demande **en attente** depuis n'importe quel onglet du dashboard.
 - **Motif réutilisé** : `DeletionRequest` de `/profil` — composant **isolé** avec son propre `useEffect`, `return null` tant que `loading` **et** si pas de dossier pending (aucun flash, aucun layout shift).
 - **Check non bloquant** : point-lookup `.eq('profile_id', user.id).eq('status','pending').maybeSingle()` (le `profile_id` unique-indexé rend le lookup ponctuel), exécuté **dans le composant**, **jamais** en `await` dans le chemin de chargement principal de `page.tsx` → coût imperceptible pour les joueurs sans dossier (immense majorité). Lien vers `/consent`.
 
+## 🟡 Module prac — chantier 3 (Tracking)
+
+### Lot 3A — table `tracked_matches` (schéma, RLS, purge) [migrations 20260627000002 + 000003]
+
+Matchs trackés d'un joueur suivi : **pointeur** (vers `tracked_players` + match Riot) + **snapshot dénormalisé immuable** — uniquement ce que les pages du ch4 consomment (liste + agrégats). Le payload Riot complet n'est **pas** dupliqué : le détail d'un match se lit en réutilisant `/match/[region]/[matchId]`.
+
+#### Schéma `tracked_matches`
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK, `gen_random_uuid()` |
+| `tracked_player_id` | `uuid` | NOT NULL, FK → `tracked_players(id)` **ON DELETE CASCADE** — pointeur + ownership RLS + cascade `remove_tracking` |
+| `match_id` | `text` | NOT NULL — id Riot (`EUW1_…`) |
+| `region` | `text` | NOT NULL — plateforme au track → lien `/match/[region]/[matchId]` |
+| `added_by` | `uuid` | NOT NULL, FK `auth.users` — admin prac |
+| `created_at` | `timestamptz` | default `now()` |
+| `game_creation` | `timestamptz` | NOT NULL — `to_timestamp(gameCreation/1000)` (fenêtre + tri + affichage) |
+| `champion_id` / `champion_name` | `int` / `text` | liste + top-champions |
+| `queue_id` | `int` | |
+| `win` | `boolean` | winrate (cœur ch4) |
+| `kills` / `deaths` / `assists` | `int` | KDA |
+| `cs` | `int` | CS/min avec `duration_s` |
+| `duration_s` | `int` | |
+| `position` | `text` | rôle |
+| `vision_score` / `damage_dealt` / `gold_earned` | `int` | agrégats détail joueur |
+
+Contrainte `uq_tracked_matches_player_match UNIQUE (tracked_player_id, match_id)` (dédup). Index `idx_tracked_matches_player_time (tracked_player_id, game_creation DESC)` (liste + agrégats). **Pas de `updated_at`** — snapshot immuable, aucun chemin UPDATE. Items/runes/timeline **exclus** (→ réutilisation `/match`).
+
+#### RLS `tracked_matches` (miroir `tracked_players`)
+- SELECT `tm_select` : `is_prac_admin(auth.uid()) OR EXISTS (SELECT 1 FROM tracked_players tp WHERE tp.id = tracked_matches.tracked_player_id AND tp.profile_id = auth.uid())` → admin voit tout, joueur voit ses propres matchs via le pointeur.
+- Aucune policy INSERT/UPDATE/DELETE → écritures via l'EF `prac-track` (service_role, lot 3B) uniquement.
+- **Moindre privilège explicite** : `REVOKE ALL FROM anon, authenticated` puis `GRANT SELECT TO authenticated` (anon zéro accès). Nécessaire car les DEFAULT PRIVILEGES Supabase accordent ALL aux deux rôles sur toute nouvelle table — la migration 000003 applique le même correctif à `tracked_players` (dette Lot A : `GRANT SELECT` sans `REVOKE` préalable).
+
+#### Purge — deux mécanismes distincts et complémentaires
+- **`remove_tracking`** (DELETE de la ligne `tracked_players`) → **FK `ON DELETE CASCADE`** supprime les `tracked_matches`. Suffit, aucun trigger.
+- **`revoke`** (`respond_consent` UPDATE status='revoked', la ligne reste) → la FK cascade ne se déclenche pas sur UPDATE. Trigger `trg_tracked_players_purge_on_revoke` AFTER UPDATE `WHEN (NEW.status='revoked' AND OLD.status IS DISTINCT FROM 'revoked')` → `fn_purge_tracked_matches_on_revoke()` (SECURITY DEFINER, `search_path=public`) → `DELETE FROM tracked_matches WHERE tracked_player_id = NEW.id`.
+- Le `IS DISTINCT FROM` est un garde-fou défensif : la seule transition atteignable vers `revoked` est `accepted → revoked` (respond_consent, lot B). Le trigger BEFORE UPDATE `trg_tracked_players_updated_at` (lot A) ne crée aucun conflit (phase + table cible différentes).
+
+### Lot 3B — EF `prac-track` + fonction `prac_commit_tracked_matches` [migration 20260627000004]
+
+EF `supabase/functions/prac-track/index.ts` — tracking de matchs, **admin prac uniquement**. POST, JWT obligatoire vérifié en code (`getUser` → 401), `verify_jwt = false` dans `config.toml` (convention projet, comme `tournament-admin`). Garde **globale** `is_prac_admin(auth.uid())` via `db.rpc('is_prac_admin', { p_uid: user.id })` (service_role, l'uid est un paramètre) **avant le dispatch** → 403 sinon, donc toute action est gardée par défaut. Un seul client `db` (service_role) — pas de `userDb` (aucune RPC à `auth.uid()` interne ; les écritures passent par la fonction SECURITY DEFINER ci-dessous).
+
+#### Action `resolve` — lecture seule
+Entrée : `{ action:'resolve', tracked_player_id, from, to, start? }` (`from`/`to` ISO, `start` 0–200 défaut 0).
+- Lit `status` + `riot_puuid`/`riot_platform` du joueur (`tracked_players`⋈`profiles`, service_role).
+- Exige `status='accepted'` (**résolution post-consentement uniquement** — cadrage) → 403 sinon.
+- `riot_puuid IS NULL` → **400** `{ code:'player_not_linked' }`.
+- Appelle `riot-matches ?puuid&platform&count=20&start` (fetch interne, `apikey` anon) → **1 appel Riot**, mis en cache (clé `matches:{platform}:puuid:{puuid}:{start}:20`, TTL 3 min).
+- Filtre `gameCreation ∈ [from,to]` (epoch ms), flag `already_tracked` (SELECT `tracked_matches`).
+- Sortie : `{ candidates:[{ match_id, game_creation, champion_name, queue_id, win, kills, deaths, assists, already_tracked }], start, count }`. Aucune écriture.
+
+#### Action `commit` — écriture idempotente
+Entrée : `{ action:'commit', tracked_player_id, match_ids[] (1–20), start? }`. Le `start?` (ajout au contrat initial) sert à **re-fetcher la même page** que le resolve (donc **cache HIT**) pour les fenêtres paginées (`start>0`). Défaut 0.
+- Check rapide (fail-fast pré-réseau) `status='accepted'` + puuid.
+- Re-appelle `riot-matches` (mêmes params → cache HIT) et **ré-extrait le snapshot CÔTÉ SERVEUR** pour chaque `match_id` demandé (jamais les stats client — seuls les `match_id` sont de confiance). `match_id` absent de la page → `not_found[]` ; si **tous** absents → 404.
+- Appelle `prac_commit_tracked_matches(p_tracked_player_id, p_added_by, p_rows jsonb)` (SECURITY DEFINER, REVOKE PUBLIC, service_role only) qui écrit atomiquement.
+- Sortie : `{ inserted, skipped, not_found }`. `skipped` = doublons déjà trackés. Mapping erreurs RPC : `player_not_accepted` → 403, `tracked_player_not_found` → 404.
+
+#### Garde de concurrence — fermeture de la fenêtre de race
+`status='accepted'` est **re-vérifié au commit** (pas seulement au resolve) car un revoke peut arriver entre les deux (fenêtre de plusieurs centaines de ms pendant l'appel réseau). Via PostgREST, un `SELECT status` puis un `INSERT` sont deux transactions séparées non verrouillables entre elles → fenêtre TOCTOU. Une contrainte DB (`CHECK`/FK) ne peut pas référencer `tracked_players.status`.
+
+Mécanisme : appel réseau + extraction snapshot **hors verrou** dans l'EF ; puis `prac_commit_tracked_matches`, **dans une seule transaction** : `SELECT status FROM tracked_players WHERE id = p_tracked_player_id **FOR SHARE**` → `RAISE 'player_not_accepted'`/`'tracked_player_not_found'` → `INSERT ... jsonb_to_recordset(p_rows) ON CONFLICT (tracked_player_id, match_id) DO NOTHING`. Le `FOR SHARE` entre en conflit avec le `FOR UPDATE` que `respond_consent` (lot B) prend déjà sur la même ligne au revoke → les deux chemins se **sérialisent** : revoke d'abord ⇒ relit `revoked` ⇒ RAISE, 0 insert ; commit d'abord ⇒ le revoke attend puis son trigger AFTER UPDATE purge les lignes fraîches. **Aucun `tracked_matches` orphelin ne survit au revoke.**
+
+#### Idempotence silencieuse
+`ON CONFLICT DO NOTHING` + `{ inserted, skipped, not_found }` plutôt qu'un 409 dur : `commit` est un batch ; un doublon (concurrence inter-admins ou rejeu) ne doit pas faire échouer tout le lot. L'autorité de dédup est la contrainte `uq_tracked_matches_player_match`, pas le flag `already_tracked` du resolve (indicatif UI). Discipline réseau : **1 appel `riot-matches` par resolve**, commit réutilise le cache (TTL 3 min).
+
+#### Codes HTTP
+200 · 400 (payload/fenêtre ; `player_not_linked` + `code`) · 401 (JWT) · 403 (non admin prac, OU joueur non/plus accepted) · 404 (tracked_player_id introuvable, OU aucun match_id trouvé) · 405 (non POST).
+
+### Lot 3C — UI `/prac/ajouter` + action `list`
+
+#### Page `/prac/ajouter` (`src/app/prac/ajouter/page.tsx`)
+UI de désambiguïsation, **admin prac only** (garde portée par `src/app/prac/layout.tsx` → `prac_admins`). Client component, palette du shell prac. Flux : **picker joueur** (action `list`) → **fenêtre `[from, to]`** (datetime-local) → **`resolve`** → liste des candidats avec **cases à cocher**, matchs `already_tracked` **grisés + non sélectionnables** (jamais de devinette) → **`commit`** de la sélection → bannière `{ inserted, skipped, not_found }` + re-resolve auto (rafraîchit les flags). Joueur non lié → résolution désactivée + avertissement. Appels via `src/lib/prac.ts` (`callPracTrack`, calqué sur `ecailles.ts`/`tournois.ts`). Nav du layout : « Ajouter un joueur » → `Link` vers `/prac/ajouter`.
+
+#### Action `list` (ajoutée à `prac-track`)
+`{ action:'list' }` → joueurs `accepted` + identité d'affichage `{ tracked_player_id, username, game_name, tag_line, platform, linked }` (service_role). **Pourquoi via service_role** : un admin prac **n'est pas forcément admin site** (`prac_admins` ≠ `admin_users`/`profiles.role`), donc le client ne peut **pas** lire les `profiles` des autres joueurs via RLS → la lecture des noms passe par l'EF en service_role, gardée par `is_prac_admin`.
+
+#### Défense en profondeur dans `handleList`
+En plus de la garde globale (avant dispatch), `handleList` **re-vérifie `is_prac_admin(uid)`** en première ligne (403 sinon). **Redondance volontaire, commentée explicitement comme telle dans le code** : `list` renvoie le roster complet (données protégées par le consentement du ch2) ; si un futur refactor déplaçait le dispatch avant la garde globale, ce re-check resterait la dernière barrière. Ce n'est **pas** du code mort à nettoyer. (resolve/commit non dupliqués : déjà couverts par la garde globale + leurs gardes données ; exigent un `tracked_player_id` connu, pas d'énumération en masse.)
+
+#### Incident de déploiement (leçon)
+Pendant 3C, l'action `list` est apparue non gardée en test HTTP (200 pour un non-admin) alors que **la source était correctement gardée** (garde globale avant dispatch). Cause : **la build déployée était désynchronisée de la source** (redéploiement périmé de l'EF). Leçon : **après toute modification du code d'une EF, redéployer puis vérifier la version déployée AVANT de tester** — ne pas diagnostiquer un comportement surprenant comme un bug source sans avoir confirmé que le déploiement reflète la source.
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
