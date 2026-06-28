@@ -1156,6 +1156,40 @@ En plus de la garde globale (avant dispatch), `handleList` **re-vérifie `is_pra
 #### Incident de déploiement (leçon)
 Pendant 3C, l'action `list` est apparue non gardée en test HTTP (200 pour un non-admin) alors que **la source était correctement gardée** (garde globale avant dispatch). Cause : **la build déployée était désynchronisée de la source** (redéploiement périmé de l'EF). Leçon : **après toute modification du code d'une EF, redéployer puis vérifier la version déployée AVANT de tester** — ne pas diagnostiquer un comportement surprenant comme un bug source sans avoir confirmé que le déploiement reflète la source.
 
+## 🟡 Module prac — chantier 4 (Pages)
+
+### Lot 4A — fonctions d'agrégats `prac_top_winrate` + `prac_player_stats` [migration 20260628000001]
+
+Deux fonctions SECURITY DEFINER (`SET search_path = public`, `LANGUAGE plpgsql`) qui alimentent les pages du chantier 4. Validées 7/7 en conditions réelles (SQL Editor distant) le 2026-06-28.
+
+#### Frontière d'accès — contraste VOLONTAIRE avec `get_rank_avg`
+`get_rank_avg` agrège des moyennes **par rang** (zéro PII) → aucune garde, `GRANT anon, authenticated`. Ces deux fonctions exposent des **identités réelles** (`username`) de joueurs trackés → frontière plus stricte : **`REVOKE EXECUTE FROM PUBLIC` + `GRANT authenticated` uniquement (jamais `anon`)** + garde interne obligatoire. Seul le squelette « SECURITY DEFINER + agrégats » est hérité de `get_rank_avg`, pas la portée d'accès. **Ne pas « corriger » vers anon par analogie.**
+
+| Fonction | Garde | Sortie |
+|---|---|---|
+| `prac_top_winrate(p_min_matches int DEFAULT 5)` | **admin prac only** — `RAISE 'not_prac_admin'` si `NOT is_prac_admin(auth.uid())` | TABLE `(tracked_player_id, profile_id, username, games, wins, winrate, avg_kda, avg_cs_per_min)`, `HAVING count(*) >= p_min_matches`, `ORDER BY winrate DESC, games DESC, username`. Classement accueil / top-5 (4C). |
+| `prac_player_stats(p_tracked_player_id uuid)` | **`is_prac_admin OR self`** (voir ordre anti-énumération) | TABLE 1 ligne `(tracked_player_id, profile_id, username, games, wins, losses, winrate, avg_kda, avg_kills, avg_deaths, avg_assists, avg_cs_per_min, avg_vision_score, avg_damage_dealt, avg_gold_earned, top_champions jsonb)`. Fiche détail (4B/4D). |
+
+`top_champions` = top 3 champions **par games**, chacun `{ champion, games, wins, winrate }`, trié `c_games DESC, c_wins DESC, champion_name`. `'[]'::jsonb` si aucun match.
+
+#### Ordre des gardes anti-énumération (`prac_player_stats`)
+La cible est résolue **différemment selon le statut de l'appelant**, pour ne pas créer d'oracle d'existence des `tracked_player_id` :
+- **admin prac** → autorisé sur tout joueur → lookup sans filtre owner → `RAISE 'not_found'` si absent (révélation honnête, l'admin est légitime).
+- **non-admin** → lookup borné `WHERE tp.id = p_id AND tp.profile_id = auth.uid()` → `RAISE 'not_authorized'` si rien (qu'il s'agisse d'un id inexistant OU du dossier d'autrui : **même erreur**, indistinguable).
+
+Conséquence prouvée par les tests T6/T7 : un non-admin sur un dossier existant d'autrui obtient `not_authorized` ; un admin sur un id inexistant obtient `not_found`. L'erreur dépend de l'appelant, jamais de l'existence de la cible côté non-admin.
+
+#### Protection division par zéro (formules)
+- `winrate = wins / NULLIF(games, 0) * 100` → `COALESCE(..., 0)`
+- `avg_cs_per_min = Σcs / NULLIF(Σduration_s, 0) * 60` → `COALESCE(..., 0)`
+- `avg_kda = (ΣK + ΣA) / NULLIF(ΣD, 0)` → si `ΣD = 0`, fallback « KDA parfait » = `ΣK + ΣA` ; puis `0` si aucun match (player_stats).
+
+#### ⚠️ Piège résolu — ambiguïté de colonne dans le CTE (NE PAS réintroduire)
+Dans `prac_player_stats`, la colonne **OUT** `tracked_player_id` du `RETURNS TABLE` est une variable plpgsql en scope dans tout le corps. Le CTE `m AS (SELECT * FROM tracked_matches WHERE tracked_player_id = p_tracked_player_id)` levait `42702: column reference "tracked_player_id" is ambiguous` (collision OUT-var ↔ colonne table). **Fix : aliaser la table** → `SELECT tmx.* FROM public.tracked_matches tmx WHERE tmx.tracked_player_id = p_tracked_player_id`. Règle générale : dès qu'une fonction `RETURNS TABLE` a une colonne OUT homonyme d'une colonne de table référencée dans le corps, **qualifier la colonne par un alias de table**. `prac_top_winrate` n'était pas touché (déjà aliasé `tm`/`tp`). Bug invisible en relecture, attrapé uniquement à l'exécution réelle.
+
+#### Tests (`supabase/tests/20260628000001_prac_aggregates_test.sql`)
+Pas de stack locale → 7 blocs `BEGIN/ROLLBACK` indépendants pour le **SQL Editor distant**, `auth.uid()` piloté par `SET LOCAL ROLE authenticated` + `set_config('request.jwt.claims', …)`. Les blocs data-dependent **seedent leurs matchs AVANT le `SET LOCAL ROLE`** (tracked_matches n'a aucune policy INSERT client → insert sous rôle postgres), puis rollback. UUID réels réutilisés (pas de seed `auth.users` fictif). Couverture : garde admin (T1), seuil (T2), division par zéro (T3), agrégats + top_champions (T4), vue self (T5), anti-énumération not_authorized/not_found (T6/T7).
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
