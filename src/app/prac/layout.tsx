@@ -56,7 +56,7 @@ export default async function PracLayout({ children }: { children: ReactNode }) 
 
         <nav style={{ display: 'flex', gap: 18, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
           <Link href="/" style={{ color: '#E9E6F2', fontSize: 14, textDecoration: 'none' }}>Accueil</Link>
-          <span style={{ color: '#6c6585', fontSize: 14 }} title="Bientôt (chantier 4)">Joueurs suivis</span>
+          <Link href="/prac/joueurs" style={{ color: '#E9E6F2', fontSize: 14, textDecoration: 'none' }}>Players suivis</Link>
           <Link href="/prac/ajouter" style={{ color: '#E9E6F2', fontSize: 14, textDecoration: 'none' }}>Ajouter un joueur</Link>
           <span style={{ fontSize: 12, color: '#9b93b5', paddingLeft: 12, borderLeft: '1px solid rgba(255,255,255,0.12)' }}>
             {user.email}

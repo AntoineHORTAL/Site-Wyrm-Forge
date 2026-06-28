@@ -1190,6 +1190,27 @@ Dans `prac_player_stats`, la colonne **OUT** `tracked_player_id` du `RETURNS TAB
 #### Tests (`supabase/tests/20260628000001_prac_aggregates_test.sql`)
 Pas de stack locale → 7 blocs `BEGIN/ROLLBACK` indépendants pour le **SQL Editor distant**, `auth.uid()` piloté par `SET LOCAL ROLE authenticated` + `set_config('request.jwt.claims', …)`. Les blocs data-dependent **seedent leurs matchs AVANT le `SET LOCAL ROLE`** (tracked_matches n'a aucune policy INSERT client → insert sous rôle postgres), puis rollback. UUID réels réutilisés (pas de seed `auth.users` fictif). Couverture : garde admin (T1), seuil (T2), division par zéro (T3), agrégats + top_champions (T4), vue self (T5), anti-énumération not_authorized/not_found (T6/T7).
 
+### Lot 4B — pages admin liste + détail joueur
+
+Deux pages client (`'use client'`) sous le shell `/prac` (garde `prac_admins` portée par `src/app/prac/layout.tsx`). Palette inline réutilisée de `/prac/ajouter` (fond sombre, Cinzel, card `rgba(255,255,255,0.03)`, accent `#EF9F27`). Lien nav « Players suivis » dans le layout.
+
+#### `src/app/prac/joueurs/page.tsx` — roster complet
+**Option a actée : roster COMPLET, joueurs à 0 match tracké NON masqués** (affichés « — » — c'est l'info utile à l'admin qui n'a encore rien tracké). Deux sources fusionnées **côté client** sur `tracked_player_id` :
+- **EF `prac-track` `{action:'list'}`** → roster des `accepted` + identité (service_role : un admin prac n'est pas forcément admin site → ne peut pas lire `profiles` d'autrui via RLS).
+- **RPC direct `prac_top_winrate(1)`** → winrate/games/KDA des seuls joueurs ayant ≥1 match (INNER JOIN → exclut les 0-match, qui gardent « — » après merge).
+
+Tri : joueurs avec parties d'abord (winrate desc), puis le reste (alpha). Chaque ligne → `Link` vers `/prac/joueurs/[tracked_player_id]`.
+
+#### `src/app/prac/joueurs/[id]/page.tsx` — détail joueur
+`[id]` = `tracked_player_id` (lu via `useParams`). **Deux lectures directes, AUCUNE EF** :
+- **RPC direct `prac_player_stats(id)`** → agrégats + `top_champions` (SECURITY DEFINER, garde `is_prac_admin OR self` ; sous `/prac` l'appelant est admin → branche admin). Erreurs mappées FR : `not_found` → « Joueur introuvable. », `not_authorized` → « Accès non autorisé. ».
+- **SELECT direct `tracked_matches`** via RLS `tm_select` (l'admin prac voit tout) — `order game_creation desc`.
+
+Rendu : tuiles d'agrégats (winrate, KDA, CS/min, vision, dégâts, or, K/D/A), bloc top champions, liste des matchs. **Chaque match → `Link` vers `/match/[region]/[matchId]`** (réutilisation du rendu existant, cadrage ; `region` = `tracked_matches.region`). État vide propre si 0 match.
+
+#### `src/lib/prac.ts` — types + helpers (chantier 4)
+Types `TopWinrateRow`, `PlayerStats`, `TopChampion`, `TrackedMatchRow`. Helpers : `num()` (⚠️ **PostgREST renvoie les `numeric` en STRING**, `bigint` en number → normalisation obligatoire à l'affichage), `matchKda()` / `csPerMin()` (division par zéro protégée côté front, miroir des fonctions SQL). RPC appelées en **direct `supabase.rpc`** (pas via l'EF) car `GRANT authenticated` + garde interne.
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
