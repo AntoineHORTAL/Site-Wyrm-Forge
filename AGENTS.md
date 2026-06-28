@@ -1219,7 +1219,18 @@ Types `TopWinrateRow`, `PlayerStats`, `TopChampion`, `TrackedMatchRow`. Helpers 
 - Cartes classées : badge de rang or/argent/bronze (#1-3) puis neutre, bordure dorée pour #1, winrate vert/rouge (≥50 %), sous-ligne `games · KDA · cs/min` + `xV yD`. Chaque carte → `Link` vers `/prac/joueurs/[id]`.
 - **État vide géré** (`rows.length === 0`, cas < 1 joueur classé) : message clair « pas encore assez de données … au moins 3 parties » + lien vers `/prac/joueurs`. Plus loading/erreur. Jamais de page cassée.
 
-> **Chantier 4 (Pages) clos pour 4A/4B/4C.** Sous-lot **4D (vue joueur self** — le joueur voit son propre détail hors `/prac`, via `prac_player_stats` branche self) **différé en fast-follow**, comme acté.
+> **Chantier 4 (Pages) clos pour 4A/4B/4C.** Sous-lot **4D (vue joueur self)** livré ci-dessous (4D-1).
+
+### Lot 4D-1 — bloc « Ton suivi » (vue self) sur `/consent`
+
+Vue self du joueur sur ses propres données trackées. **Vit sur `/consent`** (site public, hors gating `/prac` — le joueur n'est pas admin prac), **pas** sur une route `/mon-suivi` dédiée : `/consent` est déjà la destination du joueur (ConsentBanner, futur email ch5) et l'endroit naturel de la transparence « qu'est-ce qu'on suit de moi ». **100 % front** — aucune migration (schéma prêt depuis 4A).
+
+- **Condition d'affichage** : bloc rendu **uniquement quand `status='accepted'`** (sous le bloc « Suivi actif » existant). `declined`/`revoked` → aucun bloc (sur revoke, le trigger de purge a déjà supprimé les matchs → rien à montrer).
+- **Données** : le `load()` de `/consent` sélectionne désormais aussi **`id`** de `tracked_players` (la policy `tp_select` retourne déjà la ligne propre du joueur). Cet id alimente :
+  - **`supabase.rpc('prac_player_stats', { p_tracked_player_id: id })`** — branche self (validée 4A T5).
+  - **SELECT direct `tracked_matches`** via RLS `tm_select` (branche self : le joueur voit ses propres lignes).
+- **Rendu** : composant local `SelfTracking` re-rendu dans la **palette `/consent`** (`var(--text-muted)`, bordure `#7F77DD`) — **pas** la palette shell prac. Choix : re-render local plutôt qu'extraction d'un composant partagé avec le détail admin 4B (évite de toucher la page admin committée ; bloc auto-contenu). Réutilise les helpers/types de `src/lib/prac.ts` (`num`, `matchKda`, `csPerMin`, `queueLabel`, `PlayerStats`, `TrackedMatchRow`).
+- Affiche tuiles (winrate, KDA, CS/min, vision, dégâts, or), top champions, liste des parties suivies → chaque match `Link` vers `/match/[region]/[matchId]`. **État 0-match géré** : « Aucune partie suivie pour l'instant. ».
 
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.

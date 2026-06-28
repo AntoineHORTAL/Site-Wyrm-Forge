@@ -21,12 +21,17 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import {
+  num, matchKda, csPerMin, queueLabel,
+  type PlayerStats, type TrackedMatchRow,
+} from '@/lib/prac'
 
 const supabase = createClient()
 
 type ConsentStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
 
 interface TrackedRow {
+  id: string
   status: ConsentStatus
   requested_at: string
   responded_at: string | null
@@ -52,6 +57,10 @@ export default function ConsentPage() {
   const [busy,    setBusy]    = useState(false)
   const [msg,     setMsg]     = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
+  // Bloc « Ton suivi » (4D) — peuplé uniquement quand status='accepted'.
+  const [stats,   setStats]   = useState<PlayerStats | null>(null)
+  const [matches, setMatches] = useState<TrackedMatchRow[] | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -61,10 +70,29 @@ export default function ConsentPage() {
 
     const { data } = await supabase
       .from('tracked_players')
-      .select('status, requested_at, responded_at')
+      .select('id, status, requested_at, responded_at')
       .eq('profile_id', user.id)
       .maybeSingle()
-    setRow((data as TrackedRow | null) ?? null)
+    const r = (data as TrackedRow | null) ?? null
+    setRow(r)
+
+    // Vue self : agrégats (prac_player_stats branche self) + matchs bruts
+    // (tracked_matches via RLS tm_select self). Uniquement si accepté — sur
+    // declined/revoked il n'y a rien à montrer (revoke purge les matchs).
+    if (r?.status === 'accepted') {
+      const [statsRes, matchRes] = await Promise.all([
+        supabase.rpc('prac_player_stats', { p_tracked_player_id: r.id }),
+        supabase
+          .from('tracked_matches')
+          .select('id, match_id, region, game_creation, champion_name, champion_id, queue_id, win, kills, deaths, assists, cs, duration_s, position, vision_score, damage_dealt, gold_earned')
+          .eq('tracked_player_id', r.id)
+          .order('game_creation', { ascending: false }),
+      ])
+      setStats(statsRes.error ? null : ((statsRes.data ?? []) as PlayerStats[])[0] ?? null)
+      setMatches(matchRes.error ? [] : ((matchRes.data ?? []) as TrackedMatchRow[]))
+    } else {
+      setStats(null); setMatches(null)
+    }
     setLoading(false)
   }, [])
 
@@ -194,8 +222,116 @@ export default function ConsentPage() {
           }}>{msg.text}</div>
         )}
       </Card>
+
+      {/* Vue self (4D) : ce que le suivi a enregistré, en toute transparence. */}
+      {row?.status === 'accepted' && <SelfTracking stats={stats} matches={matches} />}
     </Shell>
   )
+}
+
+// ── Bloc « Ton suivi » (vue self, palette /consent) ───────────────────────────
+function SelfTracking({ stats, matches }: { stats: PlayerStats | null; matches: TrackedMatchRow[] | null }) {
+  const games = stats?.games ?? 0
+  return (
+    <section style={{ ...selfCard, marginTop: 16 }}>
+      <Label>Ton suivi</Label>
+
+      {games === 0 ? (
+        <p style={pStyle}>Aucune partie suivie pour l&apos;instant.</p>
+      ) : (
+        <>
+          <p style={{ ...pStyle, marginBottom: 16 }}>
+            Voici les données enregistrées sur tes performances ({games} partie{games > 1 ? 's' : ''}
+            {stats && <> · {stats.wins}V {games - stats.wins}D</>}).
+          </p>
+
+          {/* Tuiles d'agrégats */}
+          {stats && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              <Tile label="Winrate" value={`${num(stats.winrate).toFixed(0)}%`} accent={num(stats.winrate) >= 50 ? '#5DCAA5' : '#E24B4A'} />
+              <Tile label="KDA" value={num(stats.avg_kda).toFixed(2)} />
+              <Tile label="CS/min" value={num(stats.avg_cs_per_min).toFixed(2)} />
+              <Tile label="Vision" value={num(stats.avg_vision_score).toFixed(1)} />
+              <Tile label="Dégâts (moy.)" value={num(stats.avg_damage_dealt).toLocaleString('fr-FR')} />
+              <Tile label="Or (moy.)" value={num(stats.avg_gold_earned).toLocaleString('fr-FR')} />
+            </div>
+          )}
+
+          {/* Top champions */}
+          {stats && stats.top_champions.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={subLabel}>Champions les plus joués</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {stats.top_champions.map((c) => (
+                  <div key={c.champion} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
+                    <span style={{ flex: 1, minWidth: 0, color: '#F5F2FA', fontWeight: 600 }}>{c.champion}</span>
+                    <span style={{ width: 86, textAlign: 'right', color: 'var(--text-dim)' }}>{c.games} partie{c.games > 1 ? 's' : ''}</span>
+                    <span style={{ width: 56, textAlign: 'right', fontWeight: 700, color: c.winrate >= 50 ? '#5DCAA5' : '#E24B4A' }}>{c.winrate.toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Liste des matchs suivis */}
+          <div style={subLabel}>Parties suivies ({matches?.length ?? 0})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(matches ?? []).map((m) => (
+              <Link
+                key={m.id}
+                href={`/match/${m.region}/${m.match_id}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 6,
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                  textDecoration: 'none', color: '#F5F2FA',
+                }}
+              >
+                <span style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: m.win ? '#5DCAA5' : '#E24B4A' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    {m.champion_name ?? 'Champion'}{' '}
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                      · {m.kills ?? 0}/{m.deaths ?? 0}/{m.assists ?? 0} ({matchKda(m.kills, m.deaths, m.assists).toFixed(2)})
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                    {m.queue_id != null ? queueLabel(m.queue_id) : 'File ?'}
+                    {' · '}{csPerMin(m.cs, m.duration_s).toFixed(1)} cs/min
+                    {' · '}{new Date(m.game_creation).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: m.win ? '#5DCAA5' : '#E24B4A' }}>{m.win ? 'V' : 'D'}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function Tile({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{
+      flex: '1 1 120px', minWidth: 120, padding: '10px 12px', borderRadius: 8,
+      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      <div style={subLabel}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: accent ?? '#F5F2FA' }}>{value}</div>
+    </div>
+  )
+}
+
+const selfCard: React.CSSProperties = {
+  padding: '20px 24px', borderRadius: 12,
+  background: 'rgba(255,255,255,0.02)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  borderLeft: '4px solid #7F77DD',
+}
+
+const subLabel: React.CSSProperties = {
+  fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase',
+  letterSpacing: 1, marginBottom: 8, fontWeight: 700,
 }
 
 // ── Messages de succès selon le nouvel état ───────────────────────────────────
