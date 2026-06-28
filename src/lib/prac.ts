@@ -102,6 +102,18 @@ export interface TrackedMatchRow {
   gold_earned:   number | null
 }
 
+// Résultat de prac_search_profiles (Search-1) — champs minimaux d'identité.
+// tracking_status pilote le bouton d'action de l'UI Search-2.
+export interface ProfileSearchResult {
+  profile_id:      string
+  username:        string | null
+  riot_gamename:   string | null
+  riot_tagline:    string | null
+  riot_platform:   string | null
+  linked:          boolean
+  tracking_status: 'pending' | 'accepted' | 'declined' | 'revoked' | null
+}
+
 /** Normalise un numeric PostgREST (string|number|null) en number (NaN→0). */
 export function num(v: number | string | null | undefined): number {
   if (v === null || v === undefined) return 0

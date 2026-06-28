@@ -1260,6 +1260,22 @@ Recherche de profils par un admin prac pour alimenter l'UI « Ajouter un joueur 
 
 **Tests** (`supabase/tests/20260628000002_prac_search_profiles_test.sql`) : 7 blocs `BEGIN/ROLLBACK` distants sur profils réels (pas de seed). Couverture : garde (T1), username+tracking_status accepted (T2), riot_gamename+linked+status NULL (T3), seuil <2 (T4), limite+ordre (T5), escaping `%%` (T6), contrat no-PII (T7).
 
+### Search-2 — UI `/prac/ajouter-joueur` + relabel nav
+
+Page client (`'use client'`) sous le shell `/prac` (garde `prac_admins`). **DISTINCTE de `/prac/ajouter`** (qui tracke des *matchs* d'un joueur déjà suivi) : ici on ajoute un joueur au **roster** (demande de suivi).
+
+- **Flow** : champ de recherche **débouncé (300 ms)** → `supabase.rpc('prac_search_profiles', { p_query })` (RPC direct, < 2 caractères = aucun appel, cohérent avec le seuil serveur) → liste de résultats. Bouton par ligne **selon `tracking_status`** :
+  - `null` → **« Suivre »** → `supabase.rpc('request_tracking', { p_profile_id })`.
+  - `declined`/`revoked` → **« Renvoyer une demande »** (même RPC `request_tracking` qui rouvre vers `pending`).
+  - `pending` → pill **« Demande en attente »** (pas d'action).
+  - `accepted` → pill **« Déjà suivi »** (pas d'action).
+  - **Re-search (resync) après chaque action** dans tous les cas — couvre la concurrence (`already_tracked` → message FR + resync).
+- **Relabel nav** (`src/app/prac/layout.tsx`) : l'entrée existante **`/prac/ajouter`** passe de « Ajouter un joueur » (libellé trompeur — la page s'appelle « Ajouter des matchs ») à **« Tracker des matchs »**, et une nouvelle entrée **« Ajouter un joueur »** pointe vers `/prac/ajouter-joueur`. Nav prac à 4 entrées : Accueil · Players suivis · Ajouter un joueur · Tracker des matchs.
+- **Raccourci** : bouton **« + Ajouter un joueur »** en tête de `/prac/joueurs` → `/prac/ajouter-joueur`.
+- Type `ProfileSearchResult` ajouté à `src/lib/prac.ts`. Palette shell prac réutilisée.
+
+> **Périmètre prac cadré ce jour terminé** : chantiers 1-4 (4A/4B/4C) + 4D (vue self) + Search (recherche/ajout roster). Reste hors-scope/différé : chantier 5 (email Resend de notification de demande de suivi).
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.

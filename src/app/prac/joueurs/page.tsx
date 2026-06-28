@@ -73,12 +73,26 @@ export default function PracJoueursPage() {
 
   return (
     <div>
-      <h1 style={{ fontFamily: 'Cinzel, serif', fontSize: 'clamp(24px, 3.5vw, 34px)', margin: '0 0 6px', color: '#fff' }}>
-        Players suivis
-      </h1>
-      <p style={{ color: '#9b93b5', fontSize: 14, margin: '0 0 24px' }}>
-        Tous les joueurs ayant accepté le suivi. Clique sur un joueur pour voir son détail et ses matchs trackés.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Cinzel, serif', fontSize: 'clamp(24px, 3.5vw, 34px)', margin: '0 0 6px', color: '#fff' }}>
+            Players suivis
+          </h1>
+          <p style={{ color: '#9b93b5', fontSize: 14, margin: 0 }}>
+            Tous les joueurs ayant accepté le suivi. Clique sur un joueur pour voir son détail et ses matchs trackés.
+          </p>
+        </div>
+        <Link
+          href="/prac/ajouter-joueur"
+          style={{
+            flexShrink: 0, padding: '9px 16px', borderRadius: 6, fontSize: 14, fontWeight: 600,
+            textDecoration: 'none', whiteSpace: 'nowrap',
+            background: 'rgba(239,159,39,0.18)', border: '1px solid #EF9F27', color: '#fff',
+          }}
+        >
+          + Ajouter un joueur
+        </Link>
+      </div>
 
       {error && <Banner>{error}</Banner>}
 
