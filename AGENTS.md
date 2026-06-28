@@ -1211,6 +1211,16 @@ Rendu : tuiles d'agrégats (winrate, KDA, CS/min, vision, dégâts, or, K/D/A), 
 #### `src/lib/prac.ts` — types + helpers (chantier 4)
 Types `TopWinrateRow`, `PlayerStats`, `TopChampion`, `TrackedMatchRow`. Helpers : `num()` (⚠️ **PostgREST renvoie les `numeric` en STRING**, `bigint` en number → normalisation obligatoire à l'affichage), `matchKda()` / `csPerMin()` (division par zéro protégée côté front, miroir des fonctions SQL). RPC appelées en **direct `supabase.rpc`** (pas via l'EF) car `GRANT authenticated` + garde interne.
 
+### Lot 4C — accueil top-5 winrate
+
+`src/app/prac/page.tsx` (remplace le placeholder checklist du socle, **converti server → client** `'use client'`). **Vitrine, pas roster** : n'affiche QUE les joueurs classés.
+- **RPC direct `prac_top_winrate(3)`** — `MIN_MATCHES = 3` (seuil « joueur classé », cadrage 4C). Pas d'EF (contrairement à `/prac/joueurs` qui a besoin du roster complet via EF `list`) : le top-5 = joueurs ayant ≥3 parties trackées uniquement, donc le RPC suffit (il joint `profiles` en interne).
+- **`slice(0, 5)` côté client** — la fonction trie déjà `winrate DESC, games DESC`, on coupe à 5.
+- Cartes classées : badge de rang or/argent/bronze (#1-3) puis neutre, bordure dorée pour #1, winrate vert/rouge (≥50 %), sous-ligne `games · KDA · cs/min` + `xV yD`. Chaque carte → `Link` vers `/prac/joueurs/[id]`.
+- **État vide géré** (`rows.length === 0`, cas < 1 joueur classé) : message clair « pas encore assez de données … au moins 3 parties » + lien vers `/prac/joueurs`. Plus loading/erreur. Jamais de page cassée.
+
+> **Chantier 4 (Pages) clos pour 4A/4B/4C.** Sous-lot **4D (vue joueur self** — le joueur voit son propre détail hors `/prac`, via `prac_player_stats` branche self) **différé en fast-follow**, comme acté.
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
