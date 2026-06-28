@@ -1232,6 +1232,34 @@ Vue self du joueur sur ses propres données trackées. **Vit sur `/consent`** (s
 - **Rendu** : composant local `SelfTracking` re-rendu dans la **palette `/consent`** (`var(--text-muted)`, bordure `#7F77DD`) — **pas** la palette shell prac. Choix : re-render local plutôt qu'extraction d'un composant partagé avec le détail admin 4B (évite de toucher la page admin committée ; bloc auto-contenu). Réutilise les helpers/types de `src/lib/prac.ts` (`num`, `matchKda`, `csPerMin`, `queueLabel`, `PlayerStats`, `TrackedMatchRow`).
 - Affiche tuiles (winrate, KDA, CS/min, vision, dégâts, or), top champions, liste des parties suivies → chaque match `Link` vers `/match/[region]/[matchId]`. **État 0-match géré** : « Aucune partie suivie pour l'instant. ».
 
+## 🟡 Module prac — recherche/ajout de joueur (Search)
+
+### Search-1 — fonction `prac_search_profiles` [migration 20260628000002]
+
+Recherche de profils par un admin prac pour alimenter l'UI « Ajouter un joueur » (qui appelle ensuite `request_tracking`). Validée 7/7 contre le remote le 2026-06-28.
+
+**Signature** : `prac_search_profiles(p_query text, p_limit int DEFAULT 10)` — SECURITY DEFINER, `SET search_path = public`, `LANGUAGE plpgsql`.
+
+**Pourquoi SECURITY DEFINER** : la RLS de `profiles` n'autorise un user qu'à lire SON profil (`auth.uid()=id OR is_admin()`). Un admin prac n'est pas forcément admin site → ne peut pas lister les autres profils. La fonction bypasse la RLS en tant qu'owner, **sans ajouter de policy ni élargir l'accès du site**, bornée par :
+- **Garde** `is_prac_admin(auth.uid())` → `RAISE 'not_prac_admin'` sinon.
+- **`REVOKE EXECUTE FROM PUBLIC` + `GRANT authenticated`** (jamais anon).
+- Appel en **RPC direct** `supabase.rpc` (définer + gardée — pas d'EF, pattern 4A/4C).
+
+**Comportement** :
+- Recherche `username ILIKE '%q%' OR riot_gamename ILIKE '%q%'`.
+- **Escaping LIKE** : les métacaractères `\ % _` de `p_query` sont échappés (backslash d'abord) → saisie traitée LITTÉRALEMENT, pas de joker injecté.
+- **Seuil ≥ 2 caractères** (après `trim`) : sinon `RETURN` sans résultat (anti-dump, pas d'erreur).
+- **Limite bornée** `LEAST(GREATEST(p_limit,1), 25)`.
+- **Tri** : correspondances par **préfixe d'abord** (`(username ILIKE q||'%') OR (riot_gamename ILIKE q||'%') DESC`), puis `username` (collation base : MAJUSCULES avant minuscules).
+
+**Champs retournés (minimaux)** : `profile_id (=id)`, `username`, `riot_gamename`, `riot_tagline`, `riot_platform`, `linked` (`riot_puuid IS NOT NULL`), `tracking_status` (LEFT JOIN `tracked_players` → `status` ou `NULL`). **Exclus volontairement** : `email`, `role`, `tier`, `riot_puuid` brut, `created_at`. Le contrat est prouvé structurellement (test T7 : `SELECT email FROM prac_search_profiles(...)` → `42703 column does not exist`).
+
+`tracking_status` pilote l'UI Search-2 : `NULL` → bouton « Suivre » (`request_tracking`) ; `pending` → « en attente » ; `accepted` → « déjà suivi » (lien détail) ; `declined`/`revoked` → « renvoyer une demande » (réouverture par `request_tracking`).
+
+**Note perf** : `ILIKE` non sargable → seq scan sur `profiles` (table interne, ~4 lignes → négligeable). Si la base grossit, ajouter un index trigram/`text_pattern_ops`.
+
+**Tests** (`supabase/tests/20260628000002_prac_search_profiles_test.sql`) : 7 blocs `BEGIN/ROLLBACK` distants sur profils réels (pas de seed). Couverture : garde (T1), username+tracking_status accepted (T2), riot_gamename+linked+status NULL (T3), seuil <2 (T4), limite+ordre (T5), escaping `%%` (T6), contrat no-PII (T7).
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
