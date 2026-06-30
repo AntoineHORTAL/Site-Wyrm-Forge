@@ -1278,7 +1278,7 @@ Page client (`'use client'`) sous le shell `/prac` (garde `prac_admins`). **DIST
 
 ## 🟡 Module prac — chantier 5 (Notification email Resend)
 
-Notifier le joueur par e-mail quand un admin prac ouvre (ou rouvre) une demande de suivi. Découpage : **5B** squelette EF log-only (fait) → 5C table `prac_notification_log` (idempotence) → 5D envoi Resend réel → 5E câblage du Database Webhook → 5F finitions.
+Notifier le joueur par e-mail quand un admin prac ouvre (ou rouvre) une demande de suivi. Découpage : **5B** squelette EF log-only (fait) → **5C** table `prac_notification_log` (idempotence — fait) → 5D envoi Resend réel → 5E câblage du Database Webhook → 5F finitions.
 
 ### Lot 5B — squelette EF `prac-notify` (log-only)
 
@@ -1295,6 +1295,39 @@ EF `supabase/functions/prac-notify/index.ts` — **squelette sans envoi Resend**
 - **Réponses** : pertinent → `200 { would_send: true, transition, profile_id, email }` + `console.log('prac-notify: would send consent request email', {transition, profile_id, email})`. Email introuvable → `200 { would_send: false, reason: 'no_email'|'lookup_error' }` + `console.error` (un retry du webhook ne réparerait pas un lookup d'id, d'où le 200). `profile_id` manquant → `200 { ignored: true, reason: 'missing_profile_id' }`.
 - **Codes HTTP** : 200 (pertinent log-only OU ignoré) · 400 (JSON invalide) · 401 (token interne absent/incorrect) · 405 (non POST).
 - **Tests (5/5 validés en HTTP réel, secret synchronisé)** : sans token → 401 ; mauvais token → 401 ; INSERT pending → `would_send:true`/`initial` ; UPDATE declined→pending → `would_send:true`/`reopen` ; UPDATE revoked→pending → `would_send:true`/`reopen` ; UPDATE pending→accepted → `ignored:true` ; UPDATE accepted→revoked → `ignored:true`. Contraste `would_send` vs `ignored` conforme.
+
+### Lot 5C — table `prac_notification_log` (idempotence)
+
+Migration `20260630000001_prac_notification_log.sql`. Journal d'envois de notifications prac : une ligne = une tentative de notification pour **une instance de demande**. Sert UNIQUEMENT l'idempotence de l'EF `prac-notify` (consommée au 5D). Validée 4/4 (+1 contraste) contre le remote (à exécuter au déploiement, blocs `BEGIN/ROLLBACK` distants).
+
+#### Schéma
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | `bigint` | PK GENERATED ALWAYS AS IDENTITY |
+| `tracked_player_id` | `uuid` | NOT NULL, FK → `tracked_players(id)` **ON DELETE CASCADE** |
+| `requested_at` | `timestamptz` | NOT NULL — l'instance de demande notifiée (= `record.requested_at` du webhook) |
+| `channel` | `text` | default `'email'` (extensible) |
+| `recipient` | `text` | email au moment de l'envoi (audit ; nullable) |
+| `status` | `text` | `'pending'`\|`'sent'`\|`'failed'` — CHECK, default `'pending'` |
+| `provider_message_id` | `text` | id Resend (nullable) |
+| `error` | `text` | message d'échec (nullable) |
+| `created_at` / `updated_at` | `timestamptz` | trigger `trg_prac_notification_log_updated_at → fn_set_updated_at()` |
+
+Contrainte `uq_prac_notif UNIQUE (tracked_player_id, requested_at, channel)` — **clé d'idempotence** + crée l'index btree du claim `ON CONFLICT` (aucun index supplémentaire).
+
+#### Clé d'idempotence — articulation avec le flux
+- **Retry / double-livraison du webhook** pour la même demande → même `requested_at` → conflit → skip (**at-most-once par demande**).
+- **Réouverture** (`request_tracking` : `declined`/`revoked` → `pending`) remet `requested_at = now()` → clé neuve → **nouvelle notification autorisée**. `tracked_player_id` (= `tracked_players.id`) est **stable** à travers les réouvertures (UPDATE de la même ligne) → bon ancrage + porte la cascade FK.
+
+#### Frontière de sécurité — service_role ONLY (modèle `app_events`, PAS `tracked_matches`)
+Le joueur ne lit JAMAIS ce journal (audit interne pur). Donc RLS activée + **aucune policy** + `REVOKE ALL FROM anon, authenticated` **sans aucun `GRANT SELECT`** → un client `authenticated` (même admin prac) obtient **`permission denied` (42501)**, garantie plus forte qu'un filtrage RLS à 0 ligne. `role_table_grants` ne retourne **aucune** ligne pour anon/authenticated (vérifié explicitement, test T4). `service_role` conserve ses privilèges par défaut Supabase (writes EF 5D).
+
+#### Conservation sur révocation
+Contrairement à `tracked_matches` (purgé sur `revoke` car donnée Riot sensible), ce journal est **CONSERVÉ** sur `revoked` — c'est un log d'envoi (audit), pas de la donnée joueur. Supprimé uniquement si le dossier `tracked_players` est supprimé (`remove_tracking` → FK ON DELETE CASCADE, test T3).
+
+#### ⚠️ Dette connue V1 — pas de reclaim time-based
+L'EF 5D ne re-tentera un envoi que sur une ligne `status='failed'`. Une ligne restée **`'pending'`** (crash de l'EF entre le claim et l'UPDATE de statut) **ne se débloque JAMAIS automatiquement** → le joueur concerné pourrait **ne jamais recevoir sa notification, sans alerte**. Accepté pour la V1 (cas rare : fenêtre de crash de quelques ms). À traiter plus tard si besoin : reclaim des `'pending'` plus vieux que N minutes, ou job de supervision. **Ne pas confondre avec un bug** — déviation actée.
 
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
