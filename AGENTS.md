@@ -1274,7 +1274,27 @@ Page client (`'use client'`) sous le shell `/prac` (garde `prac_admins`). **DIST
 - **Raccourci** : bouton **« + Ajouter un joueur »** en tête de `/prac/joueurs` → `/prac/ajouter-joueur`.
 - Type `ProfileSearchResult` ajouté à `src/lib/prac.ts`. Palette shell prac réutilisée.
 
-> **Périmètre prac cadré ce jour terminé** : chantiers 1-4 (4A/4B/4C) + 4D (vue self) + Search (recherche/ajout roster). Reste hors-scope/différé : chantier 5 (email Resend de notification de demande de suivi).
+> **Périmètre prac cadré ce jour terminé** : chantiers 1-4 (4A/4B/4C) + 4D (vue self) + Search (recherche/ajout roster). Chantier 5 (email Resend de notification de demande de suivi) **en cours** — Lot 5B livré ci-dessous.
+
+## 🟡 Module prac — chantier 5 (Notification email Resend)
+
+Notifier le joueur par e-mail quand un admin prac ouvre (ou rouvre) une demande de suivi. Découpage : **5B** squelette EF log-only (fait) → 5C table `prac_notification_log` (idempotence) → 5D envoi Resend réel → 5E câblage du Database Webhook → 5F finitions.
+
+### Lot 5B — squelette EF `prac-notify` (log-only)
+
+EF `supabase/functions/prac-notify/index.ts` — **squelette sans envoi Resend** (l'envoi arrive au 5D). Pose la mécanique : réception webhook → vérif secret → filtrage transition → résolution destinataire → **`console.log` structuré de ce qui SERAIT envoyé**. `verify_jwt = false` dans `config.toml`.
+
+- **Déclenchement (câblage 5E, pas encore actif)** : Database Webhook Supabase sur `tracked_players` (INSERT + UPDATE) → POST `/functions/v1/prac-notify`. L'appelant est Postgres (pg_net), pas un navigateur — pas de JWT user.
+- **Sécurité — `X-Internal-Token`** : `verify_jwt=false` (comme `prac-track`/`tournament-admin`), seule barrière = header `X-Internal-Token` comparé à `PRAC_WEBHOOK_SECRET` (secret Supabase) **en code** → **401** si absent/incorrect (et non 403 : l'appelant est un service interne, pas un user authentifié). Sans ce check l'EF serait un **open relay** (déclenchement d'e-mails par n'importe qui). Comparaison directe `===` (token haute entropie), même esprit que le `X-Internal-Token` de `patch-notes-generator`.
+- **Format payload Database Webhook** (standard, confirmé) : `{ type: 'INSERT'|'UPDATE'|'DELETE', table, schema, record, old_record }`. `record` = ligne NEW (null en DELETE) ; `old_record` = ligne OLD (null en INSERT).
+- **Règle de filtrage (en code — les webhooks n'ont pas de condition par colonne)** : ne traiter QUE les transitions où `status` DEVIENT `'pending'` :
+  - **INSERT** avec `record.status === 'pending'` → transition **`'initial'`** (demande initiale).
+  - **UPDATE** avec `record.status === 'pending'` ET `old_record.status ∈ {'declined','revoked'}` → transition **`'reopen'`** (réouverture par `request_tracking`).
+  - Tout le reste (accepted/declined/revoked en eux-mêmes, `pending→pending`, DELETE, autre table) → **ignoré** : `200 { ignored: true }` (le webhook attend une réponse même si l'événement est ignoré).
+- **Résolution destinataire — source canonique** : email lu via `db.auth.admin.getUserById(record.profile_id)` (service_role) → **`auth.users.email`**. PAS `profiles.email` (simple copie faite à la création, susceptible de dériver). `profiles.id = auth.users.id = record.profile_id` → lookup direct par id.
+- **Réponses** : pertinent → `200 { would_send: true, transition, profile_id, email }` + `console.log('prac-notify: would send consent request email', {transition, profile_id, email})`. Email introuvable → `200 { would_send: false, reason: 'no_email'|'lookup_error' }` + `console.error` (un retry du webhook ne réparerait pas un lookup d'id, d'où le 200). `profile_id` manquant → `200 { ignored: true, reason: 'missing_profile_id' }`.
+- **Codes HTTP** : 200 (pertinent log-only OU ignoré) · 400 (JSON invalide) · 401 (token interne absent/incorrect) · 405 (non POST).
+- **Tests (5/5 validés en HTTP réel, secret synchronisé)** : sans token → 401 ; mauvais token → 401 ; INSERT pending → `would_send:true`/`initial` ; UPDATE declined→pending → `would_send:true`/`reopen` ; UPDATE revoked→pending → `would_send:true`/`reopen` ; UPDATE pending→accepted → `ignored:true` ; UPDATE accepted→revoked → `ignored:true`. Contraste `would_send` vs `ignored` conforme.
 
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.

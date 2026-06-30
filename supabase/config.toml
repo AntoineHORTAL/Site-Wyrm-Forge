@@ -42,6 +42,12 @@ verify_jwt = false
 [functions.prac-track]
 verify_jwt = false
 
+# prac-notify : notification de demande de suivi (module prac) — appelée par un
+# Database Webhook Supabase (pg_net), pas par un navigateur. Pas de JWT user :
+# la barrière est le header X-Internal-Token = PRAC_WEBHOOK_SECRET, vérifié EN CODE.
+[functions.prac-notify]
+verify_jwt = false
+
 # ── Fonctions nécessitant un user connecté ───────────────────────────────────
 # verify_jwt = true déclaré EXPLICITEMENT (était le défaut implicite). La clé anon
 # reste un JWT valide accepté par la plateforme ; la vérification du VRAI user est
