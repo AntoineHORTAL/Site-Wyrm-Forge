@@ -1351,6 +1351,23 @@ Après filtrage transition (5B) + résolution destinataire (`auth.users.email`) 
 #### Dette V1 (rappel)
 Reclaim **uniquement sur `'failed'`** : une ligne restée `'pending'` (crash EF entre claim et UPDATE final) ne se re-débloque pas automatiquement → notification perdue silencieusement. Déviation actée (voir dette V1 du lot 5C ci-dessus), pas un bug.
 
+### Lot 5E — câblage du Database Webhook (⚠️ configuration MANUELLE, non versionnée)
+
+Le déclencheur de `prac-notify` est un **Database Webhook Supabase créé à la main dans le dashboard** (Database → Webhooks). **Ce n'est PAS du code commité** : les webhooks Supabase ne sont pas exportables dans les migrations → **dette d'infra visible, à recréer manuellement sur tout nouvel environnement**. Reproduire à l'identique la config suivante :
+
+| Champ | Valeur |
+|---|---|
+| Name | `prac-notify-consent` |
+| Table | `public.tracked_players` |
+| Events | **INSERT + UPDATE** (pas DELETE) |
+| Type | HTTP Request → POST |
+| URL | `https://cuscgmgqakxnfwnsrhhv.supabase.co/functions/v1/prac-notify` |
+| HTTP Header | `X-Internal-Token: <valeur de PRAC_WEBHOOK_SECRET>` |
+
+- **Pas de filtre par colonne** : les Database Webhooks ne supportent pas de condition (`WHEN status='pending'`) → **tout** INSERT/UPDATE de `tracked_players` fire, et c'est **l'EF qui filtre** en code (`relevantTransition` : seul `status` devenant `pending` déclenche un envoi ; tout le reste → `200 { ignored:true }`). Volontaire — la sélectivité vit dans l'EF, pas dans le webhook.
+- **Header = seule barrière** : `verify_jwt=false`, la valeur de `X-Internal-Token` DOIT correspondre au secret Supabase `PRAC_WEBHOOK_SECRET`. Si le header manque/diffère → `401`, aucun e-mail. Si un jour le secret est tourné, **mettre à jour le header du webhook en même temps** (sinon toutes les notifications tombent en 401 silencieusement côté déclencheur).
+- **Ne pas ajouter l'event DELETE** : `remove_tracking` supprime le dossier → aucun e-mail à envoyer (l'EF ignorerait de toute façon, mais éviter le POST inutile).
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
