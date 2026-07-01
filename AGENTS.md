@@ -1329,6 +1329,28 @@ Contrairement à `tracked_matches` (purgé sur `revoke` car donnée Riot sensibl
 #### ⚠️ Dette connue V1 — pas de reclaim time-based
 L'EF 5D ne re-tentera un envoi que sur une ligne `status='failed'`. Une ligne restée **`'pending'`** (crash de l'EF entre le claim et l'UPDATE de statut) **ne se débloque JAMAIS automatiquement** → le joueur concerné pourrait **ne jamais recevoir sa notification, sans alerte**. Accepté pour la V1 (cas rare : fenêtre de crash de quelques ms). À traiter plus tard si besoin : reclaim des `'pending'` plus vieux que N minutes, ou job de supervision. **Ne pas confondre avec un bug** — déviation actée.
 
+### Lot 5D — envoi Resend réel (claim-then-send) [migration 20260630000002]
+
+Passe l'EF `prac-notify` du log-only (5B) à l'**envoi réel**. Validé 4/4 en conditions réelles (cas A/B/C/D — 3 vrais e-mails Resend reçus, idempotence + reclaim `failed` confirmés).
+
+#### Helper `_shared/resend.ts` — premier transport e-mail du projet
+`sendEmail({ to, subject, html, text?, from? }) → { ok, status, id?, error? }`. **Ne throw JAMAIS sur erreur HTTP** (ni réseau) : retourne `{ ok:false, status, error }` pour que l'appelant décide (marquer `'failed'` + laisser le webhook retenter). **Throw uniquement si `RESEND_API_KEY` absent** (mauvaise config serveur, via `requireSecret`). `from` par défaut = `Wyrm Forge <noreply@wyrm-forge.com>` (domaine vérifié, DKIM Cloudflare) — surchargeable. Réutilisable au-delà de prac. Secret requis : `RESEND_API_KEY`.
+
+#### Flux claim-then-send (EF `prac-notify`)
+Après filtrage transition (5B) + résolution destinataire (`auth.users.email`) :
+1. **CLAIM atomique** via `prac_notify_claim(p_tracked_player_id, p_requested_at, p_channel, p_recipient) → bigint` (SECURITY DEFINER, `REVOKE FROM PUBLIC`, service_role only). En **une seule instruction** (pas de fenêtre TOCTOU entre livraisons concurrentes du webhook) : `INSERT ... ON CONFLICT (tracked_player_id, requested_at, channel) DO UPDATE SET status='pending', recipient=EXCLUDED.recipient, error=NULL, updated_at=now() **WHERE prac_notification_log.status='failed'**` + `RETURNING id`. Le prédicat `WHERE status='failed'` sur le DO UPDATE fait tout le tri :
+   - jamais notifiée → INSERT ligne `'pending'` → renvoie l'id (**on possède l'envoi**).
+   - ligne `'failed'` → re-claim (repasse `'pending'`) → renvoie l'id (**retry après échec Resend**).
+   - ligne `'sent'` ou `'pending'` in-flight → conflit non éligible → `RETURNING` ne renvoie rien → **`NULL`** → EF répond `200 { skipped:true, reason:'already_notified' }`, **aucun envoi** (at-most-once par demande).
+2. **ENVOI Resend** (`sendEmail`) uniquement si un id a été claimé.
+3. **Finalisation** : succès → `UPDATE status='sent', provider_message_id` → `200 { sent:true }`. Échec → `UPDATE status='failed', error` (tronqué 500 car) → **`500`** (le webhook retentera → `prac_notify_claim` re-claimera la ligne `'failed'`).
+
+#### Template inline (prac-notify seul consommateur)
+`buildEmail(transition, username, siteUrl)` construit `{ subject, html, text }` inline (pas de moteur de templates — un seul consommateur). **Sujet différencié `initial` vs `reopen`** (« Demande de suivi prac » vs « Nouvelle demande de suivi prac »). `username` **best-effort** : lu depuis `profiles.username` dans un `try/catch` qui ne bloque jamais l'envoi ; `null`/vide → salutation générique (« Salut, »). CTA vers `${SITE_URL}/consent`. Fond `#1A1A1A`, accent `#EF9F27` (charte).
+
+#### Dette V1 (rappel)
+Reclaim **uniquement sur `'failed'`** : une ligne restée `'pending'` (crash EF entre claim et UPDATE final) ne se re-débloque pas automatiquement → notification perdue silencieusement. Déviation actée (voir dette V1 du lot 5C ci-dessus), pas un bug.
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
