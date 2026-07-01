@@ -84,14 +84,16 @@ function buildEmail(transition: Transition, username: string | null, siteUrl: st
     <p style="margin:0 0 24px">
       <a href="${consent}" style="display:inline-block;background:#EF9F27;color:#1A1A1A;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px">Gérer ma demande</a>
     </p>
-    <p style="margin:0;font-size:12px;color:#888">Si le bouton ne fonctionne pas, copie ce lien : ${consent}</p>
+    <p style="margin:0 0 16px;font-size:12px;color:#888">Si le bouton ne fonctionne pas, copie ce lien : ${consent}</p>
+    <p style="margin:0;padding-top:14px;border-top:1px solid #333;font-size:11px;color:#777">Tu reçois cet email car un administrateur Wyrm Forge a initié une demande de suivi. Tu peux refuser depuis ta page de consentement.</p>
   </div>
 </body></html>`
 
   const text = `${hello}\n\n${transition === 'reopen'
     ? 'Un administrateur prac vient de te renvoyer une demande de suivi de tes performances sur Wyrm Forge.'
     : 'Un administrateur prac souhaite suivre tes performances sur Wyrm Forge.'}\n\n` +
-    `Tu peux accepter ou refuser ce suivi à tout moment ici : ${consent}\n`
+    `Tu peux accepter ou refuser ce suivi à tout moment ici : ${consent}\n\n` +
+    `Tu reçois cet email car un administrateur Wyrm Forge a initié une demande de suivi. Tu peux refuser depuis ta page de consentement.\n`
 
   return { subject, html, text }
 }

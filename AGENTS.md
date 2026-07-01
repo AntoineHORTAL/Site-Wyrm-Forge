@@ -1368,6 +1368,11 @@ Le déclencheur de `prac-notify` est un **Database Webhook Supabase créé à la
 - **Header = seule barrière** : `verify_jwt=false`, la valeur de `X-Internal-Token` DOIT correspondre au secret Supabase `PRAC_WEBHOOK_SECRET`. Si le header manque/diffère → `401`, aucun e-mail. Si un jour le secret est tourné, **mettre à jour le header du webhook en même temps** (sinon toutes les notifications tombent en 401 silencieusement côté déclencheur).
 - **Ne pas ajouter l'event DELETE** : `remove_tracking` supprime le dossier → aucun e-mail à envoyer (l'EF ignorerait de toute façon, mais éviter le POST inutile).
 
+### Lot 5F — finitions du template `prac-notify`
+
+- **Sujets différenciés** (déjà en place depuis 5D) : `initial` → « Demande de suivi prac — Wyrm Forge » ; `reopen` → « Nouvelle demande de suivi prac — Wyrm Forge » (+ phrase d'intro « souhaite suivre » vs « vient de te renvoyer »). Validé au test e2e 5E (2 e-mails, sujets/corps différenciés).
+- **Mention de transparence (opt-out non technique)** : ligne discrète en bas du template (HTML **et** version texte) — « Tu reçois cet email car un administrateur Wyrm Forge a initié une demande de suivi. Tu peux refuser depuis ta page de consentement. » **Pas de lien d'unsubscribe technique en V1** : le refus se fait exclusivement via `/consent` (`respond_consent('decline'|'revoke')`). La mention est purement informative.
+
 ### Décisions de cadrage actées
 - **Stockage post-consentement uniquement** : aucune donnée Riot d'un joueur n'est résolue/stockée tant que le consentement n'est pas `accepted`.
 - **Révocation** : purge des `tracked_matches` du joueur.
