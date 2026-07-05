@@ -13,7 +13,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { num, type TopWinrateRow } from '@/lib/prac'
+import { num, pracPath, type TopWinrateRow } from '@/lib/prac'
 
 const supabase = createClient()
 
@@ -56,7 +56,7 @@ export default function PracHomePage() {
           <p style={{ color: '#9b93b5', fontSize: 14, margin: 0 }}>
             Pas encore assez de données. Un joueur apparaît ici dès qu&apos;il a au moins {MIN_MATCHES} parties trackées.
             {' '}Suis les joueurs depuis{' '}
-            <Link href="/prac/joueurs" style={{ color: '#EF9F27' }}>Players suivis</Link>.
+            <Link href={pracPath('/joueurs')} style={{ color: '#EF9F27' }}>Players suivis</Link>.
           </p>
         </section>
       )}
@@ -69,7 +69,7 @@ export default function PracHomePage() {
             return (
               <Link
                 key={r.tracked_player_id}
-                href={`/prac/joueurs/${r.tracked_player_id}`}
+                href={pracPath(`/joueurs/${r.tracked_player_id}`)}
                 style={{
                   ...card, display: 'flex', alignItems: 'center', gap: 16,
                   textDecoration: 'none', color: '#E9E6F2',

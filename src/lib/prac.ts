@@ -3,6 +3,20 @@
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+// ── Navigation in-app (routing sous-domaine) ──────────────────────────────────
+// Même convention que tournois (src/lib/tournois.ts → navFromPublic) :
+//   PROD  (NEXT_PUBLIC_PRAC_HOST défini) → chemin RELATIF au sous-domaine, SANS
+//         préfixe /prac ('/joueurs', '/ajouter'…). Le proxy (CAS 3) réécrit /X → /prac/X.
+//         Utiliser un href '/prac/joueurs' en prod donnerait /prac/prac/joueurs → 404.
+//   LOCAL/preview (host absent) → chemin direct '/prac/...' (le sous-domaine n'existe
+//         pas ; accès par chemin, convention documentée du repo).
+// `pub` = chemin PUBLIC sans préfixe /prac ('/', '/joueurs', '/joueurs/abc', '/ajouter').
+export function pracPath(pub: string = '/'): string {
+  const p = pub || '/'
+  if (process.env.NEXT_PUBLIC_PRAC_HOST) return p       // prod : relatif sur le sous-domaine
+  return p === '/' ? '/prac' : `/prac${p}`              // local : /prac/...
+}
+
 export interface PracPlayer {
   tracked_player_id: string
   username:  string | null

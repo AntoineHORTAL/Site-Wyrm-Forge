@@ -129,10 +129,17 @@ export async function proxy(request: NextRequest) {
     return rewriteResponse
   }
 
-  // ── CAS 4 — host principal + /prac* → 308 vers le sous-domaine ───────────────
+  // ── CAS 4 — host principal + /prac* → BLOQUÉ (redirect accueil apex) ──────────
+  // /prac n'est servi QUE sur le sous-domaine prac en prod. Contrairement à tournois
+  // (CAS 2, qui RELAIE l'apex vers le sous-domaine pour les liens canoniques/anciens),
+  // prac est un outil interne noindex sans lien public entrant : l'accès apex
+  // wyrm-forge.com/prac* est BLOQUÉ (redirigé vers l'accueil apex), jamais relayé —
+  // MÊME pour un admin prac authentifié. Le layout /prac double cette garde (host check).
   if (pHost && !isLocal && (pathname === '/prac' || pathname.startsWith('/prac/'))) {
-    const rest = pathname.slice('/prac'.length) || '/'
-    return NextResponse.redirect(new URL(`https://${pHost}${rest}${search}`), 308)
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    url.search = ''
+    return NextResponse.redirect(url)
   }
 
   // ── Garde /dashboard ────────────────────────────────────────────────────────

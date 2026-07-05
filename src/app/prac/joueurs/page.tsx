@@ -17,7 +17,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { callPracTrack, num, type PracPlayer, type TopWinrateRow } from '@/lib/prac'
+import { callPracTrack, num, pracPath, type PracPlayer, type TopWinrateRow } from '@/lib/prac'
 
 const supabase = createClient()
 
@@ -83,7 +83,7 @@ export default function PracJoueursPage() {
           </p>
         </div>
         <Link
-          href="/prac/ajouter-joueur"
+          href={pracPath('/ajouter-joueur')}
           style={{
             flexShrink: 0, padding: '9px 16px', borderRadius: 6, fontSize: 14, fontWeight: 600,
             textDecoration: 'none', whiteSpace: 'nowrap',
@@ -121,7 +121,7 @@ export default function PracJoueursPage() {
           {rows.map((r) => (
             <Link
               key={r.tracked_player_id}
-              href={`/prac/joueurs/${r.tracked_player_id}`}
+              href={pracPath(`/joueurs/${r.tracked_player_id}`)}
               style={{ ...rowBase, textDecoration: 'none', color: '#E9E6F2', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>

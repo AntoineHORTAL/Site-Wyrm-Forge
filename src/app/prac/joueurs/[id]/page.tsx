@@ -18,7 +18,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  queueLabel, num, matchKda, csPerMin,
+  queueLabel, num, matchKda, csPerMin, pracPath,
   type PlayerStats, type TrackedMatchRow,
 } from '@/lib/prac'
 
@@ -61,7 +61,7 @@ export default function PracJoueurDetailPage() {
 
   return (
     <div>
-      <Link href="/prac/joueurs" style={{ color: '#9b93b5', fontSize: 13, textDecoration: 'none' }}>← Players suivis</Link>
+      <Link href={pracPath('/joueurs')} style={{ color: '#9b93b5', fontSize: 13, textDecoration: 'none' }}>← Players suivis</Link>
 
       {loading && <p style={{ color: '#9b93b5', fontSize: 13, marginTop: 16 }}>Chargement…</p>}
       {error && !loading && <Banner>{error}</Banner>}
@@ -80,7 +80,7 @@ export default function PracJoueurDetailPage() {
             <section style={card}>
               <p style={{ color: '#9b93b5', fontSize: 13, margin: 0 }}>
                 Aucun match tracké pour ce joueur. Ajoute des parties depuis{' '}
-                <Link href="/prac/ajouter" style={{ color: '#EF9F27' }}>Ajouter un joueur</Link>.
+                <Link href={pracPath('/ajouter')} style={{ color: '#EF9F27' }}>Ajouter un joueur</Link>.
               </p>
             </section>
           ) : (
