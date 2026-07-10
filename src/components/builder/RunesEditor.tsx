@@ -52,11 +52,11 @@ interface Props {
 // Setup actuel (Patch 14.x+) tel qu'affiché dans le client LoL :
 //   Offense  : Force adaptative / Vitesse d'attaque / Hâte de comp.
 //   Flex     : Force adaptative / Vitesse de déplacement / PV (scaling)
-//   Defense  : PV (flat) / Ténacité & Rés. ralent. / Résistance magique
+//   Defense  : PV (flat) / Ténacité & Rés. ralent. / PV (selon niveau)
 //
 // IMPORTANT : un même shard peut apparaître sur plusieurs lignes (ex: Force
-// adaptative dans Offense ET Flex). Les IDs sont les mêmes mais le contexte
-// row diffère.
+// adaptative dans Offense ET Flex, PV selon niveau dans Flex ET Defense). Les
+// IDs sont les mêmes mais le contexte row diffère.
 interface ShardDef { id: number; name: string; desc: string; iconKey: string }
 const SHARDS: { rows: ShardDef[][] } = {
   rows: [
@@ -73,7 +73,7 @@ const SHARDS: { rows: ShardDef[][] } = {
     [
       { id: 5011, name: 'PV',                desc: '+65 PV',                        iconKey: 'HealthPlus' },
       { id: 5013, name: 'Tén. & Rés. ralent.', desc: '+10 % tén. et rés. aux ralent.', iconKey: 'Tenacity' },
-      { id: 5003, name: 'Résistance magique', desc: '+8 résistance magique',         iconKey: 'MagicRes' },
+      { id: 5001, name: 'PV (selon niveau)', desc: '+10-180 PV (selon niveau)',     iconKey: 'HealthScaling' },
     ],
   ],
 }
@@ -89,7 +89,6 @@ function shardIconUrl(iconKey: string): string {
     HealthScaling: `${base}/statmodshealthscalingicon.png`,
     HealthPlus:    `${base}/statmodshealthplusicon.png`,
     Tenacity:      `${base}/statmodstenacityicon.png`,
-    MagicRes:      `${base}/statmodsmagicresicon.png`,
     Armor:         `${base}/statmodsarmoricon.png`,
   }
   return map[iconKey] || ''
