@@ -449,7 +449,18 @@ export default function AdminTab() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table style={{ width: '100%', minWidth: 760, tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 13 }}>
+              {/* Largeurs FIXES : les colonnes ne dépendent plus du contenu.
+                  Empêche tout saut de largeur quand le contenu d'une cellule
+                  change (confirmation inline de certification, badge « Certifié »,
+                  « ✓ Sauvegardé »…). */}
+              <colgroup>
+                <col style={{ width: '32%' }} />{/* Utilisateur */}
+                <col style={{ width: '11%' }} />{/* Tier */}
+                <col style={{ width: '17%' }} />{/* Expiration */}
+                <col style={{ width: '11%' }} />{/* Rôle */}
+                <col style={{ width: '29%' }} />{/* Actions */}
+              </colgroup>
               <thead>
                 <tr style={{ background: c ? 'rgba(20,10,35,0.5)' : '#0F0F11' }}>
                   {['Utilisateur', 'Tier', 'Expiration', 'Rôle', 'Actions'].map(h => (
@@ -480,13 +491,13 @@ export default function AdminTab() {
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 11, fontWeight: 700, color: 'white',
                           }}>{p.username.slice(0, 2).toUpperCase()}</div>
-                          <div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ color: '#F5F2FA', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
-                              {p.username}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.username}</span>
                               {p.certified && <CertifiedBadge size={13} />}
                             </div>
                             {p.email && (
-                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>{p.email}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>
                             )}
                           </div>
                           {successId === p.id && (
