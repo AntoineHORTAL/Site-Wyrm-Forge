@@ -25,8 +25,6 @@ interface ChampionData {
   spells: {
     id: string; name: string; description: string; image: { full: string }
     cooldownBurn: string; costBurn: string; rangeBurn: string; tooltip: string
-    effectBurn: string[]
-    vars: { key: string; link: string; coeff: number | number[] }[]
   }[]
   skins: { id: string; num: number; name: string }[]
   allytips: string[]
@@ -250,8 +248,7 @@ export default function ChampionPage() {
                   cooldown={sp.cooldownBurn}
                   cost={sp.costBurn}
                   range={sp.rangeBurn}
-                  effectBurn={sp.effectBurn}
-                  vars={sp.vars}
+                  tooltip={sp.tooltip}
                 />
               ))}
             </div>
@@ -427,34 +424,35 @@ function TagBadge({ tag }: { tag: string }) {
   )
 }
 
-const RATIO_LABELS: Record<string, string> = {
-  spelldamage:          'AP',
-  attackdamage:         'AD',
-  bonusattackdamage:    'Bonus AD',
-  armor:                'Armure',
-  bonusarmor:           'Armure bonus',
-  maxhealth:            'PV max',
-  bonushealth:          'PV bonus',
-  critdamage:           'Crit',
+// ── Type de dégâts d'un sort ──
+// DDragon n'a PAS de champ structuré "type de dégâts". On le dérive des balises sémantiques
+// natives présentes dans le tooltip Riot : <physicalDamage>, <magicDamage>, <trueDamage>.
+// Un sort hybride peut contenir plusieurs balises → on renvoie TOUS les types trouvés
+// (multi-badge), plutôt que d'en choisir un arbitrairement.
+type DamageKind = 'physical' | 'magic' | 'true'
+
+const DAMAGE_TYPE_META: Record<DamageKind, { label: string; color: string; bg: string; border: string }> = {
+  physical: { label: 'Physique', color: '#EF9F27', bg: 'rgba(239,159,39,0.12)',  border: 'rgba(239,159,39,0.35)' },
+  magic:    { label: 'Magique',  color: '#7F77DD', bg: 'rgba(127,119,221,0.14)', border: 'rgba(127,119,221,0.40)' },
+  true:     { label: 'Vrai',     color: '#E8E4F0', bg: 'rgba(255,255,255,0.08)', border: 'rgba(255,255,255,0.28)' },
 }
 
-function formatCoeff(coeff: number | number[]): string {
-  if (typeof coeff === 'number') return `${Math.round(coeff * 100)}%`
-  const uniq = [...new Set(coeff.map(c => Math.round(c * 100)))]
-  return uniq.length === 1 ? `${uniq[0]}%` : `${uniq[0]}–${uniq[uniq.length - 1]}%`
+function getDamageTypes(tooltip?: string): DamageKind[] {
+  if (!tooltip) return []
+  const t = tooltip.toLowerCase()
+  const types: DamageKind[] = []
+  if (t.includes('<physicaldamage')) types.push('physical')
+  if (t.includes('<magicdamage'))    types.push('magic')
+  if (t.includes('<truedamage'))     types.push('true')
+  return types
 }
 
 // ── Sous-composant : une carte de sort ──
-function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range, effectBurn, vars }: {
+function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range, tooltip }: {
   slot: string; name: string; description: string; imgSrc: string
-  cooldown?: string; cost?: string; range?: string
-  effectBurn?: string[]; vars?: { key: string; link: string; coeff: number | number[] }[]
+  cooldown?: string; cost?: string; range?: string; tooltip?: string
 }) {
-  const dmg = effectBurn?.find(e => e && e !== '0') ?? null
-
-  const ratios = (vars ?? [])
-    .filter(v => v.link in RATIO_LABELS)
-    .map(v => `${formatCoeff(v.coeff)} ${RATIO_LABELS[v.link]}`)
+  const damageTypes = getDamageTypes(tooltip)
 
   return (
     <div style={{
@@ -478,22 +476,23 @@ function SpellCard({ slot, name, description, imgSrc, cooldown, cost, range, eff
             {range    && <span>📏 {range}</span>}
           </div>
         )}
-        {(dmg || ratios.length > 0) && (
-          <div style={{ fontSize: 11, marginBottom: 5, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-            {dmg && (
-              <span style={{
-                padding: '1px 7px', borderRadius: 3,
-                background: 'rgba(239,159,39,0.12)', border: '1px solid rgba(239,159,39,0.3)',
-                color: '#EF9F27', fontWeight: 600, letterSpacing: 0.2,
-              }}>⚔ {dmg}</span>
-            )}
-            {ratios.map((r, i) => (
-              <span key={i} style={{
-                padding: '1px 7px', borderRadius: 3,
-                background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)',
-                color: '#A8A3E8', fontWeight: 600,
-              }}>+{r}</span>
-            ))}
+        {/* Badges de type de dégâts, dérivés des balises du tooltip (multi-badge pour hybrides).
+            ⚠️ NOMBRES de dégâts par rang (ex: "60/95/130/165/200 (+0.6 AP)") : NON disponibles via
+            DDragon — `effectBurn` est vidé (que des "0") et `vars` est vide pour les champions
+            modernes ; les valeurs vivent dans le tooltip sous forme de placeholders {{ }} que
+            DDragon ne résout pas. Les obtenir nécessite Community Dragon (spellCalculations) ou une
+            table curatée → chantier séparé DIFFÉRÉ (B13). NE PAS re-tenter via effectBurn/vars. */}
+        {damageTypes.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 5 }}>
+            {damageTypes.map(dt => {
+              const m = DAMAGE_TYPE_META[dt]
+              return (
+                <span key={dt} style={{
+                  padding: '1px 8px', borderRadius: 3, fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
+                  background: m.bg, border: `1px solid ${m.border}`, color: m.color,
+                }}>{m.label}</span>
+              )
+            })}
           </div>
         )}
         <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, whiteSpace: 'pre-wrap', maxHeight: 140, overflowY: 'auto' }}
