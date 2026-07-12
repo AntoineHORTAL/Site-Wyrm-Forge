@@ -46,3 +46,4 @@ supabase/.branches/
 
 # Worktrees internes de Claude Code
 .claude/worktrees/
+graphify-out/
