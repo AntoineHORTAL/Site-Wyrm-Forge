@@ -15,6 +15,7 @@ import AdminTab from './tabs/AdminTab'
 import PatchNotesTab from './tabs/PatchNotesTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
+import Pricing from '@/components/landing/Pricing'
 import type { DashTab, UserProfile } from '@/app/page'
 
 /* ── Icons ── */
@@ -118,6 +119,8 @@ const tabTitles: Record<DashTab, { title: string; subtitle: string }> = {
   tournois:         { title: 'Tournois',          subtitle: 'Bientôt disponible' },
   patchnotes:       { title: 'Patch Notes',       subtitle: 'Résumés des mises à jour League of Legends' },
   ecailles:         { title: 'La Forge',           subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
+  // Onglet caché (absent de la nav) — en-tête standard non affiché : Pricing a le sien.
+  tarifs:           { title: 'Tarifs',            subtitle: 'Choisis ou renouvelle ton abonnement' },
 }
 
 interface DashboardProps {
@@ -199,20 +202,23 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {/* Bandeau demande de suivi prac en attente — auto-masqué si aucun dossier pending */}
         <ConsentBanner />
 
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: 24, paddingBottom: 16,
-          borderBottom: `1px solid ${c ? 'rgba(186,117,23,0.15)' : '#1F1F23'}`,
-        }}>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 600, color: '#F5F2FA', margin: 0 }}>
-              {tabTitles[activeTab].title}
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '4px 0 0' }}>
-              {tabTitles[activeTab].subtitle}
-            </p>
+        {/* En-tête standard — masqué pour l'onglet tarifs (Pricing a son propre titre) */}
+        {activeTab !== 'tarifs' && (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 24, paddingBottom: 16,
+            borderBottom: `1px solid ${c ? 'rgba(186,117,23,0.15)' : '#1F1F23'}`,
+          }}>
+            <div>
+              <h1 style={{ fontSize: 24, fontWeight: 600, color: '#F5F2FA', margin: 0 }}>
+                {tabTitles[activeTab].title}
+              </h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '4px 0 0' }}>
+                {tabTitles[activeTab].subtitle}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {activeTab === 'admin'            && <AdminTab />}
         {activeTab === 'accueil'          && <AccueilTab />}
@@ -238,6 +244,9 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
             forgeRequest={forgeRequest}
           />
         )}
+
+        {/* Onglet tarifs (caché) — réutilise la section Pricing de la landing telle quelle */}
+        {activeTab === 'tarifs' && <Pricing />}
 
         {/* Locked: Analyse IA — déverrouillé pour admin et tiers maître+ */}
         {(activeTab === 'matchup' || activeTab === 'postgame') && (

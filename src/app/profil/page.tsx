@@ -13,6 +13,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
@@ -235,6 +236,10 @@ export default function ProfilePage() {
             )}
             <span>·</span>
             <span>Membre depuis {memberSince}</span>
+            <span>·</span>
+            <Link href="/?tab=tarifs" style={{ color: '#EF9F27', fontWeight: 600, textDecoration: 'none' }}>
+              Voir les tarifs →
+            </Link>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
             {profile.email}

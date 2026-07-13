@@ -12,6 +12,7 @@ import FAQ from '@/components/landing/FAQ'
 import Footer from '@/components/landing/Footer'
 import AuthModal from '@/components/auth/AuthModal'
 import Dashboard from '@/components/dashboard/Dashboard'
+import SubscriptionReminder from '@/components/dashboard/SubscriptionReminder'
 import type { User } from '@supabase/supabase-js'
 
 export type DashTab =
@@ -24,6 +25,7 @@ export type DashTab =
   | 'patchnotes'
   | 'ecailles'
   | 'admin'
+  | 'tarifs'   // onglet caché (absent de la navigation) — accès direct : popup renouvellement + page profil
 
 export interface UserProfile {
   id: string
@@ -84,6 +86,15 @@ export default function Home() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Deep-link vers l'onglet tarifs (caché) : /?tab=tarifs — utilisé par le lien
+  // « Voir les tarifs » de la page profil (navigation inter-route). La popup de
+  // renouvellement, elle, appelle directement setActiveTab via onRenew.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'tarifs') {
+      setActiveTab('tarifs')
+    }
+  }, [])
+
   // Charge solde + flag écailles quand l'utilisateur change
   useEffect(() => {
     if (!user) { setBalance(0); setEcaillesEnabled(false); return }
@@ -138,17 +149,25 @@ export default function Home() {
       />
 
       {user ? (
-        <Dashboard
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          isAdmin={isAdmin}
-          profile={profile}
-          balance={balance}
-          balanceLoading={balanceLoading}
-          onRefreshBalance={loadBalance}
-          ecaillesEnabled={ecaillesEnabled}
-          forgeRequest={forgeRequest}
-        />
+        <>
+          <Dashboard
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            isAdmin={isAdmin}
+            profile={profile}
+            balance={balance}
+            balanceLoading={balanceLoading}
+            onRefreshBalance={loadBalance}
+            ecaillesEnabled={ecaillesEnabled}
+            forgeRequest={forgeRequest}
+          />
+          <SubscriptionReminder
+            tier={profile?.tier ?? 'apprenti'}
+            tierExpiresAt={profile?.tier_expires_at ?? null}
+            isAdmin={isAdmin}
+            onRenew={() => setActiveTab('tarifs')}
+          />
+        </>
       ) : (
         <>
           <Hero onLogin={() => setShowAuth(true)} />
