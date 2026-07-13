@@ -137,6 +137,7 @@ export default function AdminTab() {
   const [editId, setEditId]         = useState<string | null>(null)
   const [saving, setSaving]         = useState(false)
   const [successId, setSuccessId]   = useState<string | null>(null)
+  const [saveError, setSaveError]   = useState<string | null>(null)
   const [confirmCertifyId, setConfirmCertifyId] = useState<string | null>(null)
 
   // Patch notes
@@ -161,7 +162,9 @@ export default function AdminTab() {
 
   // Edit state
   const [eTier, setETier]           = useState('')
-  const [eLifetime, setELifetime]   = useState(true)
+  // Tri-état : null = aucun choix d'expiration fait (ni « À vie » ni « Date »).
+  // Force un choix explicite de l'admin → évite d'écrire null par défaut.
+  const [eLifetime, setELifetime]   = useState<boolean | null>(null)
   const [eDate, setEDate]           = useState('')
 
   // Réglages globaux (app_settings) — feature flags
@@ -310,8 +313,12 @@ export default function AdminTab() {
   function startEdit(p: Profile) {
     setEditId(p.id)
     setETier(p.tier)
-    setELifetime(p.tier_expires_at === null)
+    // Aucune pré-sélection de l'expiration : l'admin doit cliquer explicitement
+    // « ♾ À vie » ou « 📅 Date » (le défaut « À vie » masquait une écriture null
+    // silencieuse quand on voulait en fait poser une date).
+    setELifetime(null)
     setEDate(p.tier_expires_at ? p.tier_expires_at.slice(0, 10) : addDays(365))
+    setSaveError(null)
   }
 
   async function toggleCertify(p: Profile) {
@@ -325,11 +332,20 @@ export default function AdminTab() {
   }
 
   async function save(id: string) {
+    if (eLifetime === null) return   // choix d'expiration non fait (bouton désactivé)
     setSaving(true)
-    await supabase.from('profiles').update({
+    setSaveError(null)
+    // `.select()` : sans lui, un UPDATE bloqué par RLS (0 ligne touchée) renvoie
+    // error=null → faux succès. On vérifie donc AUSSI que des lignes sont revenues.
+    const { data, error } = await supabase.from('profiles').update({
       tier: eTier,
       tier_expires_at: eLifetime ? null : (eDate ? new Date(eDate).toISOString() : null),
-    }).eq('id', id)
+    }).eq('id', id).select()
+    if (error || !data || data.length === 0) {
+      setSaving(false)
+      setSaveError(error?.message ?? 'Aucune ligne modifiée — droits insuffisants ?')
+      return
+    }
     await load()
     setEditId(null)
     setSaving(false)
@@ -652,13 +668,13 @@ export default function AdminTab() {
 
                                 <button onClick={() => setELifetime(false)} style={{
                                   padding: '6px 14px', borderRadius: 6, fontSize: 12,
-                                  border: `1px solid ${!eLifetime ? (c ? '#BA7517' : '#7F77DD') : border}`,
-                                  background: !eLifetime ? (c ? 'rgba(186,117,23,0.12)' : 'rgba(127,119,221,0.12)') : 'transparent',
-                                  color: !eLifetime ? (c ? '#FAC775' : '#FAFAFA') : 'var(--text-muted)',
+                                  border: `1px solid ${eLifetime === false ? (c ? '#BA7517' : '#7F77DD') : border}`,
+                                  background: eLifetime === false ? (c ? 'rgba(186,117,23,0.12)' : 'rgba(127,119,221,0.12)') : 'transparent',
+                                  color: eLifetime === false ? (c ? '#FAC775' : '#FAFAFA') : 'var(--text-muted)',
                                   cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                                 }}>📅 Date</button>
 
-                                {!eLifetime && (
+                                {eLifetime === false && (
                                   <>
                                     {QUICK_DATES.map(q => (
                                       <button key={q.label} onClick={() => setEDate(addDays(q.days))} style={{
@@ -685,18 +701,26 @@ export default function AdminTab() {
                             </div>
 
                             {/* Save */}
-                            <button
-                              onClick={() => save(p.id)}
-                              disabled={saving}
-                              style={{
-                                padding: '8px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                                background: 'linear-gradient(135deg, #7F77DD, #534AB7)',
-                                border: 'none', color: 'white',
-                                cursor: saving ? 'not-allowed' : 'pointer',
-                                opacity: saving ? 0.7 : 1,
-                                fontFamily: 'inherit', flexShrink: 0,
-                              }}
-                            >{saving ? '…' : 'Sauvegarder'}</button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                              <button
+                                onClick={() => save(p.id)}
+                                disabled={saving || eLifetime === null}
+                                style={{
+                                  padding: '8px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                                  background: 'linear-gradient(135deg, #7F77DD, #534AB7)',
+                                  border: 'none', color: 'white',
+                                  cursor: (saving || eLifetime === null) ? 'not-allowed' : 'pointer',
+                                  opacity: (saving || eLifetime === null) ? 0.7 : 1,
+                                  fontFamily: 'inherit',
+                                }}
+                              >{saving ? '…' : 'Sauvegarder'}</button>
+                              {eLifetime === null && (
+                                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Choisis « À vie » ou « Date »</span>
+                              )}
+                              {saveError && (
+                                <span style={{ fontSize: 11, color: '#E24B4A' }}>✗ {saveError}</span>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
