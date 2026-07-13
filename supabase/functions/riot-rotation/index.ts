@@ -19,6 +19,32 @@ const ROUTING: Record<string, string> = {
   kr: 'asia', jp1: 'asia',
 }
 
+// ── Expiration hebdomadaire du cache ────────────────────────────────────────
+// La rotation gratuite change UNE FOIS PAR SEMAINE, le mardi (heure US).
+// ⚠️ APPROXIMATION ASSUMÉE : l'API ne renvoie AUCUN timestamp de fin de rotation
+// (réponse limitée aux clés { sr, newplayer } — vérifié en prod ; le
+// champion-rotations-v3 standard de Riot n'expose pas non plus de date de fin).
+// Faute de donnée réelle, on cale l'expiration sur le prochain mardi 12:00 UTC.
+// - 12:00 UTC : se situe après le basculement (tôt le mardi, matinée US) pour
+//   limiter la fenêtre où l'ancienne rotation serait encore servie.
+// - Limite connue : si Riot décale exceptionnellement le jour (ex. pour éviter
+//   un jour de patch), la nouvelle rotation peut être servie en retard jusqu'au
+//   mardi suivant. Compromis accepté — objectif : ~1 appel Riot / semaine.
+const ROTATION_FLIP_DOW  = 2   // mardi (0=dim, 1=lun, 2=mar, …)
+const ROTATION_FLIP_HOUR = 12  // 12:00 UTC
+
+/** Retourne le prochain mardi 12:00 UTC STRICTEMENT postérieur à `from` (ISO). */
+function nextRotationExpiryIso(from: Date = new Date()): string {
+  const d = new Date(Date.UTC(
+    from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(),
+    ROTATION_FLIP_HOUR, 0, 0, 0,
+  ))
+  while (d <= from || d.getUTCDay() !== ROTATION_FLIP_DOW) {
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return d.toISOString()
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req)
   if (cors) return cors
@@ -69,8 +95,21 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Riot API ${res.status}` }, res.status)
     }
 
-    const data = await res.json()
-    await cacheSet(cacheKey, FN, data)
+    const raw = await res.json()
+
+    // Normalisation du contrat de données consommé par le front (freeChampionIds).
+    // L'upstream renvoie actuellement les clés abrégées { sr, newplayer } ; on
+    // accepte aussi le format Riot standard { freeChampionIds, ... } au cas où
+    // l'upstream y reviendrait. Sans ça, le front lit `undefined.map()` → throw →
+    // rotation vide → message trompeur « clé API non configurée ou expirée ».
+    const data = {
+      freeChampionIds:              raw.freeChampionIds              ?? raw.sr        ?? [],
+      freeChampionIdsForNewPlayers: raw.freeChampionIdsForNewPlayers ?? raw.newplayer ?? [],
+      maxNewPlayerLevel:            raw.maxNewPlayerLevel            ?? null,
+    }
+    // Cache calé sur le prochain basculement de rotation (≈ 1 appel Riot/semaine)
+    // plutôt que sur le TTL plat par défaut.
+    await cacheSet(cacheKey, FN, data, nextRotationExpiryIso())
     await incrementQuota(FN)
 
     return jsonResponse(data, 200, { 'X-Cache': 'MISS' })

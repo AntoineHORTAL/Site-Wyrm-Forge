@@ -3,7 +3,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const TTL_MS: Record<string, number> = {
-  'riot-rotation':          6 * 60 * 60 * 1000, // 6 hours — weekly rotation
+  'riot-rotation':          6 * 60 * 60 * 1000, // fallback — remplacé à l'écriture par nextRotationExpiryIso() (mardi 12:00 UTC)
   'riot-rank':                  5 * 60 * 1000,  // 5 min   — rank changes per game
   'riot-matches':               3 * 60 * 1000,  // 3 min   — list changes after each game
   'riot-match-detail':                    -1,   // permanent — completed matches are immutable
@@ -52,12 +52,16 @@ export async function cacheGetStale(key: string): Promise<unknown | null> {
   return data?.response_body ?? null
 }
 
-/** Upserts a response in the cache with the appropriate TTL for functionName. */
-export async function cacheSet(key: string, fn: string, body: unknown): Promise<void> {
+/**
+ * Upserts a response in the cache.
+ * TTL par défaut = celui de `functionName` ; `expiresAtIso` permet de forcer une
+ * date d'expiration calculée (ex : rotation hebdomadaire calée sur le mardi).
+ */
+export async function cacheSet(key: string, fn: string, body: unknown, expiresAtIso?: string): Promise<void> {
   await db()
     .from('riot_cache')
     .upsert(
-      { cache_key: key, function_name: fn, response_body: body, expires_at: expiresAt(fn), hit_count: 0, last_hit_at: null },
+      { cache_key: key, function_name: fn, response_body: body, expires_at: expiresAtIso ?? expiresAt(fn), hit_count: 0, last_hit_at: null },
       { onConflict: 'cache_key' },
     )
 }
