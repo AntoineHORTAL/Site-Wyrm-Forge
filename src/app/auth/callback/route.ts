@@ -66,6 +66,9 @@ export async function GET(request: NextRequest) {
       tier:      'apprenti',
       role:      'user',
       certified: false,
+      // F6 — riot_platform: null explicite (defense in depth) : ne jamais laisser un
+      // éventuel DEFAULT côté DB remplir un riot_* et déclencher fn_protect_riot_columns.
+      riot_platform: null,
     },
     { onConflict: 'id', ignoreDuplicates: true }
   )

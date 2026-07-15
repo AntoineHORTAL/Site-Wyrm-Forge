@@ -124,7 +124,9 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       })
       if (signUpError) setError(signUpError.message)
       else if (data.user) {
-        await supabase.from('profiles').insert({ id: data.user.id, username: pseudo.trim(), tier: 'apprenti', email })
+        // F6 — riot_platform: null explicite (defense in depth) : ne jamais laisser un
+        // éventuel DEFAULT côté DB remplir un riot_* et déclencher fn_protect_riot_columns.
+        await supabase.from('profiles').insert({ id: data.user.id, username: pseudo.trim(), tier: 'apprenti', email, riot_platform: null })
         setSuccess('Compte créé ! Vérifie ton email pour confirmer ton inscription.')
       }
     } else {

@@ -1,0 +1,26 @@
+-- F6 (réouverture 1.1) — signup cassé en prod (OAuth + email/mdp).
+--
+-- ROOT CAUSE : profiles.riot_platform portait un DEFAULT 'euw1' posé AD HOC sur le
+-- remote, absent de toute migration (drift non versionné — la seule migration touchant
+-- la colonne, 20260530000002, fait `ADD COLUMN riot_platform TEXT` SANS default).
+--
+-- Interaction fatale avec fn_protect_riot_columns (branche INSERT, migration
+-- 20260614000005 — trigger BEFORE INSERT OR UPDATE) : ce trigger lève
+-- 'direct modification of riot columns not allowed' dès qu'un riot_* est NOT NULL sur
+-- un INSERT `authenticated`. Le DEFAULT 'euw1' remplit riot_platform AVANT l'évaluation
+-- du trigger → tout INSERT authenticated qui omet riot_platform est rejeté (403).
+-- Les deux chemins de signup sont `authenticated` et omettaient riot_platform :
+--   - src/app/auth/callback/route.ts (OAuth, upsert)
+--   - src/components/auth/AuthModal.tsx (email/mdp, insert)
+-- Confirmé en conditions réelles par qa (bug latent : aucun signup depuis le déploiement
+-- du trigger le 2026-06-14, donc pas encore manifesté, mais le prochain aurait échoué).
+--
+-- FIX (volet 1/2 — root cause) : retirer le DEFAULT pour aligner la base sur les
+-- migrations (élimine le drift). Sûr côté lecture : l'app coalesce déjà systématiquement
+-- `riot_platform ?? 'euw1'` (profil/page.tsx, AccueilTab.tsx, StatsTab.tsx, summoner) →
+-- une valeur NULL stockée reste affichée 'euw1'. Le volet 2/2 (defense in depth) pose
+-- riot_platform: null explicitement dans les deux payloads de signup.
+--
+-- Idempotent : DROP DEFAULT est sans erreur si aucun default n'est présent (rejouable).
+
+ALTER TABLE public.profiles ALTER COLUMN riot_platform DROP DEFAULT;
