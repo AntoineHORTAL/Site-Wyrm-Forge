@@ -849,10 +849,17 @@ Quand on la réactivera, on cadrera l'enforcement.
 
 ### Dette RLS : workshop_junglepaths sans propriétaire
 `workshop_junglepaths` n'a pas de colonne `creator_id` — seulement `creator_name`
-(texte libre, non vérifiable). L'INSERT est restreint aux utilisateurs authentifiés
+(texte libre, non vérifiable). L'INSERT est ouvert à tout utilisateur authentifié
 mais on ne peut pas identifier le propriétaire d'une ligne.
-**À corriger** : ajouter `creator_id UUID REFERENCES auth.users DEFAULT auth.uid()`
-puis recréer les policies `wjp_update_owner` / `wjp_delete_owner` en conséquence.
+**⚠️ Choix ASSUMÉ, pas un oubli** : F5 a été tranché par HORTAL (2026-07-16) —
+pas de chantier "créateur approuvé" et pas de `creator_id` pour l'instant, reporté
+après la beta (pas assez de données d'usage pour justifier la brique maintenant).
+L'absence d'attribution fiable est donc une dette **documentée et acceptée** tant
+que le Workshop n'a pas d'usage réel. Contexte complet + cadrage conservé pour une
+reprise future : voir mémoire `project_f5_workshop_creator_id.md`.
+**Piste de reprise (si rouvert)** : ajouter `creator_id UUID REFERENCES auth.users
+DEFAULT auth.uid()` puis recréer les policies `wjp_update_owner` / `wjp_delete_owner`
+en conséquence — nécessite au préalable que le WPF publie sous JWT user (pas anon).
 
 ---
 
