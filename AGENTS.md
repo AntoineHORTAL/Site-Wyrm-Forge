@@ -1403,3 +1403,27 @@ const target  = new URL(next, SITE_URL)
 if (target.origin !== new URL(SITE_URL).origin) return redirect(home)
 return redirect(target)
 ```
+
+---
+
+### Cookies de session sans HttpOnly : risque architectural ACCEPTÉ (audit sécurité 1.3)
+Les cookies de session Supabase (`sb-<ref>-auth-token`, éventuellement chunkés `.0`/`.1`)
+**n'ont pas le flag `HttpOnly`, par conception** — ce n'est **pas** un oubli de configuration
+et `cookieOptions` ne peut pas le corriger. La session est gérée côté client par
+`createBrowserClient` (`@supabase/ssr`, `src/lib/supabase/client.ts`), qui lit/écrit le token
+via `document.cookie` : un cookie `HttpOnly` serait invisible au JS et casserait l'auth. Le
+flag `Secure` **est** posé en production (`secure: process.env.NODE_ENV === 'production'`,
+partagé client.ts / server.ts / proxy.ts) et `Domain=.wyrm-forge.com` + `SameSite=Lax` sont
+confirmés en runtime — seul `HttpOnly` manque, et structurellement.
+
+- **Risque accepté** : en cas de XSS **ailleurs** sur le site, le token de session serait
+  directement lisible par du JS injecté → cela **élargit le rayon d'impact** d'une XSS
+  potentielle (vol de session), mais **n'est pas une XSS en soi**. Le vecteur reste
+  conditionné à l'existence d'une faille d'injection par ailleurs.
+- **Correction propre** = migrer vers une session **entièrement gérée côté serveur** (cookies
+  posés uniquement par le serveur, jamais lus par le JS client) — **hors scope** de cet audit,
+  refonte non triviale du flux d'auth.
+- **À réévaluer si le profil de risque change** — en particulier dès que le site affiche du
+  **contenu généré par les utilisateurs sans échappement** (aujourd'hui : `creator_name` du
+  Workshop, pseudos, noms de scénarios/tournois… tout rendu utilisateur est un point à auditer
+  côté XSS, car c'est ce qui transformerait ce risque accepté en exploitation réelle).
