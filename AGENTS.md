@@ -108,7 +108,7 @@ Contrainte : `uq_profiles_riot_puuid UNIQUE (riot_puuid)` — un compte Riot par
 - `riot_link_pending` et `riot_link_expires_at` sont transitoires — utilisés uniquement pendant le flow de vérification icône. L'app desktop ne lit ni n'écrit ces colonnes.
 
 ### Protection des colonnes riot_*
-Un trigger BEFORE UPDATE (`trg_protect_riot_columns → fn_protect_riot_columns()`) bloque toute modification directe des colonnes `riot_puuid`, `riot_gamename`, `riot_tagline`, `riot_platform`, `riot_link_pending`, `riot_link_expires_at` quand `current_user = 'authenticated'` (appel client avec JWT).
+Un trigger BEFORE INSERT OR UPDATE (`trg_protect_riot_columns → fn_protect_riot_columns()`) bloque toute écriture directe des colonnes `riot_puuid`, `riot_gamename`, `riot_tagline`, `riot_platform`, `riot_link_pending`, `riot_link_expires_at` quand `current_user = 'authenticated'` (appel client avec JWT). Comportement différencié : à l'**INSERT**, rejet si une colonne `riot_*` est NOT NULL (le client ne peut poser aucune valeur riot à la création) ; à l'**UPDATE**, rejet seulement d'un changement réel (`IS DISTINCT FROM OLD`).
 - Roles non bloqués : `service_role` (Edge Functions), `postgres` (fonctions SECURITY DEFINER).
 - Fonction `clear_riot_link()` : SECURITY DEFINER, GRANT authenticated — seul moyen propre pour un utilisateur de délier son compte Riot. Ne touche pas `riot_rank`.
 
