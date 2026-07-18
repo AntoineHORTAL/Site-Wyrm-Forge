@@ -11,6 +11,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { computeItemImpact, type ItemCatalog, type WindowStats } from '@/lib/item-impact'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -1806,9 +1807,9 @@ type MerakiItemsResponse = {
 function ItemImpact({ me, detail, version }: {
   me: Participant; detail: MatchDetail; version: string
 }) {
-  const [view,         setView]         = useState<'timeline' | 'importance'>('timeline')
+  const [view,         setView]         = useState<'timeline' | 'importance' | 'window'>('timeline')
   const [metric,       setMetric]       = useState<string>('gold')
-  const [itemData,     setItemData]     = useState<Record<string, { name: string; gold: { total: number } }>>({})
+  const [itemData,     setItemData]     = useState<Record<string, { name: string; gold: { total: number }; tags?: string[]; into?: string[] }>>({})
   const [itemLoaded,   setItemLoaded]   = useState(false)
   const [merakiData,   setMerakiData]   = useState<MerakiItemsResponse | null>(null)
   const [merakiLoaded, setMerakiLoaded] = useState(false)
@@ -2108,6 +2109,115 @@ function ItemImpact({ me, detail, version }: {
     )
   }
 
+  // ── VUE 3 : Avant / Après par item ──
+  // Segments = intervalles entre acquisitions (l'« après » d'un item = l'« avant »
+  // du suivant : la partie est continue, ce n'est pas une répétition erronée).
+  function BeforeAfterView() {
+    if (frames.length === 0 || myIdx < 0) {
+      return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Données timeline non disponibles.</div>
+    }
+    const rows = computeItemImpact({
+      itemEvents: me.itemEvents ?? [],
+      frames,
+      kills: detail.kills ?? [],
+      catalog: itemData as ItemCatalog,
+      myIdx,
+      gameDurationMs: frames[frames.length - 1].ts,
+    })
+    if (rows.length === 0) {
+      return <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Aucun item de build significatif à comparer.</div>
+    }
+
+    const durLabel = (w: WindowStats) => {
+      const s = Math.round(w.durationMs / 1000)
+      return s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}` : `${s}s`
+    }
+    const delta = (a: number | null, b: number | null): { txt: string; color: string } => {
+      if (a === null || b === null) return { txt: '—', color: 'var(--text-dim)' }
+      if (a === 0) return b === 0 ? { txt: '≈', color: 'var(--text-dim)' } : { txt: 'nouv.', color: '#5DCAA5' }
+      const p = ((b - a) / a) * 100
+      if (Math.abs(p) < 5) return { txt: '≈', color: 'var(--text-dim)' }
+      return { txt: `${p > 0 ? '↑ +' : '↓ '}${Math.round(p)}%`, color: p > 0 ? '#5DCAA5' : '#E24B4A' }
+    }
+    const nGold = (v: number | null) => (v === null ? '—' : Math.round(v).toLocaleString('fr-FR'))
+    const nCs   = (v: number | null) => (v === null ? '—' : v.toFixed(1))
+    const nDmg  = (v: number | null) => (v === null ? '—' : Math.round(v).toLocaleString('fr-FR'))
+    const kda   = (w: WindowStats) => `${w.totals.kills}/${w.totals.deaths}/${w.totals.assists}`
+
+    type StatRow = { label: string; a: number | null; b: number | null; fmt: (v: number | null) => string }
+
+    return (
+      <div>
+        {/* Libellé d'honnêteté — NON négociable */}
+        <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
+          Stats du joueur <span style={{ color: 'var(--text-muted)' }}>pendant que cet item était actif dans son inventaire</span> — corrélation temporelle, <b>pas un impact causal</b> (la fenêtre « après » cumule aussi les autres achats, les niveaux et l&apos;état de la partie).
+        </div>
+
+        {!hasPlayerStats && (
+          <div style={{ fontSize: 10, color: '#EF9F27', padding: '4px 10px', borderRadius: 4, background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', marginBottom: 10 }}>
+            ⚠ Dégâts par fenêtre indisponibles pour ce match — seuls or, CS et K/D/A sont comparables.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.map((row, ri) => {
+            const statRows: StatRow[] = [
+              { label: 'Or / min',   a: row.before.perMin.gold,         b: row.after.perMin.gold,         fmt: nGold },
+              { label: 'CS / min',   a: row.before.perMin.cs,           b: row.after.perMin.cs,           fmt: nCs  },
+              { label: 'Dég. / min', a: row.before.perMin.dmgChampions, b: row.after.perMin.dmgChampions, fmt: nDmg },
+            ]
+            return (
+              <div key={ri} style={{ borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', padding: 10 }}>
+                {/* En-tête item */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  {row.itemIds.map((id, i) => (
+                    <img key={i} src={itemImg(version, id)} alt=""
+                      style={{ width: 26, height: 26, borderRadius: 3, flexShrink: 0 }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                  ))}
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.itemIds.map(id => itemData[String(id)]?.name ?? `#${id}`).join(' + ')}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', flexShrink: 0 }}>acheté {fmt(Math.floor(row.ts / 1000))}</div>
+                </div>
+
+                {/* Grille avant → après */}
+                <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr 1fr 66px', gap: '3px 8px', alignItems: 'center', fontSize: 11 }}>
+                  <div />
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right', opacity: row.before.short ? 0.5 : 1 }}>Avant{row.before.short ? ' ⚠' : ''}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right', opacity: row.after.short ? 0.5 : 1 }}>Après{row.after.short ? ' ⚠' : ''}</div>
+                  <div />
+
+                  {statRows.map(sr => {
+                    const d = delta(sr.a, sr.b)
+                    return (
+                      <Fragment key={sr.label}>
+                        <div style={{ color: 'var(--text-dim)' }}>{sr.label}</div>
+                        <div style={{ textAlign: 'right', color: 'var(--text-muted)', opacity: row.before.short ? 0.45 : 1 }}>{sr.fmt(sr.a)}</div>
+                        <div style={{ textAlign: 'right', color: 'var(--text-muted)', opacity: row.after.short ? 0.45 : 1 }}>{sr.fmt(sr.b)}</div>
+                        <div style={{ textAlign: 'right', color: d.color, fontSize: 10, fontWeight: 600 }}>{d.txt}</div>
+                      </Fragment>
+                    )
+                  })}
+
+                  <div style={{ color: 'var(--text-dim)' }}>K/D/A</div>
+                  <div style={{ textAlign: 'right', color: 'var(--text-muted)', opacity: row.before.short ? 0.45 : 1 }}>{kda(row.before)}</div>
+                  <div style={{ textAlign: 'right', color: 'var(--text-muted)', opacity: row.after.short ? 0.45 : 1 }}>{kda(row.after)}</div>
+                  <div />
+                </div>
+
+                <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 6, textAlign: 'right' }}>
+                  fenêtres : avant {durLabel(row.before)} · après {durLabel(row.after)}
+                  {(row.before.short || row.after.short) && <span style={{ color: '#EF9F27' }}> · ⚠ fenêtre courte (&lt;45s), /min peu fiable</span>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
@@ -2117,7 +2227,8 @@ function ItemImpact({ me, detail, version }: {
         {([
           { key: 'timeline',   label: showVue1 ? 'Timeline (stats + achats)' : 'Timeline (or + achats)' },
           { key: 'importance', label: 'Importance relative' },
-        ] as { key: 'timeline' | 'importance'; label: string }[]).map(v => {
+          { key: 'window',     label: 'Avant / après par item' },
+        ] as { key: 'timeline' | 'importance' | 'window'; label: string }[]).map(v => {
           const active = view === v.key
           return (
             <button key={v.key} onClick={() => setView(v.key)} style={{
@@ -2132,7 +2243,7 @@ function ItemImpact({ me, detail, version }: {
         })}
       </div>
       <div style={{ padding: 12, borderRadius: 6, background: 'rgba(0,0,0,0.2)' }}>
-        {view === 'timeline' ? <TimelineView /> : <ImportanceView />}
+        {view === 'timeline' ? <TimelineView /> : view === 'importance' ? <ImportanceView /> : <BeforeAfterView />}
       </div>
     </div>
   )
