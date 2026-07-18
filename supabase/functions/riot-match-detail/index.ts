@@ -63,6 +63,9 @@ Deno.serve(async (req) => {
     if (!Object.hasOwn(ROUTING, platform)) {
       return jsonResponse({ error: 'Région invalide.' }, 400)
     }
+    // Cluster régional réel qui sert le match. Résolu ICI (avant la clé de cache)
+    // car il en fait partie — un match EUW1_x n'est récupérable que via `europe`.
+    const routing = ROUTING[platform]
 
     const matchId = sanitize(matchIdRaw)
 
@@ -76,7 +79,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)
     }
 
-    const cacheKey = `match:v2:${matchId}`
+    // La clé est SCOPÉE PAR RÉGION (`routing`). Le fetch route via `routing` : un
+    // même matchId interrogé avec un platform d'un autre cluster renvoie 404 (match
+    // absent de ce cluster). Sans le scope région, ce 404 « mauvaise région » était
+    // mis en cache négatif sous une clé globale et bloquait ensuite l'appel légitime
+    // avec le bon platform pendant tout le TTL (empoisonnement cross-région). Le
+    // positif est scopé de la même façon par cohérence — inoffensif aujourd'hui
+    // (contenu identique quelle que soit la région) mais évite le même piège si un
+    // futur correctif s'appuie sur cette clé.
+    const cacheKey = `match:v2:${routing}:${matchId}`
 
     // Résolution parallèle : cache + user JWT — getUser est nécessaire sur HIT aussi
     // (match_viewed doit être loggé quelle que soit la provenance du résultat)
@@ -114,7 +125,6 @@ Deno.serve(async (req) => {
     }
 
     const apiKey  = requireSecret('RIOT_API_KEY')
-    const routing = ROUTING[platform]
     const headers = { 'X-Riot-Token': apiKey }
 
     // Fetch match details + timeline in parallel (2 Riot calls)
