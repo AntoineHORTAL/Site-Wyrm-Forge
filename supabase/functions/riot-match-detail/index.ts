@@ -7,7 +7,7 @@
 import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { requireSecret, getUser }   from '../_shared/auth.ts'
-import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
+import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
@@ -90,6 +90,16 @@ Deno.serve(async (req) => {
       return jsonResponse(cached, 200, { 'X-Cache': 'HIT' })
     }
 
+    // 404 mémorisé (R1) — un matchId inventé mais bien formé passe la regex et
+    // coûtait 2 appels Riot (match + timeline) À CHAQUE rejeu, aucun n'étant ni
+    // caché ni compté. On sert le 404 mémorisé sans toucher Riot.
+    // Pas de logMatchViewed ici : cohérent avec le chemin d'échec d'origine, qui
+    // sortait avant le log — un match inexistant ne vaut aucun app_event.
+    const neg = await cacheGetNegative(cacheKey)
+    if (neg !== null) {
+      return jsonResponse(neg.body, neg.status, { 'X-Cache': 'HIT-NEG' })
+    }
+
     // Circuit breaker
     if (await isCircuitOpen()) {
       const stale = await cacheGetStale(cacheKey)
@@ -113,7 +123,13 @@ Deno.serve(async (req) => {
       fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(matchId)}/timeline`, { headers }),
     ])
     if (!res.ok) {
-      return jsonResponse({ error: `Riot API ${res.status}` }, res.status)
+      // R1 : les 2 fetch du Promise.all partent toujours (même si le match 404) →
+      // 2 appels Riot consommés, ils doivent compter au quota.
+      await incrementQuota(FN, 2)
+      const body = { error: `Riot API ${res.status}` }
+      // Seul le 404 est déterministe (le match n'existe pas) → mémorisable.
+      if (res.status === 404) await cacheSetNegative(cacheKey, FN, 404, body)
+      return jsonResponse(body, res.status)
     }
     // deno-lint-ignore no-explicit-any
     const m: any = await res.json()

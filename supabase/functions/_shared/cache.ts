@@ -24,6 +24,55 @@ function expiresAt(fn: string): string {
   return new Date(Date.now() + ttl).toISOString()
 }
 
+// ── Cache négatif (R1) ───────────────────────────────────────────────────────
+// Un 404 Riot consomme un vrai appel : sans mise en cache, le même identifiant
+// inexistant est rejouable à l'infini, chaque rejeu coûtant un appel réel.
+//
+// Stocké sous un préfixe `neg:` DÉDIÉ, jamais sous la clé positive : cacheGet et
+// surtout cacheGetStale (fallback circuit ouvert) servent leur payload tel quel
+// au client. Une entrée négative logée sous la clé positive serait donc renvoyée
+// comme une réponse 200 valide. Le préfixe rend cette confusion impossible.
+//
+// Seuls les 404 sont mis en cache : ils sont déterministes (l'entité n'existe
+// pas). Les 403 (clé expirée), 429 (rate limit Riot) et 5xx sont TRANSITOIRES —
+// les cacher prolongerait une panne au lieu de l'absorber.
+const NEGATIVE_TTL_MS = 5 * 60 * 1000  // court : un compte/match peut apparaître
+
+const negKey = (key: string) => `neg:${key}`
+
+export type NegativeHit = { status: number; body: unknown }
+
+/** Mémorise brièvement un 404 upstream pour rendre son rejeu gratuit. */
+export async function cacheSetNegative(
+  key: string, fn: string, status: number, body: unknown,
+): Promise<void> {
+  await db()
+    .from('riot_cache')
+    .upsert(
+      {
+        cache_key:     negKey(key),
+        function_name: fn,
+        response_body: { status, body },
+        expires_at:    new Date(Date.now() + NEGATIVE_TTL_MS).toISOString(),
+        hit_count:     0,
+        last_hit_at:   null,
+      },
+      { onConflict: 'cache_key' },
+    )
+}
+
+/** Retourne le 404 mémorisé pour cette clé, ou null. */
+export async function cacheGetNegative(key: string): Promise<NegativeHit | null> {
+  const { data } = await db()
+    .from('riot_cache')
+    .select('response_body')
+    .eq('cache_key', negKey(key))
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  const hit = data?.response_body as NegativeHit | undefined
+  return hit?.status ? hit : null
+}
+
 /** Returns cached payload if present and fresh; null on miss. */
 export async function cacheGet(key: string): Promise<unknown | null> {
   const { data } = await db()

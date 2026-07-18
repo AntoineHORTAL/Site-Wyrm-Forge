@@ -8,7 +8,7 @@
 // Flow : account-v1 (puuid) → match-v5 (IDs) → match-v5 (détails en parallèle) → format slim
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { requireSecret } from '../_shared/auth.ts'
-import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
+import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
@@ -47,6 +47,46 @@ const QUEUES: Record<number, string> = {
   1900: 'URF (pick)', 0: 'Personnalisée', 1700: 'Arena',
 }
 
+// ── Cache par PAGE FIXE (R2) ─────────────────────────────────────────────────
+// La clé de cache contenait `count` ET `start` : 20 valeurs de count × 201 de
+// start = 4020 clés distinctes POUR UN MÊME JOUEUR. Chacune est un MISS → jusqu'à
+// 22 appels Riot (account + ids + 20 détails). Faire varier count/start suffisait
+// donc à épuiser le quota journalier (1000) en ~45 requêtes — dans les clous du
+// rate-limit IP — et à ouvrir le circuit breaker pour TOUT LE MONDE.
+//
+// Correctif : le cache est indexé par PAGE de 20 alignée, `count`/`start` sortent
+// de la clé. Cardinalité 4020 → 11 pages/joueur (start ≤ 200). La fenêtre demandée
+// est ensuite découpée côté serveur dans la ou les pages.
+//
+// PAGE = 10 est calé sur le count réellement demandé par les appelants (profil,
+// summoner et AccueilTab = 10 ; StatsTab/WPF/prac = 20), PAS sur le plafond de 20.
+// C'est ce qui rend le correctif gratuit : la clé Riot est une Personal Key
+// (~100 req/2 min), et une page froide coûte 1 ids + PAGE détails. À PAGE=20 une
+// page coûtait 22 appels → ~4 chargements à froid / 2 min pour TOUT le site (vs ~8
+// aujourd'hui à count=10) : la cardinalité était réglée en divisant par deux la
+// capacité du chemin le plus courant. À PAGE=10, count=10 coûte 12 appels — le prix
+// actuel — et count=20 en coûte 24 (2 pages) contre 22 : le surcoût est marginal et
+// borné, au lieu d'être payé par la requête la plus fréquente.
+// Bornant la rafale à 10 fetch parallèles, on reste aussi sous la limite Riot de
+// 20 req/s (au-delà, les détails 429 sont silencieusement droppés par filter(Boolean)).
+const PAGE = 10  // fenêtre count ≤ 20 ⇒ au plus 3 pages (2 pour les appelants réels)
+
+// PAGE fait partie de la clé : l'index de page n'a de sens QUE relativement à la
+// taille de page. Changer PAGE sans changer la clé ferait relire les pages déjà en
+// cache avec la nouvelle sémantique (une page de 20 relue comme une page de 10 →
+// mauvais matchs servis pendant tout le TTL). Ici l'invalidation est automatique.
+const pageKey = (platform: string, ident: string, idx: number) =>
+  `matches:v2:${platform}:${ident}:p${PAGE}_${idx}`
+
+type CachedPage = { puuid: string; matches: unknown[] }
+
+/** Entier borné et TOTAL : tout non-numérique (NaN, Infinity) retombe sur `def`. */
+function intParam(raw: string | null, def: number, min: number, max: number): number {
+  const n = Number(raw ?? def)
+  if (!Number.isFinite(n)) return def
+  return Math.min(Math.max(Math.trunc(n), min), max)
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req)
   if (cors) return cors
@@ -57,8 +97,14 @@ Deno.serve(async (req) => {
     const gameNameRaw = url.searchParams.get('gameName')
     const tagLineRaw  = url.searchParams.get('tagLine')
     const platform    = url.searchParams.get('platform') ?? 'euw1'
-    const count       = Math.min(Math.max(Number(url.searchParams.get('count') ?? '5'), 1), 20)
-    const start       = Math.min(Math.max(Number(url.searchParams.get('start') ?? '0'), 0), 200)
+    // PRÉREQUIS de la pagination (R2) : `Math.min(Math.max(Number('abc'),1),20)`
+    // renvoyait NaN. La borne d'origine ne rejetait donc pas le non-numérique, et
+    // le NaN se propageait jusqu'à l'URL Riot. Le calcul de pages exige des entiers
+    // FINIS : sans ça `lastPage` vaut NaN → `pageIdxs` vide → `[].every()` vaut true
+    // → faux HIT sur un tableau vide → crash 500. On totalise donc la coercition.
+    // (Ne clôt pas R3 : la forme de l'erreur relayée reste à traiter séparément.)
+    const count       = intParam(url.searchParams.get('count'), 5, 1, 20)
+    const start       = intParam(url.searchParams.get('start'), 0, 0, 200)
 
     if (!puuidParam && (!gameNameRaw || !tagLineRaw)) {
       return jsonResponse({ error: 'puuid OU (gameName + tagLine) requis.' }, 400)
@@ -79,22 +125,43 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)
     }
 
-    // Build cache key from available params (before any Riot resolution)
-    const cacheKey = puuidParam
-      ? `matches:${platform}:puuid:${puuidParam}:${start}:${count}`
-      : `matches:${platform}:${sanitize(gameNameRaw!).toLowerCase()}:${sanitize(tagLineRaw!).toLowerCase()}:${start}:${count}`
+    // Identité stable — indépendante de count/start (R2)
+    const ident = puuidParam
+      ? `puuid:${sanitize(puuidParam)}`
+      : `${sanitize(gameNameRaw!).toLowerCase()}:${sanitize(tagLineRaw!).toLowerCase()}`
 
-    // Cache read (fresh)
-    const cached = await cacheGet(cacheKey)
-    if (cached !== null) {
-      return jsonResponse(cached, 200, { 'X-Cache': 'HIT' })
+    // Pages couvrant la fenêtre [start, start+count) — contiguës, au plus 3.
+    const firstPage = Math.floor(start / PAGE)
+    const lastPage  = Math.floor((start + count - 1) / PAGE)
+    const pageIdxs: number[] = []
+    for (let p = firstPage; p <= lastPage; p++) pageIdxs.push(p)
+
+    // Découpe la fenêtre demandée dans les pages contiguës assemblées
+    const sliceWindow = (pages: CachedPage[]): unknown[] =>
+      pages.flatMap((p) => p.matches).slice(start - firstPage * PAGE, start - firstPage * PAGE + count)
+
+    // Cache read — toutes les pages de la fenêtre doivent être fraîches
+    const cachedPages = await Promise.all(
+      pageIdxs.map((p) => cacheGet(pageKey(platform, ident, p))),
+    ) as (CachedPage | null)[]
+
+    if (cachedPages.every((p) => p !== null)) {
+      const pages = cachedPages as CachedPage[]
+      return jsonResponse({ puuid: pages[0].puuid, matches: sliceWindow(pages) }, 200, { 'X-Cache': 'HIT' })
+    }
+
+    // 404 mémorisé (R1) — Riot ID inexistant : rejeu gratuit, aucun appel Riot
+    const identKey = `matches:v2:${platform}:${ident}`
+    const neg = await cacheGetNegative(identKey)
+    if (neg !== null) {
+      return jsonResponse(neg.body, neg.status, { 'X-Cache': 'HIT-NEG' })
     }
 
     // Circuit breaker
     if (await isCircuitOpen()) {
-      const stale = await cacheGetStale(cacheKey)
+      const stale = await cacheGetStale(pageKey(platform, ident, firstPage)) as CachedPage | null
       if (stale !== null) {
-        return jsonResponse(stale, 200, { 'X-Cache': 'STALE' })
+        return jsonResponse({ puuid: stale.puuid, matches: sliceWindow([stale]) }, 200, { 'X-Cache': 'STALE' })
       }
       return jsonResponse(
         { error: 'Service temporairement indisponible.', reason: 'quota_exceeded', resets_in: secondsUntilMidnightUtc() },
@@ -122,36 +189,21 @@ Deno.serve(async (req) => {
       )
       riotCalls++
       if (!acctRes.ok) {
-        if (acctRes.status === 404) return jsonResponse({ error: 'Invocateur introuvable. Vérifie ton Riot ID.' }, 404)
+        // R1 : l'appel Riot a bien été consommé → il compte, même en échec.
+        await incrementQuota(FN, riotCalls)
+        if (acctRes.status === 404) {
+          const body = { error: 'Invocateur introuvable. Vérifie ton Riot ID.' }
+          await cacheSetNegative(identKey, FN, 404, body)
+          return jsonResponse(body, 404)
+        }
         return jsonResponse({ error: `Riot API ${acctRes.status}` }, acctRes.status)
       }
       const acct = await acctRes.json()
       puuid = acct.puuid
     }
 
-    // Fetch match IDs
-    const idsRes = await fetch(
-      `https://${routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?start=${start}&count=${count}`,
-      { headers },
-    )
-    riotCalls++
-    if (!idsRes.ok) {
-      return jsonResponse({ error: `Riot API ${idsRes.status}` }, idsRes.status)
-    }
-    const matchIds: string[] = await idsRes.json()
-
-    // Fetch match details in parallel
-    const matchDetails = await Promise.all(
-      matchIds.map((id) =>
-        fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, { headers })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-      ),
-    )
-    riotCalls += matchIds.length
-
     // deno-lint-ignore no-explicit-any
-    const matches = matchDetails
+    const toSlim = (matchDetails: any[]): unknown[] => matchDetails
       .filter(Boolean)
       // deno-lint-ignore no-explicit-any
       .map((m: any) => {
@@ -195,8 +247,40 @@ Deno.serve(async (req) => {
       })
       .filter(Boolean)
 
-    const result = { puuid, matches }
-    await cacheSet(cacheKey, FN, result)
+    // Charge les pages manquantes (les pages déjà en cache ne sont pas refetchées)
+    const loaded: CachedPage[] = []
+    for (let i = 0; i < pageIdxs.length; i++) {
+      const hit = cachedPages[i]
+      if (hit !== null) { loaded.push(hit); continue }
+
+      const idsRes = await fetch(
+        `https://${routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?start=${pageIdxs[i] * PAGE}&count=${PAGE}`,
+        { headers },
+      )
+      riotCalls++
+      if (!idsRes.ok) {
+        // R1 : account-v1 + ids déjà consommés → ils comptent.
+        await incrementQuota(FN, riotCalls)
+        return jsonResponse({ error: `Riot API ${idsRes.status}` }, idsRes.status)
+      }
+      const matchIds: string[] = await idsRes.json()
+
+      // Fetch match details in parallel
+      const matchDetails = await Promise.all(
+        matchIds.map((id) =>
+          fetch(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, { headers })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+        ),
+      )
+      riotCalls += matchIds.length
+
+      const page: CachedPage = { puuid, matches: toSlim(matchDetails) }
+      await cacheSet(pageKey(platform, ident, pageIdxs[i]), FN, page)
+      loaded.push(page)
+    }
+
+    const result = { puuid, matches: sliceWindow(loaded) }
     await incrementQuota(FN, riotCalls)
     // Alimente searched_summoners avec le joueur recherché (fire-and-forget)
     if (gameNameRaw && tagLineRaw) {
@@ -204,9 +288,11 @@ Deno.serve(async (req) => {
     }
 
     // Alimente rank_stat_samples pour la comparaison de rang (fire-and-forget)
-    // Condition : page 0 + appel par Riot ID (pas by-puuid) + cache MISS (déjà garanti ici)
-    if (start === 0 && gameNameRaw && tagLineRaw) {
-      harvestRankStats(platform, sanitize(gameNameRaw), sanitize(tagLineRaw), puuid, matches as any[])
+    // Condition : page 0 + appel par Riot ID (pas by-puuid) + page 0 réellement
+    // fetchée (MISS) — `cachedPages[0] === null` préserve la sémantique d'origine
+    // (`start === 0` + MISS) maintenant que la fenêtre est paginée.
+    if (firstPage === 0 && cachedPages[0] === null && gameNameRaw && tagLineRaw) {
+      harvestRankStats(platform, sanitize(gameNameRaw), sanitize(tagLineRaw), puuid, loaded[0].matches as any[])
     }
 
     return jsonResponse(result, 200, { 'X-Cache': 'MISS' })

@@ -91,6 +91,10 @@ Deno.serve(async (req) => {
     )
 
     if (!res.ok) {
+      // R1 : l'appel Riot a été consommé → il compte, même en échec.
+      // Pas de cache négatif ici : `platform` est déjà validé contre ROUTING, un
+      // 404 n'est pas atteignable par une entrée client — tout échec est transitoire.
+      await incrementQuota(FN, 1)
       // Never forward Riot's error body — it may contain internal details (C1 fix)
       return jsonResponse({ error: `Riot API ${res.status}` }, res.status)
     }

@@ -7,7 +7,7 @@
 // Réponse : { puuid, summonerId, entries: [{ queueType, tier, rank, lp, wins, losses, ... }] }
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { requireSecret } from '../_shared/auth.ts'
-import { cacheGet, cacheSet, cacheGetStale } from '../_shared/cache.ts'
+import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 
@@ -58,6 +58,12 @@ Deno.serve(async (req) => {
       return jsonResponse(cached, 200, { 'X-Cache': 'HIT' })
     }
 
+    // 404 mémorisé (R1) — Riot ID inexistant : rejeu gratuit, aucun appel Riot
+    const neg = await cacheGetNegative(cacheKey)
+    if (neg !== null) {
+      return jsonResponse(neg.body, neg.status, { 'X-Cache': 'HIT-NEG' })
+    }
+
     // Circuit breaker
     if (await isCircuitOpen()) {
       const stale = await cacheGetStale(cacheKey)
@@ -74,14 +80,27 @@ Deno.serve(async (req) => {
     const routing = ROUTING[platform]
     const headers = { 'X-Riot-Token': apiKey }
 
+    // R1 : les 3 appels sont SÉQUENTIELS → on ne compte que ceux réellement
+    // consommés au moment de l'échec (1, 2 ou 3), jamais un forfait.
+    let riotCalls = 0
+
+    // Échec après consommation d'appels Riot : on compte, et on mémorise les 404
+    // (déterministes). 403/429/5xx sont transitoires → jamais mémorisés.
+    const failed = async (status: number, body: unknown): Promise<Response> => {
+      await incrementQuota(FN, riotCalls)
+      if (status === 404) await cacheSetNegative(cacheKey, FN, 404, body)
+      return jsonResponse(body, status)
+    }
+
     // 1. PUUID via account-v1
     const acctRes = await fetch(
       `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
       { headers },
     )
+    riotCalls++
     if (!acctRes.ok) {
-      if (acctRes.status === 404) return jsonResponse({ error: 'Invocateur introuvable.' }, 404)
-      return jsonResponse({ error: `Riot API ${acctRes.status}` }, acctRes.status)
+      if (acctRes.status === 404) return await failed(404, { error: 'Invocateur introuvable.' })
+      return await failed(acctRes.status, { error: `Riot API ${acctRes.status}` })
     }
     const { puuid } = await acctRes.json()
 
@@ -90,8 +109,9 @@ Deno.serve(async (req) => {
       `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`,
       { headers },
     )
+    riotCalls++
     if (!sumRes.ok) {
-      return jsonResponse({ error: `Riot API ${sumRes.status}` }, sumRes.status)
+      return await failed(sumRes.status, { error: `Riot API ${sumRes.status}` })
     }
     const sum = await sumRes.json()
     const summonerId: string    = sum.id              ?? ''
@@ -103,8 +123,9 @@ Deno.serve(async (req) => {
       `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${encodeURIComponent(summonerId)}`,
       { headers },
     )
+    riotCalls++
     if (!leagueRes.ok) {
-      return jsonResponse({ error: `Riot API ${leagueRes.status}` }, leagueRes.status)
+      return await failed(leagueRes.status, { error: `Riot API ${leagueRes.status}` })
     }
     // deno-lint-ignore no-explicit-any
     const rawEntries: any[] = await leagueRes.json()
@@ -125,7 +146,7 @@ Deno.serve(async (req) => {
 
     const result = { puuid, summonerId, profileIconId, summonerLevel, entries }
     await cacheSet(cacheKey, FN, result)
-    await incrementQuota(FN)
+    await incrementQuota(FN, riotCalls)  // = 3 ici ; compteur explicite, cohérent avec failed()
 
     return jsonResponse(result, 200, { 'X-Cache': 'MISS' })
   } catch (e) {
