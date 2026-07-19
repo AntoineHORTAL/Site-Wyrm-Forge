@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
+import { createClient } from '@/lib/supabase/client'
 import type { MatchInfo, RankEntry, RankResponse } from '@/lib/riot-types'
 
 const DDN      = 'https://ddragon.leagueoflegends.com'
@@ -33,6 +34,13 @@ const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const FN_URL   = (name: string, p: Record<string, string>) =>
   `${SUPA_URL}/functions/v1/${name}?${new URLSearchParams(p).toString()}`
 const FN_HEADERS = { apikey: SUPA_KEY }
+
+const supabase = createClient()
+
+// Plafond de consultations détaillées/IP/h côté client — miroir de DETAIL_RATE_LIMIT
+// (Edge Function detail-quota). Sert de valeur d'affichage tant que le peek n'a pas
+// répondu ; l'autorité reste le serveur (le commit fait foi).
+const DETAIL_LIMIT_FALLBACK = 10
 
 const QUEUES: Record<number, string> = {
   420: 'Classée Solo/Duo', 440: 'Classée Flex',
@@ -104,6 +112,58 @@ function RankBadge({ e }: { e: RankEntry }) {
   )
 }
 
+// Bouton « Voir tous les détails » d'une ligne de match (F3 Lot 2).
+// Connecté → accès illimité (aucun compteur). Anonyme → affiche le quota restant
+// « X/10 » (peek), grisé si épuisé. Un match déjà consulté dans la fenêtre est
+// gratuit (label neutre). Présentation pure — la logique de commit vit dans onOpen.
+function DetailButton({ matchId, isConnected, alreadyViewed, remaining, limit, onOpen }: {
+  matchId: string
+  isConnected: boolean | null
+  alreadyViewed: boolean
+  remaining: number | null
+  limit: number
+  onOpen: (matchId: string) => void
+}) {
+  const anon      = isConnected === false
+  const exhausted = anon && !alreadyViewed && remaining !== null && remaining <= 0
+
+  let label: string
+  let title: string | undefined
+  if (!anon) {
+    label = 'Voir tous les détails'
+  } else if (alreadyViewed) {
+    label = 'Voir les détails'
+    title = 'Déjà consulté — ne recompte pas dans ton quota.'
+  } else if (exhausted) {
+    label = `Quota atteint (0/${limit})`
+    title = 'Limite de consultations détaillées atteinte. Réessaie dans une heure.'
+  } else {
+    label = `Voir les détails · ${remaining ?? limit}/${limit}`
+    title = `Il te reste ${remaining ?? limit} consultation${(remaining ?? limit) > 1 ? 's' : ''} détaillée${(remaining ?? limit) > 1 ? 's' : ''} cette heure.`
+  }
+
+  return (
+    <button
+      onClick={() => { if (!exhausted) onOpen(matchId) }}
+      disabled={exhausted}
+      title={title}
+      style={{
+        padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+        whiteSpace: 'nowrap',
+        cursor: exhausted ? 'not-allowed' : 'pointer',
+        background: exhausted ? 'rgba(255,255,255,0.03)' : 'rgba(127,119,221,0.10)',
+        border: exhausted ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(127,119,221,0.30)',
+        color: exhausted ? 'var(--text-dim)' : '#B9B2F0',
+        transition: 'background 120ms',
+      }}
+      onMouseEnter={e => { if (!exhausted) e.currentTarget.style.background = 'rgba(127,119,221,0.22)' }}
+      onMouseLeave={e => { if (!exhausted) e.currentTarget.style.background = 'rgba(127,119,221,0.10)' }}
+    >
+      {label}
+    </button>
+  )
+}
+
 export default function MatchesPage() {
   const { region: rawRegion, riotId: riotIdEncoded } =
     useParams<{ region: string; riotId: string }>()
@@ -127,6 +187,15 @@ export default function MatchesPage() {
   const [matches,  setMatches]  = useState<MatchInfo[]>([])
   const [profileIconId, setProfileIconId] = useState(29)
   const [summonerLevel, setSummonerLevel] = useState<number | null>(null)
+  const [searchedPuuid, setSearchedPuuid] = useState('')
+
+  // Quota détail (F3 Lot 2) — non-connectés uniquement. Un connecté a un accès
+  // illimité au détail : pas de peek, pas de compteur affiché.
+  const [isConnected,    setIsConnected]    = useState<boolean | null>(null)
+  const [detailLimit,    setDetailLimit]    = useState(DETAIL_LIMIT_FALLBACK)
+  const [detailRemaining,setDetailRemaining]= useState<number | null>(null)
+  const [viewedIds,      setViewedIds]      = useState<Set<string>>(new Set())
+  const [quotaError,     setQuotaError]     = useState('')
 
   // États de chargement
   const [loadingInit,    setLoadingInit]    = useState(true)
@@ -211,6 +280,7 @@ export default function MatchesPage() {
           const md = await matchRes.json()
           const list: MatchInfo[] = md.matches ?? []
           setMatches(list)
+          if (typeof md.puuid === 'string') setSearchedPuuid(md.puuid) // highlight sur /match
           if (list.length < PAGE_SIZE) setReachedEnd(true)
         } else if (matchRes.status === 404) {
           setMatchError('Invocateur introuvable. Vérifie le Riot ID et la région.')
@@ -258,6 +328,67 @@ export default function MatchesPage() {
     } finally {
       setLoadingMore(false)
       inFlightRef.current = false
+    }
+  }
+
+  // Quota détail : détecte la session puis, pour un visiteur anonyme, lit (PEEK,
+  // sans incrément) le quota restant pour l'afficher « X/10 » sur chaque bouton.
+  useEffect(() => {
+    let cancelled = false
+    async function initQuota() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (cancelled) return
+      const connected = !!session
+      setIsConnected(connected)
+      if (connected) return // accès illimité : ni peek ni compteur
+
+      try {
+        const res = await fetch(FN_URL('detail-quota', {}), { headers: FN_HEADERS })
+        if (cancelled || !res.ok) return
+        const q = await res.json()
+        if (typeof q.limit === 'number')     setDetailLimit(q.limit)
+        if (typeof q.remaining === 'number') setDetailRemaining(q.remaining)
+        if (Array.isArray(q.viewed))         setViewedIds(new Set(q.viewed))
+      } catch {
+        // fail-open : on ne bloque pas l'affichage si le peek échoue.
+      }
+    }
+    initQuota()
+    return () => { cancelled = true }
+  }, [])
+
+  // Clic « Voir tous les détails ». Connecté → navigation directe. Anonyme →
+  // COMMIT (incrément) avant de naviguer : évite tout 429 surprise sur /match.
+  // Re-consulter un match déjà vu dans la fenêtre est gratuit (idempotent).
+  async function openDetail(matchId: string) {
+    setQuotaError('')
+    const target = `/match/${region}/${matchId}${searchedPuuid ? `?puuid=${searchedPuuid}` : ''}`
+
+    if (isConnected) { router.push(target); return }
+    if (viewedIds.has(matchId)) { router.push(target); return } // déjà compté → gratuit
+    if (detailRemaining !== null && detailRemaining <= 0) {
+      setQuotaError(`Quota de consultations détaillées atteint (0/${detailLimit}). Réessaie dans une heure.`)
+      return
+    }
+
+    try {
+      const res = await fetch(FN_URL('detail-quota', {}), {
+        method: 'POST',
+        headers: { ...FN_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId }),
+      })
+      if (res.status === 429) {
+        setDetailRemaining(0)
+        setQuotaError(`Quota de consultations détaillées atteint (0/${detailLimit}). Réessaie dans une heure.`)
+        return
+      }
+      if (!res.ok) { setQuotaError('Impossible d\'ouvrir le détail. Réessaie.'); return }
+      const q = await res.json()
+      setViewedIds(prev => new Set(prev).add(matchId))
+      if (typeof q.remaining === 'number') setDetailRemaining(q.remaining)
+      router.push(target)
+    } catch {
+      setQuotaError('Erreur réseau. Réessaie.')
     }
   }
 
@@ -378,6 +509,15 @@ export default function MatchesPage() {
               background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.3)',
               color: '#E24B4A', marginBottom: 16,
             }}>{matchError}</div>
+          )}
+
+          {/* Quota détail épuisé / erreur d'ouverture (F3 Lot 2) */}
+          {quotaError && (
+            <div style={{
+              padding: '12px 16px', borderRadius: 8, fontSize: 13,
+              background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.35)',
+              color: '#EF9F27', marginBottom: 16,
+            }}>{quotaError}</div>
           )}
 
           {/* Stats résumées */}
@@ -510,19 +650,32 @@ export default function MatchesPage() {
                       ))}
                     </div>
 
-                    {/* Résultat + durée */}
-                    <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: winColor }}>
-                        {m.win ? 'Victoire' : 'Défaite'}
-                        {multiKill && (
-                          <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9, background: '#EF9F27', color: '#1a0d2e' }}>
-                            {multiKill}
-                          </span>
-                        )}
+                    {/* Résultat + durée + bouton détail */}
+                    <div style={{
+                      marginLeft: 'auto', flexShrink: 0,
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+                    }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: winColor }}>
+                          {m.win ? 'Victoire' : 'Défaite'}
+                          {multiKill && (
+                            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9, background: '#EF9F27', color: '#1a0d2e' }}>
+                              {multiKill}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                          {fmt(m.duration)} · {timeAgo(m.gameCreation)}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                        {fmt(m.duration)} · {timeAgo(m.gameCreation)}
-                      </div>
+                      <DetailButton
+                        matchId={m.matchId}
+                        isConnected={isConnected}
+                        alreadyViewed={viewedIds.has(m.matchId)}
+                        remaining={detailRemaining}
+                        limit={detailLimit}
+                        onOpen={openDetail}
+                      />
                     </div>
                   </div>
                 )

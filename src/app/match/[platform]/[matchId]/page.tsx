@@ -146,21 +146,50 @@ export default function MatchPage() {
       setLoading(true)
       setError('')
       try {
-        // 1. Session
+        // 1. Session — un connecté a un accès illimité ; un anonyme passe par le
+        //    quota détail (F3 Lot 2). Le COMMIT est idempotent par match : si le
+        //    bouton de /matches a déjà réservé ce match, c'est gratuit. Refus (429)
+        //    → message clair AVANT tout fetch Riot (pas de 429 surprise).
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
-          setError('Connexion requise pour voir le détail d\'un match.')
-          setLoading(false)
-          return
+          try {
+            const qRes = await fetch(FN_URL('detail-quota', {}), {
+              method: 'POST',
+              headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ matchId }),
+            })
+            if (cancelled) return
+            if (qRes.status === 429) {
+              setError('Quota de consultations détaillées atteint (10/heure). Connecte-toi pour un accès illimité.')
+              setLoading(false)
+              return
+            }
+            if (!qRes.ok) {
+              setError('Impossible de vérifier ton quota de consultation. Réessaie.')
+              setLoading(false)
+              return
+            }
+          } catch {
+            if (!cancelled) { setError('Erreur réseau. Réessaie.'); setLoading(false) }
+            return
+          }
         }
 
-        // 2. Riot ID + puuid + rang du joueur (pour highlight et comparaison) — depuis profiles
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('riot_gamename, riot_tagline, riot_rank, riot_puuid')
-          .eq('id', session.user.id)
-          .maybeSingle()
-        if (profile?.riot_rank) setMyRank(profile.riot_rank)
+        // 2. Riot ID + puuid + rang du joueur (pour highlight et comparaison) —
+        //    connecté uniquement (un anonyme n'a pas de profil Wyrm Forge).
+        let profile:
+          | { riot_gamename: string | null; riot_tagline: string | null; riot_rank: string | null; riot_puuid: string | null }
+          | null = null
+        if (session) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('riot_gamename, riot_tagline, riot_rank, riot_puuid')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          if (cancelled) return
+          profile = data
+          if (profile?.riot_rank) setMyRank(profile.riot_rank)
+        }
 
         // 3. Versions DDragon
         const vRes = await fetch(`${DDN}/api/versions.json`)
@@ -169,14 +198,16 @@ export default function MatchPage() {
         if (cancelled) return
         setVersion(v)
 
-        // 4. Resources DDragon en parallèle
+        // 4. Resources DDragon en parallèle. Authorization seulement si connecté :
+        //    il alimente le log match_viewed (quêtes app) côté Edge Function. Un
+        //    anonyme appelle avec la clé anon seule (riot-match-detail est public).
+        const detailHeaders: Record<string, string> = { apikey: SUPA_KEY }
+        if (session) detailHeaders.Authorization = `Bearer ${session.access_token}`
         const [cRes, sRes, rRes, dRes] = await Promise.all([
           fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
           fetch(`${DDN}/cdn/${v}/data/fr_FR/summoner.json`),
           fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`),
-          fetch(FN_URL('riot-match-detail', { matchId, platform }), {
-            headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` },
-          }),
+          fetch(FN_URL('riot-match-detail', { matchId, platform }), { headers: detailHeaders }),
         ])
         if (cancelled) return
 
@@ -247,8 +278,9 @@ export default function MatchPage() {
         if (me) {
           setMyPuuid(me.puuid)
           // Si on regarde notre propre profil et que le puuid n'est pas encore en DB → on le sauvegarde
+          // (connecté uniquement — un anonyme n'a pas de profil à mettre à jour).
           const looksLikeMe = !queryPuuid || (profile?.riot_puuid && queryPuuid === profile.riot_puuid)
-          if (looksLikeMe && !profile?.riot_puuid) {
+          if (session && looksLikeMe && !profile?.riot_puuid) {
             await supabase.from('profiles').update({ riot_puuid: me.puuid }).eq('id', session.user.id)
           }
         }

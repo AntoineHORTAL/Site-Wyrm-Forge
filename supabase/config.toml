@@ -19,6 +19,11 @@ verify_jwt = false
 [functions.riot-rank]
 verify_jwt = false
 
+# detail-quota (F3 Lot 2) — quota anonyme de consultation du détail d'un match.
+# Public (clé anon suffit) : peek/commit clés sur l'IP visiteur, aucune donnée Riot.
+[functions.detail-quota]
+verify_jwt = false
+
 # Patch notes publiques — pas d'auth requise, données filtrées sur status='published'
 [functions.patch-notes]
 verify_jwt = false
