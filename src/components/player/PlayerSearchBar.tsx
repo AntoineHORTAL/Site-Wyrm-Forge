@@ -18,9 +18,13 @@ interface Suggestion { game_name: string; tag_line: string }
 interface Props {
   defaultRegion?: string
   defaultRiotId?: string
+  // Route de destination (préfixe) : `/summoner` (profil public) par défaut,
+  // `/matches` pour la page d'historique publique F3. Non-breaking : les appelants
+  // existants gardent /summoner.
+  basePath?: string
 }
 
-export default function PlayerSearchBar({ defaultRegion = 'euw1', defaultRiotId = '' }: Props) {
+export default function PlayerSearchBar({ defaultRegion = 'euw1', defaultRiotId = '', basePath = '/summoner' }: Props) {
   const router   = useRouter()
   const [input,     setInput]     = useState(defaultRiotId)
   const [region,    setRegion]    = useState(defaultRegion)
@@ -61,7 +65,7 @@ export default function PlayerSearchBar({ defaultRegion = 'euw1', defaultRiotId 
 
   function navigate(gameName: string, tagLine: string) {
     setShowSugg(false)
-    router.push(`/summoner/${region}/${encodeURIComponent(gameName + '#' + tagLine)}`)
+    router.push(`${basePath}/${region}/${encodeURIComponent(gameName + '#' + tagLine)}`)
   }
 
   function onSubmit() {

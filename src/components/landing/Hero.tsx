@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
@@ -198,6 +199,9 @@ export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
               <WindowsIcon />
               Télécharger pour Windows
             </a>
+            <Link href="/matches" className="wf-btn-secondary">
+              Rechercher un joueur
+            </Link>
             <button className="wf-btn-secondary" onClick={() => scrollTo('features')}>
               Fonctionnalités
             </button>

@@ -10,6 +10,7 @@ import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { requireSecret } from '../_shared/auth.ts'
 import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
+import { checkIpRateLimit, riotCacheBackend } from '../_shared/ip-rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
 import { harvestRankStats } from '../_shared/harvest-rank-stats.ts'
@@ -120,9 +121,31 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Format PUUID invalide.' }, 400)
     }
 
-    // Rate limiting
+    // Rate limiting — deux couches SUPERPOSÉES, complémentaires :
+    //  • isRateLimited : 20/min/IP, fenêtre fixe, atomique (SQL SECURITY DEFINER) — anti-rafale,
+    //    reste la vraie barrière de sécurité.
     if (await isRateLimited(req, FN)) {
       return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)
+    }
+
+    //  • checkIpRateLimit (F3) : 30 recherches/IP/h, fenêtre glissante — anti-scraping soutenu.
+    //    Ne compte QUE l'entrée de recherche (start===0) : la pagination « charger plus »
+    //    (start>0), riot-rank et riot-match-detail ne consomment pas le budget → une
+    //    recherche = un incrément, fidèle au sens « 30 recherches ». Placé avant la lecture
+    //    du cache (comme isRateLimited) : un dépassement rejette AVANT toute résolution Riot.
+    //    Bucket partagé par IP (clé `rate:ip:{ip}`), non-atomique (compromis assumé, cf. helper).
+    //    Valeur généreuse : le burst atomique 20/min + le circuit breaker journalier (1000
+    //    appels Riot) restent les vraies barrières ; 30/h borne le scraping soutenu sans
+    //    gêner un humain qui consulte plusieurs joueurs.
+    if (start === 0) {
+      const rl = await checkIpRateLimit(req, riotCacheBackend(), { limit: 30 })
+      if (!rl.allowed) {
+        return jsonResponse(
+          { error: 'Trop de recherches. Réessaie plus tard.', retry_after_s: rl.retryAfterS },
+          429,
+          { 'Retry-After': String(rl.retryAfterS) },
+        )
+      }
     }
 
     // Identité stable — indépendante de count/start (R2)
