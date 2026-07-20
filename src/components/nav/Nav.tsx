@@ -224,7 +224,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                     fontSize: 13, fontWeight: 600, color: c ? '#EF9F27' : '#7F77DD',
                     whiteSpace: 'nowrap',
                   }}>
-                    🐉 {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}
+                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt="Écailles" width={16} height={16} />
                   </div>
                   <button
                     onClick={onNavigateToForge}
@@ -374,7 +374,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                     }}
                   >
-                    🐉 {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}
+                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt="Écailles" width={15} height={15} />
                     <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
                   </button>
                 )}

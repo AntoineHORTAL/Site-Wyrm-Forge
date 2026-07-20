@@ -70,17 +70,15 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
         border: `1px solid ${border}`,
         display: 'flex', alignItems: 'center', gap: 20,
       }}>
-        <div style={{ fontSize: 40 }}>🐉</div>
         <div>
           <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 4 }}>Ton solde</div>
           <div style={{
             fontSize: 36, fontWeight: 700, color: accent,
             fontFamily: c ? 'Cinzel, serif' : 'inherit',
+            display: 'flex', alignItems: 'center', gap: 10,
           }}>
             {balanceLoading ? '…' : balance.toLocaleString('fr-FR')}
-            <span style={{ fontSize: 18, marginLeft: 8, fontWeight: 500, color: 'var(--text-muted)' }}>
-              Écailles
-            </span>
+            <img src="/icons/ecaille.png" alt="Écailles" width={44} height={44} />
           </div>
         </div>
       </div>

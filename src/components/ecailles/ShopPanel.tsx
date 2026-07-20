@@ -180,8 +180,9 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
 
                 {/* Prix + bouton */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: accent }}>
-                    {item.price_scales.toLocaleString('fr-FR')} 🐉
+                  <span style={{ fontSize: 14, fontWeight: 700, color: accent, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                    {item.price_scales.toLocaleString('fr-FR')}
+                    <img src="/icons/ecaille.png" alt="Écailles" width={15} height={15} />
                   </span>
                   <button
                     onClick={() => buy(item.id)}
