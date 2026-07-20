@@ -1057,7 +1057,7 @@ function PersonalSection({ me, detail, champMap, spellMap, version, myRank }: {
       {expanded && (
         <>
           <div style={{ marginTop: 14 }}>
-            <PersonalProgressionChart me={me} detail={detail} />
+            <PersonalProgressionChart me={me} detail={detail} myRank={myRank} />
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -1608,7 +1608,7 @@ const PERSO_MODES: { key: PersoMode; label: string }[] = [
   { key: 'cs',    label: 'Mon CS' },
 ]
 
-function PersonalProgressionChart({ me, detail }: { me: Participant; detail: MatchDetail }) {
+function PersonalProgressionChart({ me, detail, myRank }: { me: Participant; detail: MatchDetail; myRank: string | null }) {
   const [mode, setMode] = useState<PersoMode>('gold')
   const frames = detail.timeline ?? []
   if (frames.length === 0) {
@@ -1649,7 +1649,19 @@ function PersonalProgressionChart({ me, detail }: { me: Participant; detail: Mat
     return 0
   })
 
-  const allValues = [...myValues, ...teamAvgValues]
+  // Moyenne du rang — approximation LINÉAIRE : taux moyen du tier (RANK_AVG) × temps écoulé.
+  // Même famille d'estimation que le Gold Diff estimé (B6/B14), PAS une vraie courbe de partie.
+  // Couvert uniquement pour Or (gpm) et CS (csPerMin) ; XP et Niveau n'ont aucune moyenne
+  // par rang disponible (dette identique à « Level vs rang » B14) → 3e ligne absente sur ces modes.
+  const rankInfo = myRank ? RANK_AVG[myRank] : undefined
+  const rankRate =
+    rankInfo && mode === 'gold' ? rankInfo.gpm :
+    rankInfo && mode === 'cs'   ? rankInfo.csPerMin :
+    null
+  const rankAvgValues: number[] | null =
+    rankRate == null ? null : frames.map(f => rankRate * (f.ts / 60000))
+
+  const allValues = [...myValues, ...teamAvgValues, ...(rankAvgValues ?? [])]
   const minV = Math.min(...allValues, 0)
   const maxV = Math.max(...allValues, 1)
   const range = maxV - minV || 1
@@ -1701,6 +1713,13 @@ function PersonalProgressionChart({ me, detail }: { me: Participant; detail: Mat
         {/* Moyenne équipe (gris pointillé) */}
         <path d={pathFor(teamAvgValues)} fill="none" stroke="rgba(161,161,170,0.5)"
           strokeWidth="1.5" strokeDasharray="4,3" />
+        {/* Moyenne du rang — estimation linéaire (couleur du rang, pointillés espacés = distinct) */}
+        {rankAvgValues && rankInfo && (
+          <path d={pathFor(rankAvgValues)} fill="none" stroke={rankInfo.color}
+            strokeWidth="1.5" strokeDasharray="2,6" opacity="0.85">
+            <title>Estimation basée sur le rang moyen ({rankInfo.label}) — droite linéaire ({mode === 'gold' ? `${rankInfo.gpm} or/min` : `${rankInfo.csPerMin} CS/min`}), pas une vraie progression de partie.</title>
+          </path>
+        )}
         {/* Mes valeurs (or, plein) */}
         <path d={pathFor(myValues)} fill="none" stroke="#EF9F27" strokeWidth="2.5" strokeLinecap="round" />
 
@@ -1724,10 +1743,21 @@ function PersonalProgressionChart({ me, detail }: { me: Participant; detail: Mat
           )
         })}
       </svg>
-      <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', marginTop: 4 }}>
-        <span style={{ color: '#EF9F27', fontWeight: 600 }}>━ Moi</span>{' · '}
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', marginTop: 4, display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <span style={{ color: '#EF9F27', fontWeight: 600 }}>━ Moi</span>
         <span>┄ Moyenne équipe</span>
+        {rankAvgValues && rankInfo && (
+          <span style={{ color: rankInfo.color }}
+            title="Estimation basée sur le rang moyen — droite linéaire, pas une vraie progression de partie.">
+            ┈ Moyenne rang {rankInfo.label} (estim.)
+          </span>
+        )}
       </div>
+      {myRank && (mode === 'xp' || mode === 'level') && (
+        <div style={{ fontSize: 9, color: 'var(--text-dim)', textAlign: 'right', marginTop: 2, fontStyle: 'italic' }}>
+          Moyenne du rang indisponible pour cette métrique (seuls Or et CS ont un taux par rang).
+        </div>
+      )}
     </div>
   )
 }
@@ -1736,6 +1766,22 @@ function PersonalProgressionChart({ me, detail }: { me: Participant; detail: Mat
 function BuildTimeline({ me, detail, version }: {
   me: Participant; detail: MatchDetail; version: string
 }) {
+  // Noms d'items (DDragon fr_FR) pour le tooltip au survol — même source que ItemImpact
+  const [itemNames, setItemNames] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!version) return
+    fetch(`${DDN}/cdn/${version}/data/fr_FR/item.json`)
+      .then(r => r.json())
+      .then(j => {
+        const names: Record<string, string> = {}
+        for (const [id, it] of Object.entries((j.data ?? {}) as Record<string, { name: string }>)) {
+          names[id] = it.name
+        }
+        setItemNames(names)
+      })
+      .catch(() => { /* fallback silencieux : le title retombe sur l'ID */ })
+  }, [version])
+
   const events = me.itemEvents ?? []
   if (events.length === 0) {
     return (
@@ -1801,7 +1847,7 @@ function BuildTimeline({ me, detail, version }: {
             </span>
             {trip.map((ev, i) => (
               <img key={i} src={itemImg(version, ev.itemId)} alt=""
-                title={`${ev.itemId} @ ${fmtTs(ev.ts)}`}
+                title={`${itemNames[String(ev.itemId)] ?? `#${ev.itemId}`} — ${fmtTs(ev.ts)}`}
                 style={{ width: 28, height: 28, borderRadius: 3 }}
                 onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             ))}
