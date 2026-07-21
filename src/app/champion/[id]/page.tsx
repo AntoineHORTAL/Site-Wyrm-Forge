@@ -10,6 +10,7 @@
  * Source officielle, pas de scraping. Pas de win rate (Riot ne l'expose pas).
  */
 import { useEffect, useState } from 'react'
+import { statAtLevel } from '@/lib/champion-stats'
 import { useParams, useRouter } from 'next/navigation'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
@@ -194,15 +195,17 @@ export default function ChampionPage() {
               gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
               fontSize: 12,
             }}>
+              {/* Affichage niveau 1 : statAtLevel(base, per, 1) === base (identité) —
+                  routé via le helper centralisé pour une source unique de la formule. */}
               {[
-                { label: 'PV',          val: data.stats.hp,           per: data.stats.hpperlevel },
-                { label: 'Mana/Énergie', val: data.stats.mp,          per: data.stats.mpperlevel },
-                { label: 'Armure',      val: data.stats.armor,        per: data.stats.armorperlevel },
-                { label: 'Résist. Mag.', val: data.stats.spellblock,  per: data.stats.spellblockperlevel },
-                { label: 'AD',          val: data.stats.attackdamage, per: data.stats.attackdamageperlevel },
-                { label: 'AS base',     val: data.stats.attackspeed,  per: data.stats.attackspeedperlevel },
-                { label: 'Vitesse',     val: data.stats.movespeed,    per: 0 },
-                { label: 'Portée AA',   val: data.stats.attackrange,  per: 0 },
+                { label: 'PV',          val: statAtLevel(data.stats.hp,           data.stats.hpperlevel,           1), per: data.stats.hpperlevel },
+                { label: 'Mana/Énergie', val: statAtLevel(data.stats.mp,          data.stats.mpperlevel,           1), per: data.stats.mpperlevel },
+                { label: 'Armure',      val: statAtLevel(data.stats.armor,        data.stats.armorperlevel,        1), per: data.stats.armorperlevel },
+                { label: 'Résist. Mag.', val: statAtLevel(data.stats.spellblock,  data.stats.spellblockperlevel,   1), per: data.stats.spellblockperlevel },
+                { label: 'AD',          val: statAtLevel(data.stats.attackdamage, data.stats.attackdamageperlevel, 1), per: data.stats.attackdamageperlevel },
+                { label: 'AS base',     val: statAtLevel(data.stats.attackspeed,  data.stats.attackspeedperlevel,  1), per: data.stats.attackspeedperlevel },
+                { label: 'Vitesse',     val: statAtLevel(data.stats.movespeed,    0, 1), per: 0 },
+                { label: 'Portée AA',   val: statAtLevel(data.stats.attackrange,  0, 1), per: 0 },
               ].map(s => (
                 <div key={s.label} style={{
                   padding: '8px 10px', borderRadius: 5,

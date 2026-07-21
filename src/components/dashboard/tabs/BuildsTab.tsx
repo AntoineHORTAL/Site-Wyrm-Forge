@@ -5,6 +5,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import SkillOrderEditor, { type SkillOrder } from '@/components/builder/SkillOrderEditor'
 import RunesEditor, { type RunesPage } from '@/components/builder/RunesEditor'
+import { aggregateItemStats } from '@/lib/champion-stats'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface DDItem {
@@ -501,14 +502,8 @@ export default function BuildsTab() {
   }
 
   // ── Computed stats ────────────────────────────────────────────────────────
-  const statTotals: Record<string, number> = {}
-  for (const b of blocks) {
-    for (const { item, count } of b.items) {
-      for (const [k, v] of Object.entries(item.stats)) {
-        statTotals[k] = (statTotals[k] ?? 0) + v * count
-      }
-    }
-  }
+  // Agrégation centralisée dans champion-stats (même boucle qu'auparavant).
+  const statTotals = aggregateItemStats(blocks)
   const totalGold = blocks.reduce(
     (s, b) => s + b.items.reduce((ss, bi) => ss + bi.item.gold.total * bi.count, 0), 0
   )
