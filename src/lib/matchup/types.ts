@@ -9,6 +9,12 @@ import type { RawStats } from '../champion-stats'
 
 export type MatchUpMode = '1v1' | '2v2' | '1v2' | '2v1' | '5v5'
 
+// Rôle d'un slot (OPTIONNEL). Même vocabulaire que l'éditeur Scénarios (`Role`),
+// dupliqué ici volontairement tant que le lot UI ne consolide pas un module
+// partagé. Sert au futur cap de niveau conditionnel (TOP → 20, sinon 18) et à
+// l'enrichissement du prompt d'analyse. Absent = pas de rôle assigné (défaut sûr).
+export type MatchUpRole = 'TOP' | 'JUNGLE' | 'MID' | 'ADC' | 'SUPPORT'
+
 // Identité minimale d'un champion pour un slot (sous-ensemble de DDChamp).
 export interface ChampRef {
   id: string
@@ -43,6 +49,7 @@ export interface MatchUpChampion {
   level: number            // niveau simulé 1..18
   build: BuildRef
   baseStats: RawStats      // snapshot des stats DDragon (base + perlevel) figé à la sélection
+  role?: MatchUpRole       // OPTIONNEL — absent = aucun rôle assigné (scénarios v1 migrés)
 }
 
 export interface MatchUpScenario {

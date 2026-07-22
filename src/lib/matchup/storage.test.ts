@@ -78,3 +78,53 @@ describe('matchup/storage — CRUD localStorage (wf.matchups.v1)', () => {
     expect(() => deleteScenario('x')).not.toThrow()
   })
 })
+
+describe('matchup/storage — migration douce v1 → v2', () => {
+  // Un scénario "v1" : sérialisé AVANT l'ajout du champ role (donc role absent).
+  function v1Scenario() {
+    const s = createScenario('1v1', 'Sauvé en v1')
+    // createScenario ne pose déjà pas de role → représente fidèlement un scénario v1.
+    return s
+  }
+
+  it('un scénario v1 se charge après migration : role absent, aucun crash', () => {
+    const s = v1Scenario()
+    window.localStorage.setItem('wf.matchups.v1', JSON.stringify([s]))
+
+    let loaded: ReturnType<typeof listScenarios> = []
+    expect(() => { loaded = listScenarios() }).not.toThrow()
+
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0].name).toBe('Sauvé en v1')
+    expect(loaded[0].allies[0].role).toBeUndefined()   // backfill undefined
+    expect(loaded[0].enemies[0].role).toBeUndefined()
+  })
+
+  it('la migration écrit v2 et CONSERVE v1 (rollback, zéro perte)', () => {
+    window.localStorage.setItem('wf.matchups.v1', JSON.stringify([v1Scenario()]))
+    listScenarios()   // déclenche la migration
+
+    expect(window.localStorage.getItem('wf.matchups.v2')).not.toBeNull()  // v2 peuplé
+    expect(window.localStorage.getItem('wf.matchups.v1')).not.toBeNull()  // v1 intact
+  })
+
+  it('migration idempotente : v2 fait autorité, pas de re-migration depuis v1', () => {
+    window.localStorage.setItem('wf.matchups.v1', JSON.stringify([v1Scenario()]))
+    listScenarios()   // migre v1 → v2
+
+    // On modifie v1 après coup : ne doit PLUS influencer les lectures (v2 autoritaire).
+    window.localStorage.setItem('wf.matchups.v1', JSON.stringify([createScenario('5v5', 'Fantôme v1')]))
+    const after = listScenarios()
+    expect(after).toHaveLength(1)
+    expect(after[0].name).toBe('Sauvé en v1')   // toujours le scénario migré, pas le fantôme
+  })
+
+  it('v2 présent → v1 ignoré (aucune migration)', () => {
+    const v2 = createScenario('2v2', 'Direct v2')
+    window.localStorage.setItem('wf.matchups.v2', JSON.stringify([v2]))
+    window.localStorage.setItem('wf.matchups.v1', JSON.stringify([createScenario('1v1', 'Vieux v1')]))
+    const loaded = listScenarios()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0].name).toBe('Direct v2')
+  })
+})

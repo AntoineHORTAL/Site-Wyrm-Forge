@@ -2,14 +2,15 @@
 //  matchup/storage — persistance localStorage des scénarios MatchUp
 // ════════════════════════════════════════════════════════════════════════════
 // Stockage éphémère côté navigateur (parité avec le matchups.json local du WPF).
-// Clé VERSIONNÉE `wf.matchups.v1` : une bump de version = nouveau namespace, les
-// anciennes données n'entrent jamais en conflit avec un futur schéma.
+// Clé VERSIONNÉE : namespace actif `wf.matchups.v2` (schéma incluant `role?` par
+// champion). Migration DOUCE depuis `wf.matchups.v1` au premier accès — voir readAll.
 // SSR-safe : hors navigateur (typeof window === 'undefined') toutes les fonctions
 // dégradent proprement (lecture → [], écriture → no-op).
 
 import type { MatchUpScenario } from './types'
 
-const KEY = 'wf.matchups.v1'
+const KEY    = 'wf.matchups.v2'   // namespace actif (lecture + écriture)
+const KEY_V1 = 'wf.matchups.v1'   // ancien namespace — source de migration, conservé (rollback)
 
 function getLS(): Storage | null {
   try {
@@ -20,16 +21,36 @@ function getLS(): Storage | null {
   }
 }
 
+// Parse tolérant : renvoie un tableau ou [] (corruption/JSON invalide → repart propre).
+function parseArr(raw: string | null): MatchUpScenario[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as MatchUpScenario[]) : []
+  } catch {
+    return []
+  }
+}
+
 function readAll(): MatchUpScenario[] {
   const ls = getLS()
   if (!ls) return []
   try {
-    const raw = ls.getItem(KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as MatchUpScenario[]) : []
+    // v2 fait autorité dès que la clé existe (même vide ou corrompue → []), pour ne
+    // jamais re-migrer par-dessus un état v2 légitime.
+    const rawV2 = ls.getItem(KEY)
+    if (rawV2 !== null) return parseArr(rawV2)
+
+    // v2 absent → migration douce depuis v1. Backfill `role: undefined` implicite :
+    // les scénarios v1 n'ont pas le champ, il reste absent (= aucun rôle assigné).
+    // v1 n'est PAS supprimé (rollback + zéro perte de données).
+    const rawV1 = ls.getItem(KEY_V1)
+    if (rawV1 === null) return []
+    const migrated = parseArr(rawV1)
+    try { ls.setItem(KEY, JSON.stringify(migrated)) } catch { /* best-effort */ }
+    return migrated
   } catch {
-    return []   // corruption/JSON invalide → repart propre plutôt que de crasher
+    return []
   }
 }
 
@@ -67,9 +88,10 @@ export function deleteScenario(id: string): void {
   writeAll(readAll().filter(s => s.id !== id))
 }
 
-// Purge totale du namespace (outil de reset / tests).
+// Purge totale (outil de reset / tests) — les DEUX namespaces (v2 actif + v1
+// résiduel) pour qu'un reset ne laisse pas d'ancienne donnée re-migrable.
 export function clearScenarios(): void {
   const ls = getLS()
   if (!ls) return
-  try { ls.removeItem(KEY) } catch { /* no-op */ }
+  try { ls.removeItem(KEY); ls.removeItem(KEY_V1) } catch { /* no-op */ }
 }
