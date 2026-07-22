@@ -7,10 +7,12 @@
 //
 // Contrat FIXÉ côté EF/WPF — repris strictement :
 //   scenario = { mode, allies[], enemies[] }
-//   champ    = { name, level, stats: [{label,value}], build?: string[] }
+//   champ    = { name, level, stats: [{label,value}], build?: string[],
+//                role?: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT' }
 
 import { statAtLevel } from '../champion-stats'
-import type { MatchUpScenario, MatchUpChampion, BuildRef } from './types'
+import { normalizeRole } from './types'
+import type { MatchUpScenario, MatchUpChampion, BuildRef, MatchUpRole } from './types'
 
 export interface ApiChampStat { label: string; value: string }
 export interface ApiChamp {
@@ -18,6 +20,7 @@ export interface ApiChamp {
   level: number
   stats: ApiChampStat[]
   build?: string[]
+  role?: MatchUpRole
 }
 export interface ApiScenario {
   mode: string
@@ -75,6 +78,12 @@ function champPayload(c: MatchUpChampion, ctx: BuildNameContext): ApiChamp {
   const names = buildItemNames(c.build, ctx)
   const out: ApiChamp = { name: c.champ!.name, level: c.level, stats }
   if (names.length) out.build = names
+  // `role` OPTIONNEL (accepté par l'EF depuis le contrat du Lot 1) : la clé est
+  // omise quand le slot n'a pas de rôle valide, plutôt qu'envoyée à null — même
+  // effet côté serveur (roleLabel → null → prompt inchangé), et cohérent avec la
+  // façon dont `build` est déjà omis quand il est vide.
+  const role = normalizeRole(c.role)
+  if (role) out.role = role
   return out
 }
 

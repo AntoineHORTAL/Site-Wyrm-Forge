@@ -3,7 +3,7 @@ import {
   buildScenarioPayload, buildItemNames, formatResetFr, overQuotaMessage, readQuota,
   type BuildNameContext,
 } from './payload'
-import { createScenario, setChampion, setLevel, setBuild, type BuildRef } from './types'
+import { createScenario, setChampion, setLevel, setBuild, setRole, type BuildRef } from './types'
 
 const CTX: BuildNameContext = {
   itemNameById: { IE: 'Lame infinie', Zeal: 'Ardeur du zèle' },
@@ -82,5 +82,62 @@ describe('formatResetFr / overQuotaMessage', () => {
   it('message de plafond reprend used/limit', () => {
     const msg = overQuotaMessage({ used: 3, limit: 3, remaining: 0, model: '', resetsAt: null })
     expect(msg).toBe('Quota d\'analyses atteint pour cette semaine (3/3).')
+  })
+})
+
+describe('champPayload — rôle optionnel (parité WPF / contrat EF Lot 1)', () => {
+  function withAhri() {
+    return setChampion(createScenario('1v1'), 'allies', 0, AHRI, AHRI_STATS)
+  }
+
+  it('slot sans rôle → clé `role` ABSENTE (prompt EF inchangé)', () => {
+    const p = buildScenarioPayload(withAhri(), CTX)
+    expect(p.allies[0]).not.toHaveProperty('role')
+  })
+
+  it('slot avec rôle → `role` en majuscules dans le payload', () => {
+    const s = setRole(withAhri(), 'allies', 0, 'MID')
+    const p = buildScenarioPayload(s, CTX)
+    expect(p.allies[0].role).toBe('MID')
+  })
+
+  it('le rôle suit le bon camp et le bon slot', () => {
+    let s = createScenario('2v2')
+    s = setChampion(s, 'allies', 1, AHRI, AHRI_STATS)
+    s = setRole(s, 'allies', 1, 'TOP')
+    s = setChampion(s, 'enemies', 0, AHRI, AHRI_STATS)
+    // seul le slot allié 1 est occupé côté allié → il devient l'index 0 du payload
+    const p = buildScenarioPayload(s, CTX)
+    expect(p.allies[0].role).toBe('TOP')
+    expect(p.enemies[0]).not.toHaveProperty('role')
+  })
+
+  it('rôle retiré → la clé disparaît du payload', () => {
+    let s = setRole(withAhri(), 'allies', 0, 'ADC')
+    expect(buildScenarioPayload(s, CTX).allies[0].role).toBe('ADC')
+    s = setRole(s, 'allies', 0, null)
+    expect(buildScenarioPayload(s, CTX).allies[0]).not.toHaveProperty('role')
+  })
+
+  it('rôle invalide venant d\'un localStorage édité → omis, pas propagé', () => {
+    const s = withAhri()
+    // localStorage est un JSON casté : le type union ne protège rien à l'exécution.
+    ;(s.allies[0] as { role?: unknown }).role = 'BOTTOM'   // vocabulaire Riot, pas le nôtre
+    expect(buildScenarioPayload(s, CTX).allies[0]).not.toHaveProperty('role')
+  })
+
+  it('casse/espaces tolérés (normalisation majuscules)', () => {
+    const s = withAhri()
+    ;(s.allies[0] as { role?: unknown }).role = ' top '
+    expect(buildScenarioPayload(s, CTX).allies[0].role).toBe('TOP')
+  })
+
+  it('n\'altère ni les stats ni le build existants', () => {
+    let s = setRole(withAhri(), 'allies', 0, 'SUPPORT')
+    s = setBuild(s, 'allies', 0, { kind: 'saved', buildId: 's1' })
+    const c = buildScenarioPayload(s, CTX).allies[0]
+    expect(c.build).toEqual(['Lame infinie', 'Ardeur du zèle'])
+    expect(c.stats.length).toBeGreaterThan(0)
+    expect(c.name).toBe('Ahri')
   })
 })

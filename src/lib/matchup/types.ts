@@ -15,6 +15,18 @@ export type MatchUpMode = '1v1' | '2v2' | '1v2' | '2v1' | '5v5'
 // l'enrichissement du prompt d'analyse. Absent = pas de rôle assigné (défaut sûr).
 export type MatchUpRole = 'TOP' | 'JUNGLE' | 'MID' | 'ADC' | 'SUPPORT'
 
+// Les 5 rôles valides, dans l'ordre d'affichage de l'UI.
+export const MATCHUP_ROLES: MatchUpRole[] = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT']
+
+// Ramène une valeur brute à un rôle valide (majuscules), ou undefined. Nécessaire
+// parce que les scénarios relus depuis localStorage sont un JSON simplement casté :
+// le type union ne garantit rien à l'exécution. Miroir de MatchUpRoles.Normalize (WPF).
+export function normalizeRole(role: unknown): MatchUpRole | undefined {
+  if (typeof role !== 'string') return undefined
+  const up = role.trim().toUpperCase() as MatchUpRole
+  return MATCHUP_ROLES.includes(up) ? up : undefined
+}
+
 // Identité minimale d'un champion pour un slot (sous-ensemble de DDChamp).
 export interface ChampRef {
   id: string

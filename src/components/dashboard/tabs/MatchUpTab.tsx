@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { loadDDragon, champImgUrl, itemImgUrl, type DDragonData, type DDChampFull, type DDItemFull } from '@/lib/matchup/ddragon'
 import { listScenarios, saveScenario } from '@/lib/matchup/storage'
 import {
-  createScenario, resizeToMode, setChampion, setLevel, setBuild, setRole, maxLevelForRole, MIN_LEVEL,
+  createScenario, resizeToMode, setChampion, setLevel, setBuild, setRole, maxLevelForRole,
+  MIN_LEVEL, MATCHUP_ROLES,
   type MatchUpScenario, type MatchUpMode, type MatchUpChampion, type MatchUpRole, type Side, type BuildRef,
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
@@ -32,7 +33,7 @@ type PickerTarget = { side: Side; index: number }
 // pour que les deux outils se lisent pareil. Le rôle est OPTIONNEL sur un slot
 // MatchUp (contrairement aux Scénarios où les 5 rôles sont fixes) : re-cliquer le
 // rôle actif le retire.
-const ROLES: MatchUpRole[] = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT']
+const ROLES = MATCHUP_ROLES   // source unique (types.ts), partagée avec le payload
 const ROLE_SHORT: Record<MatchUpRole, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MID: 'MID', ADC: 'ADC', SUPPORT: 'SUP',
 }
