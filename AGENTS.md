@@ -775,6 +775,18 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ## 📋 À faire plus tard
 
+### Quotas IA différenciés rapide / détaillée (MatchUp, puis PostGame)
+**Constat de coût** : l'« analyse rapide » (`max_tokens=400`) coûte **~16× moins cher** que l'« analyse détaillée » (`max_tokens=3000`) — mesuré au sondage sur Haiku : **~0,0008 $ vs ~0,013 $** par appel. Or aujourd'hui les deux **consomment le même compteur hebdomadaire** : `usage_counters` avec une seule `feature = 'matchup_analyze'` (⚠️ la clé réelle en base est `matchup_analyze`, pas `matchup`). `matchup-analyze` ne distingue pas `advanced` true/false pour le quota.
+
+**Piste à cadrer** : séparer en **deux compteurs distincts** (ex. `matchup_quick` et `matchup_detailed`), chacun avec sa propre limite par tier — permettrait p. ex. de débloquer **plus d'analyses rapides** pour Apprenti (gratuit) **sans** gonfler le budget détaillé (plus coûteux, surtout Sonnet pour Maître+).
+
+**Impact** :
+- **Migration** : 2 features au lieu d'1 (ou refonte du schéma `usage_counters`).
+- **EF `matchup-analyze`** : choisir le bon compteur selon `advanced` (le `TIER_CONFIG` devient un mapping tier→{limite_rapide, limite_détaillée, modèle}).
+- **Affichage quota** : potentiellement **2 jauges au lieu d'1**, côté WPF (`ClaudeService`/`MatchUpAnalysisResult`) **et** web (`src/lib/matchup/api.ts` `getQuota` + `MatchUpTab`).
+
+**Prérequis / cadrage générique** : la **même question se posera pour PostGame** (analyse IA post-partie, pas encore construite). → **Concevoir une architecture de quota différenciée générique dès PostGame** (compteurs paramétrés par variante d'analyse), plutôt que de la retrofit sur MatchUp seul. Le patron `usage_counters` + `consume_ai_quota`/`refund_ai_quota` reste la base (cf. §MatchUp Web + doc `matchup-analyze`) — c'est la granularité `feature` qui évolue.
+
 ### MatchUp — cap de niveau Top lane 18→20 (Season 16, Role Quest)
 **Mécanique confirmée réelle et sourcée** (wiki officiel LoL + article Season 16) : un champion en **Top lane** qui complète sa *Role Quest* voit son plafond de niveau passer de **18 à 20** ; les autres rôles (Jungle/Mid/ADC/Support) restent plafonnés à 18.
 
