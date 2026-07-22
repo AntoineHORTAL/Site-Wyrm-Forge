@@ -13,6 +13,7 @@ import WorkshopBuildsTab from './tabs/WorkshopBuildsTab'
 import WorkshopJungleTab from './tabs/WorkshopJungleTab'
 import AdminTab from './tabs/AdminTab'
 import PatchNotesTab from './tabs/PatchNotesTab'
+import MatchUpTab from './tabs/MatchUpTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
 import Pricing from '@/components/landing/Pricing'
@@ -248,11 +249,18 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {/* Onglet tarifs (caché) — réutilise la section Pricing de la landing telle quelle */}
         {activeTab === 'tarifs' && <Pricing />}
 
-        {/* Locked: Analyse IA — déverrouillé pour admin et tiers maître+ */}
-        {(activeTab === 'matchup' || activeTab === 'postgame') && (
+        {/* Match Up : éditeur réel (admin + tiers maître+) — sinon écran verrouillé */}
+        {activeTab === 'matchup' && (
           (isAdmin || isProTier)
-            ? <DevPreviewScreen title={tabTitles[activeTab].title} c={c} isAdmin={isAdmin} />
-            : <LockedScreen title={tabTitles[activeTab].title} subtitle={tabTitles[activeTab].subtitle} c={c} badge="Analyse IA" />
+            ? <MatchUpTab />
+            : <LockedScreen title={tabTitles.matchup.title} subtitle={tabTitles.matchup.subtitle} c={c} badge="Analyse IA" />
+        )}
+
+        {/* Post Game : encore en dev preview (déverrouillé admin + maître+) */}
+        {activeTab === 'postgame' && (
+          (isAdmin || isProTier)
+            ? <DevPreviewScreen title={tabTitles.postgame.title} c={c} isAdmin={isAdmin} />
+            : <LockedScreen title={tabTitles.postgame.title} subtitle={tabTitles.postgame.subtitle} c={c} badge="Analyse IA" />
         )}
 
         {/* Soon: Tournois */}
