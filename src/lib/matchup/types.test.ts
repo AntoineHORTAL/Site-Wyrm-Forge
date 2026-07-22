@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  createScenario, resizeToMode, setChampion, setLevel, setBuild, clampLevel,
-  slotCounts, emptyChampion, MIN_LEVEL, MAX_LEVEL,
+  createScenario, resizeToMode, setChampion, setLevel, setBuild, setRole, clampLevel,
+  maxLevelForRole, slotCounts, emptyChampion, MIN_LEVEL, MAX_LEVEL, MAX_LEVEL_TOP,
   type ChampRef, type BuildRef,
 } from './types'
 
@@ -126,5 +126,59 @@ describe('setBuild — build attaché au slot', () => {
   it('index hors bornes → scénario inchangé', () => {
     const s = createScenario('1v1')
     expect(setBuild(s, 'allies', 9, TEMP)).toBe(s)
+  })
+})
+
+describe('maxLevelForRole / setRole — cap conditionnel Top (Role Quest S16)', () => {
+  it('seul TOP relève le cap à 20 ; tous les autres rôles restent à 18', () => {
+    expect(maxLevelForRole('TOP')).toBe(MAX_LEVEL_TOP)
+    for (const r of ['JUNGLE', 'MID', 'ADC', 'SUPPORT'] as const) {
+      expect(maxLevelForRole(r)).toBe(MAX_LEVEL)
+    }
+  })
+
+  it('aucun rôle renseigné → cap 18 (défaut sûr, scénarios v1 migrés)', () => {
+    expect(maxLevelForRole(undefined)).toBe(MAX_LEVEL)
+    expect(clampLevel(20)).toBe(MAX_LEVEL)              // signature historique inchangée
+    expect(clampLevel(20, undefined)).toBe(MAX_LEVEL)
+  })
+
+  it('clampLevel borne au cap du rôle passé', () => {
+    expect(clampLevel(20, 'TOP')).toBe(20)
+    expect(clampLevel(99, 'TOP')).toBe(MAX_LEVEL_TOP)
+    expect(clampLevel(20, 'MID')).toBe(MAX_LEVEL)
+    expect(clampLevel(0,  'TOP')).toBe(MIN_LEVEL)       // borne basse inchangée
+  })
+
+  it('setRole assigne le rôle et autorise 19/20 en Top', () => {
+    let s = createScenario('1v1')
+    s = setRole(s, 'allies', 0, 'TOP')
+    expect(s.allies[0].role).toBe('TOP')
+    s = setLevel(s, 'allies', 0, 20)
+    expect(s.allies[0].level).toBe(20)
+  })
+
+  it('setRole(null) retire le rôle ET rabaisse un niveau devenu illégal', () => {
+    let s = createScenario('1v1')
+    s = setLevel(setRole(s, 'allies', 0, 'TOP'), 'allies', 0, 20)
+    s = setRole(s, 'allies', 0, null)
+    expect(s.allies[0].role).toBeUndefined()
+    expect(s.allies[0].level).toBe(MAX_LEVEL)
+  })
+
+  it('passer de TOP à un autre rôle re-clampe aussi le niveau', () => {
+    let s = createScenario('1v1')
+    s = setLevel(setRole(s, 'allies', 0, 'TOP'), 'allies', 0, 19)
+    s = setRole(s, 'allies', 0, 'SUPPORT')
+    expect(s.allies[0].role).toBe('SUPPORT')
+    expect(s.allies[0].level).toBe(MAX_LEVEL)
+  })
+
+  it('setRole est pur (n’altère pas l’original) et garde l’index hors bornes inerte', () => {
+    const s = createScenario('1v1')
+    const next = setRole(s, 'allies', 0, 'JUNGLE')
+    expect(s.allies[0].role).toBeUndefined()
+    expect(next).not.toBe(s)
+    expect(setRole(s, 'enemies', 5, 'TOP')).toBe(s)
   })
 })

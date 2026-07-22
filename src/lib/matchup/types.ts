@@ -116,13 +116,22 @@ export function resizeToMode(scenario: MatchUpScenario, mode: MatchUpMode): Matc
 export type Side = 'allies' | 'enemies'
 
 export const MIN_LEVEL = 1
-export const MAX_LEVEL = 18   // niveau max d'un champion LoL
+export const MAX_LEVEL = 18       // cap standard d'un champion LoL
+export const MAX_LEVEL_TOP = 20   // Top ayant complété sa Role Quest (Season 16)
 
-// Ramène un niveau dans [1, 18] et le tronque à un entier (miroir du clamp WPF).
-// Valeur non finie (NaN venant d'un <input> vide) → niveau minimum.
-export function clampLevel(level: number): number {
+// Cap de niveau CONDITIONNEL au rôle du slot. Seul le Top peut dépasser 18 (20 via
+// la Role Quest S16) ; tous les autres rôles — ET l'absence de rôle — restent à 18.
+// Défaut sûr : un slot sans rôle assigné n'hérite jamais du cap étendu.
+export function maxLevelForRole(role?: MatchUpRole): number {
+  return role === 'TOP' ? MAX_LEVEL_TOP : MAX_LEVEL
+}
+
+// Ramène un niveau dans [1, cap du rôle] et le tronque à un entier (miroir du clamp
+// WPF). Valeur non finie (NaN venant d'un <input> vide) → niveau minimum.
+// `role` omis → cap 18 (comportement historique préservé).
+export function clampLevel(level: number, role?: MatchUpRole): number {
   if (!Number.isFinite(level)) return MIN_LEVEL
-  return Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.trunc(level)))
+  return Math.min(maxLevelForRole(role), Math.max(MIN_LEVEL, Math.trunc(level)))
 }
 
 // Remplace un slot par le résultat de `fn` sans muter l'original (copie immuable).
@@ -157,9 +166,23 @@ export function setChampion(
   })
 }
 
-// Change le niveau simulé d'un slot (clampé 1..18).
+// Change le niveau simulé d'un slot (clampé au cap du rôle du slot : 20 si Top,
+// 18 sinon — y compris sans rôle assigné).
 export function setLevel(scenario: MatchUpScenario, side: Side, index: number, level: number): MatchUpScenario {
-  return updateSlot(scenario, side, index, slot => ({ ...slot, level: clampLevel(level) }))
+  return updateSlot(scenario, side, index, slot => ({ ...slot, level: clampLevel(level, slot.role) }))
+}
+
+// Assigne (ou retire avec `null`) le rôle d'un slot — Lot 3. Re-clampe le niveau
+// dans la foulée : quitter Top rabaisse un niveau 19/20 à 18, sinon le scénario
+// garderait un niveau devenu illégal pour le nouveau rôle.
+export function setRole(scenario: MatchUpScenario, side: Side, index: number, role: MatchUpRole | null): MatchUpScenario {
+  return updateSlot(scenario, side, index, slot => {
+    const next: MatchUpChampion = { ...slot }
+    if (role) next.role = role
+    else delete next.role
+    next.level = clampLevel(next.level, next.role)
+    return next
+  })
 }
 
 // Attache (ou retire) une référence de build à un slot — Lot 2.3. Ne touche ni

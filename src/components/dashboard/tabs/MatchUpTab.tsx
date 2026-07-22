@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { loadDDragon, champImgUrl, itemImgUrl, type DDragonData, type DDChampFull, type DDItemFull } from '@/lib/matchup/ddragon'
 import { listScenarios, saveScenario } from '@/lib/matchup/storage'
 import {
-  createScenario, resizeToMode, setChampion, setLevel, setBuild, MIN_LEVEL, MAX_LEVEL,
-  type MatchUpScenario, type MatchUpMode, type MatchUpChampion, type Side, type BuildRef,
+  createScenario, resizeToMode, setChampion, setLevel, setBuild, setRole, maxLevelForRole, MIN_LEVEL,
+  type MatchUpScenario, type MatchUpMode, type MatchUpChampion, type MatchUpRole, type Side, type BuildRef,
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
@@ -27,6 +27,18 @@ import StatRadar from '@/components/dashboard/matchup/StatRadar'
 // stats agrégées (resolveBuildStats) arrive en 2.4.
 
 type PickerTarget = { side: Side; index: number }
+
+// Vocabulaire de rôle repris de l'éditeur Scénarios (mêmes libellés, mêmes couleurs)
+// pour que les deux outils se lisent pareil. Le rôle est OPTIONNEL sur un slot
+// MatchUp (contrairement aux Scénarios où les 5 rôles sont fixes) : re-cliquer le
+// rôle actif le retire.
+const ROLES: MatchUpRole[] = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT']
+const ROLE_SHORT: Record<MatchUpRole, string> = {
+  TOP: 'TOP', JUNGLE: 'JGL', MID: 'MID', ADC: 'ADC', SUPPORT: 'SUP',
+}
+const ROLE_COLORS: Record<MatchUpRole, string> = {
+  TOP: '#E24B4A', JUNGLE: '#5DCAA5', MID: '#EF9F27', ADC: '#7F77DD', SUPPORT: '#3A8AC9',
+}
 
 // Build sauvegardé chargé depuis item_builds : affichage (picker + chip) + blocs
 // slim pour la future résolution de stats (2.4).
@@ -148,6 +160,16 @@ export default function MatchUpTab() {
     setScenario(s => (s ? setLevel(s, side, index, level) : s))
   }
 
+  // Toggle : re-cliquer le rôle déjà actif le retire (retour à « aucun rôle »).
+  // `setRole` re-clampe le niveau, donc quitter Top rabaisse 19/20 → 18.
+  function toggleRole(side: Side, index: number, role: MatchUpRole) {
+    setScenario(s => {
+      if (!s) return s
+      const current = s[side][index]?.role
+      return setRole(s, side, index, current === role ? null : role)
+    })
+  }
+
   function applyBuild(build: BuildRef) {
     if (!buildTarget) return
     setScenario(s => (s ? setBuild(s, buildTarget.side, buildTarget.index, build) : s))
@@ -204,6 +226,7 @@ export default function MatchUpTab() {
     onAdd:   (i: number) => setChampTarget({ side, index: i }),
     onClear: (i: number) => clearSlot(side, i),
     onLevel: (i: number, lvl: number) => changeLevel(side, i, lvl),
+    onRole:  (i: number, role: MatchUpRole) => toggleRole(side, i, role),
     onBuild: (i: number) => setBuildTarget({ side, index: i }),
   })
 
@@ -324,7 +347,7 @@ function analyzeBtnStyle(c: boolean, loading: boolean, disabled: boolean): CSSPr
 
 // Colonne de slots d'un camp.
 function SlotColumn({
-  label, color, side, champions, version, c, describeBuild, onAdd, onClear, onLevel, onBuild,
+  label, color, side, champions, version, c, describeBuild, onAdd, onClear, onLevel, onRole, onBuild,
 }: {
   label: string
   color: string
@@ -336,6 +359,7 @@ function SlotColumn({
   onAdd: (index: number) => void
   onClear: (index: number) => void
   onLevel: (index: number, level: number) => void
+  onRole: (index: number, role: MatchUpRole) => void
   onBuild: (index: number) => void
 }) {
   return (
@@ -352,6 +376,7 @@ function SlotColumn({
               build={describeBuild(ch.build)}
               onClear={() => onClear(i)}
               onLevel={lvl => onLevel(i, lvl)}
+              onRole={role => onRole(i, role)}
               onBuild={() => onBuild(i)}
             />
           ) : (
@@ -376,7 +401,7 @@ function SlotColumn({
 
 // Slot occupé : icône + nom + niveau + build attaché + retrait.
 function FilledSlot({
-  champ, version, c, build, onClear, onLevel, onBuild,
+  champ, version, c, build, onClear, onLevel, onRole, onBuild,
 }: {
   champ: MatchUpChampion
   version: string
@@ -384,10 +409,14 @@ function FilledSlot({
   build: BuildSummary | null
   onClear: () => void
   onLevel: (level: number) => void
+  onRole: (role: MatchUpRole) => void
   onBuild: () => void
 }) {
   const name = champ.champ!.name
   const border = c ? 'rgba(186,117,23,0.25)' : '#27272A'
+  // Cap dérivé du rôle : 20 pour Top (Role Quest S16), 18 partout ailleurs et
+  // quand aucun rôle n'est renseigné.
+  const maxLevel = maxLevelForRole(champ.role)
   return (
     <div
       style={{
@@ -412,10 +441,15 @@ function FilledSlot({
                 color: 'var(--text)', background: c ? 'rgba(0,0,0,0.25)' : '#0F0F11', border: `1px solid ${border}`,
               }}
             >
-              {Array.from({ length: MAX_LEVEL - MIN_LEVEL + 1 }, (_, k) => MIN_LEVEL + k).map(lvl => (
+              {Array.from({ length: maxLevel - MIN_LEVEL + 1 }, (_, k) => MIN_LEVEL + k).map(lvl => (
                 <option key={lvl} value={lvl}>{lvl}</option>
               ))}
             </select>
+            {champ.role === 'TOP' && (
+              <span title="Role Quest Top (Season 16) : plafond 20" style={{ fontSize: 10, color: ROLE_COLORS.TOP, fontWeight: 700 }}>
+                /20
+              </span>
+            )}
           </label>
         </div>
         <button
@@ -428,6 +462,29 @@ function FilledSlot({
         >
           ×
         </button>
+      </div>
+
+      {/* Rôle du slot (optionnel) — toggle : re-cliquer le rôle actif le retire. */}
+      <div style={{ display: 'flex', gap: 4 }} role="group" aria-label={`Rôle de ${name}`}>
+        {ROLES.map(r => {
+          const on = champ.role === r
+          return (
+            <button
+              key={r}
+              onClick={() => onRole(r)}
+              aria-pressed={on}
+              title={on ? `Retirer le rôle ${r}` : `Assigner le rôle ${r}`}
+              style={{
+                flex: 1, padding: '3px 0', borderRadius: 5, fontSize: 10, fontWeight: 700, letterSpacing: 0.5, cursor: 'pointer',
+                color: on ? '#fff' : 'var(--text-muted)',
+                background: on ? ROLE_COLORS[r] : 'transparent',
+                border: `1px solid ${on ? ROLE_COLORS[r] : border}`,
+              }}
+            >
+              {ROLE_SHORT[r]}
+            </button>
+          )
+        })}
       </div>
 
       {/* Ligne build : chip + bouton d'édition */}
