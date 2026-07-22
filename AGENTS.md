@@ -703,7 +703,7 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |
 | Patch Notes | Fonctionnel — onglet dashboard + page publique `/patch-notes` (SSR) |
-| Match Up | Verrouillé — dev preview admin |
+| Match Up | Fonctionnel — éditeur complet (admin + tiers maître+) : mode, champions, niveaux, builds, radar, analyse IA. Voir §MatchUp Web |
 | Post Game | Verrouillé — dev preview admin |
 | Tournois | Soon screen |
 | Admin | Fonctionnel (gestion users, tiers, certification) |
@@ -743,6 +743,33 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
   - Fetch non bloquant — si la DB est vide pour ce bucket, message dégradé gracieux.
 - **Alimentation de la DB** : `riot-matches` appelle `harvestRankStats` (fire-and-forget, `_shared/harvest-rank-stats.ts`) sur cache MISS + page 0 + appel by Riot ID. Lit le tier depuis `riot_cache` (pas d'appel Riot supplémentaire).
 - **Seuil de représentativité** : `get_rank_avg()` ne retourne rien si `< 50 samples` dans le bucket — empêche les comparaisons biaisées.
+
+---
+
+## 🟡 MatchUp Web — éditeur d'analyse (chantier clos, 2026-07-22)
+
+Portage web complet du builder MatchUp WPF, onglet dashboard **Match Up** (`src/components/dashboard/tabs/MatchUpTab.tsx`, déverrouillé admin + tiers maître+). Persistance **localStorage** (parité `matchups.json` WPF, pas de table Supabase). Livré en 3 lots.
+
+### Modèle & persistance (Lot 1)
+- `src/lib/matchup/types.ts` — `MatchUpScenario { mode, allies[], enemies[] }`, `MatchUpChampion { champ, level, build, baseStats }`, `BuildRef = none | saved(buildId) | temp(blocks)`. Réducteurs **purs** (immuables, garde d'index) : `resizeToMode`, `setChampion`, `setLevel`/`clampLevel` (1–18), `setBuild`.
+- `src/lib/matchup/storage.ts` — CRUD localStorage `wf.matchups.v1`, SSR-safe.
+- `src/lib/matchup/ddragon.ts` — loader DDragon dédié conservant `stats` (base + perlevel) pour le scaling.
+- `src/lib/champion-stats.ts` — helper centralisé `statAtLevel` / `scaledBaseStats` / `aggregateItemStats` (partagé avec BuildsTab).
+
+### UI de sélection (Lot 2 — 2.1→2.4)
+- **2.1** socle (ModeSelector 1v1→5v5, slots, autosave debounced). **2.2** `ChampionPicker` (recherche insensible casse/accents) + niveau simulé. **2.3** `BuildPicker` : build **sauvegardé** (`item_builds`, par référence, résolu à la volée) OU **temporaire** (snapshot d'items autonome) ; `src/lib/matchup/build-resolve.ts` = pont pur `BuildRef → aggregateItemStats`. **2.4** `StatRadar` : radar SVG autonome, `src/lib/matchup/stats-compare.ts` = miroir pur de `AddStatsComparison` WPF (11 axes base+items, normalisation par axe). *Le tableau comparatif et les barres du WPF sont volontairement écartés (radar seul).*
+
+### Câblage analyse IA (Lot 3)
+- `src/lib/matchup/payload.ts` (**pur, testé**) — `buildScenarioPayload`/`champPayload`, miroir strict de `ChampPayload`/`BuildScenario` de `ClaudeService.cs` : stats scalées `toFixed(1)`, itère **toutes** les clés baseStats (parité WPF), noms d'items (temp snapshot / saved résolus DDragon), slots vides filtrés. Plus `readQuota`, `formatResetFr`, `overQuotaMessage`.
+- `src/lib/matchup/api.ts` — couche réseau (miroir `ClaudeService`) : `analyzeMatchup` (POST) + `getQuota` (GET), token via `supabase.auth.getSession`, **mapping FR identique** (0/401/429/502/autre/vide). Séparé de `payload.ts` pour tester le pur sans l'alias `@/` (vitest sans config d'alias).
+- `MatchUpTab` : boutons rapide/détaillée, compteur X/N, blocage propre à 0, bannière tronqué, résultat.
+- `scripts/matchup-analyze-smoke.mjs` — **test réel non mocké** (GET quota → POST 200 + décompte → exhaustion → 429 `over_quota` + blocage). Garde-fou coût (exhaustion opt-in).
+
+### 🔑 Point d'architecture — backend réutilisé SANS modification serveur
+L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_quota` (migration `20260720000001`), écrites pour le **WPF**, sont désormais consommées **à l'identique par le web** : **aucun changement côté serveur** (ni EF, ni SQL, ni migration) n'a été nécessaire pour brancher le 2ᵉ client — seule une couche cliente TS (`api.ts` + `payload.ts`) miroir de `ClaudeService.cs`. C'est la **preuve concrète que le patron proxy Anthropic serveur + quota atomique par tier est réellement réutilisable** (cf. §Modèle freemium : c'est ce même patron que Post Game réutilisera, avec juste une nouvelle `feature` et un nouveau barème). Contrat POST/GET, gating par tier, clé Anthropic serveur : voir la doc `matchup-analyze` dans la liste des Edge Functions.
+
+### Tests
+`src/lib/matchup/*.test.ts` (vitest) : `types`, `storage`, `ddragon`, `build-resolve`, `stats-compare`, `payload` — **86 tests** couvrant tous les modules purs. La couche réseau `api.ts` est couverte par le smoke script réel (non mocké).
 
 ---
 
@@ -804,7 +831,7 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
   - **Flow POST** : auth → lecture `tier`/`role` (`profiles`) → mapping → `consume_ai_quota` → `NULL` ⇒ **429** `{ over_quota:true, used, limit, remaining:0, resets_at }` (aucun appel payant) ; sinon appel Anthropic → échec ⇒ `refund_ai_quota` + **502** ; succès ⇒ `{ analysis, model, advanced, truncated, used, limit, remaining, resets_at }`. `truncated = (stop_reason === 'max_tokens')` — avertissement remonté explicitement, jamais de troncature muette.
   - **GET** : état du quota de la semaine (`{ used, limit, remaining, model, resets_at }`) **sans rien consommer** — alimente l'affichage « X/N ».
   - Codes : 200 · 400 (payload) · 401 (JWT) · 405 · 429 (plafond hebdo) · 502 (Anthropic KO) · 500. Secret requis : `ANTHROPIC_API_KEY` (partagé avec `patch-notes-generator`).
-  - Consommateur : **app WPF** `ClaudeService` → `WyrmBackendService.PostFunctionAsync`/`GetFunctionRawAsync` (voir AGENTS.md WPF). Le site n'a pas encore d'UI MatchUp (onglet dev preview admin).
+  - Consommateurs : **app WPF** `ClaudeService` → `WyrmBackendService.PostFunctionAsync`/`GetFunctionRawAsync` (voir AGENTS.md WPF) **ET site web** `src/lib/matchup/api.ts` (`analyzeMatchup`/`getQuota`) depuis l'onglet Match Up. **Aucune modification serveur** n'a été nécessaire pour brancher le 2ᵉ client (voir §MatchUp Web) — preuve que le patron proxy+quota est réutilisable tel quel.
   - 🔁 **PATRON RÉUTILISABLE pour Post Game** (analyse IA post-partie, encore à cadrer) : réutiliser **tel quel** le trio EF `verify_jwt=true` + proxy Anthropic serveur + `usage_counters`/`consume_ai_quota`/`refund_ai_quota`, avec un **nouveau `feature`** (ex. `'postgame_analyze'`) et le mapping tier→modèle/limite dans l'EF. **Ne PAS réinventer l'infra de quota** — seuls la `feature`, le barème (voir §Modèle freemium : Post Game 3/9/∞) et le prompt changent.
 - `tournament-register` : inscription publique d'une équipe (POST, JWT optionnel) — body `{ tournament_id, team_name, players[2] }`. Rate limit IP. Validation complète des inputs (UUID, nom, riot_pseudo, discord_pseudo). Vérifie `status = 'registration'` et `count(pending+validated) < max_teams`. INSERT `tournament_teams` + `tournament_players` via service_role. Codes HTTP : 400 validation, 403 tournoi non ouvert, 409 complet/nom pris, 429 rate limit, 201 succès.
 - `tournament-admin` : actions d'administration d'un tournoi (POST, JWT obligatoire — vérifié DANS LE CODE, `verify_jwt = false` dans config.toml) — body `{ action, tournament_id, ... }`. Vérifie `created_by === user.id OR is_admin()`. Les RPC SECURITY DEFINER (`seed_bracket`, `start_match`, `report_match_result`, `undo_match_result`) sont appelées via `userDb` (client JWT utilisateur) car elles utilisent `auth.uid()` en interne. Actions : `open_registration`, `close_registration`, `validate_team`, `reject_team`, `seed_bracket`, `start_match`, `report_result`, `undo_result`, `set_status`. Codes HTTP : 400 état/payload invalide, 401 JWT absent, 403 non autorisé, 404 tournoi/match non trouvé, 409 conflit.

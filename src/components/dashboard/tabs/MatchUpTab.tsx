@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { loadDDragon, champImgUrl, itemImgUrl, type DDragonData, type DDChampFull, type DDItemFull } from '@/lib/matchup/ddragon'
@@ -11,6 +11,7 @@ import {
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
+import { analyzeMatchup, getQuota, formatResetFr, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
 import BuildPicker, { type SavedBuildDisplay } from '@/components/dashboard/matchup/BuildPicker'
@@ -51,6 +52,10 @@ export default function MatchUpTab() {
   const [saved, setSaved]       = useState<SavedBuildFull[]>([])
   const [champTarget, setChampTarget] = useState<PickerTarget | null>(null)
   const [buildTarget, setBuildTarget] = useState<PickerTarget | null>(null)
+  // Analyse IA (Lot 3)
+  const [quota, setQuota]         = useState<QuotaState | null>(null)
+  const [analysis, setAnalysis]   = useState<MatchUpAnalysisResult | null>(null)
+  const [analyzing, setAnalyzing] = useState<false | 'quick' | 'detailed'>(false)
 
   // Chargement DDragon + builds sauvegardés + restauration/création du scénario.
   useEffect(() => {
@@ -91,6 +96,13 @@ export default function MatchUpTab() {
     return () => clearTimeout(t)
   }, [scenario])
 
+  // État du quota hebdo (GET, ne consomme rien). null si non connecté → compteur masqué.
+  useEffect(() => {
+    let alive = true
+    getQuota().then(q => { if (alive) setQuota(q) })
+    return () => { alive = false }
+  }, [])
+
   // Index DDragon dérivés (item id → item complet) pour l'aperçu des builds temp.
   const itemsById = useMemo<Record<string, DDItemFull>>(() => {
     const out: Record<string, DDItemFull> = {}
@@ -110,6 +122,13 @@ export default function MatchUpTab() {
     for (const it of dd?.items ?? []) out[it.id] = it.stats
     return out
   }, [dd])
+
+  // Contexte de résolution des noms d'items pour le payload d'analyse (Lot 3).
+  const nameCtx = useMemo<BuildNameContext>(() => {
+    const itemNameById: Record<string, string> = {}
+    for (const it of dd?.items ?? []) itemNameById[it.id] = it.name
+    return { itemNameById, savedById }
+  }, [dd, savedById])
 
   function changeMode(mode: MatchUpMode) {
     setScenario(s => (s ? resizeToMode(s, mode) : s))
@@ -133,6 +152,19 @@ export default function MatchUpTab() {
     if (!buildTarget) return
     setScenario(s => (s ? setBuild(s, buildTarget.side, buildTarget.index, build) : s))
     setBuildTarget(null)
+  }
+
+  // Analyse IA (POST matchup-analyze). Met à jour le quota depuis la réponse quand
+  // elle porte l'état (succès ou plafond 429) — pas sur une erreur réseau/serveur.
+  async function runAnalysis(advanced: boolean) {
+    if (analyzing || !scenario) return
+    setAnalyzing(advanced ? 'detailed' : 'quick')
+    const res = await analyzeMatchup(scenario, advanced, nameCtx)
+    setAnalysis(res)
+    if (res.success || res.overQuota) {
+      setQuota({ used: res.used, limit: res.limit, remaining: res.remaining, model: res.model, resetsAt: res.resetsAt })
+    }
+    setAnalyzing(false)
   }
 
   // Résumé d'affichage d'un build attaché à un slot (null si aucun).
@@ -161,6 +193,10 @@ export default function MatchUpTab() {
   const hasAlly  = scenario.allies.some(ch => ch.champ)
   const hasEnemy = scenario.enemies.some(ch => ch.champ)
   const radar = computeRadar(scenario.allies, scenario.enemies, savedById, itemStatsIndex)
+
+  // Analyse IA : besoin d'un champion de chaque côté ; bloquée à 0 restant.
+  const quotaExhausted = quota != null && quota.remaining <= 0
+  const canAnalyze = hasAlly && hasEnemy && !analyzing && !quotaExhausted
 
   const columnProps = (side: Side, champions: MatchUpChampion[]) => ({
     side, champions, version: dd.version, c,
@@ -195,6 +231,65 @@ export default function MatchUpTab() {
         )}
       </div>
 
+      {/* Analyse IA (matchup-analyze) */}
+      <div style={{ marginTop: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Analyse IA</div>
+          {quota && (
+            <span style={{ fontSize: 12, color: quotaExhausted ? '#E5484D' : 'var(--text-muted)' }}>
+              {quota.remaining}/{quota.limit} cette semaine
+              {quota.resetsAt && quotaExhausted ? ` · réinit. ${formatResetFr(quota.resetsAt)}` : ''}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => runAnalysis(false)}
+            disabled={!canAnalyze}
+            style={analyzeBtnStyle(c, analyzing === 'quick', !canAnalyze)}
+          >
+            {analyzing === 'quick' ? 'Analyse…' : 'Analyse rapide'}
+          </button>
+          <button
+            onClick={() => runAnalysis(true)}
+            disabled={!canAnalyze}
+            style={analyzeBtnStyle(c, analyzing === 'detailed', !canAnalyze)}
+          >
+            {analyzing === 'detailed' ? 'Analyse…' : 'Analyse détaillée'}
+          </button>
+        </div>
+
+        {!hasAlly || !hasEnemy ? (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+            Ajoute un champion dans chaque camp pour lancer une analyse.
+          </p>
+        ) : quotaExhausted ? (
+          <p style={{ fontSize: 12, color: '#E5484D', marginTop: 8 }}>
+            Quota d&apos;analyses atteint pour cette semaine.
+          </p>
+        ) : null}
+
+        {analysis && (
+          <div
+            style={{
+              marginTop: 14, padding: 14, borderRadius: 8,
+              background: c ? 'rgba(255,255,255,0.03)' : '#18181B',
+              border: `1px solid ${analysis.success ? (c ? 'rgba(186,117,23,0.25)' : '#27272A') : '#E5484D'}`,
+            }}
+          >
+            {analysis.truncated && (
+              <div style={{ fontSize: 12, color: c ? '#FAC775' : '#EF9F27', marginBottom: 8 }}>
+                ⚠ Analyse tronquée (limite de longueur atteinte).
+              </div>
+            )}
+            <div style={{ fontSize: 13, lineHeight: 1.55, color: analysis.success ? 'var(--text)' : '#E5484D', whiteSpace: 'pre-wrap' }}>
+              {analysis.text}
+            </div>
+          </div>
+        )}
+      </div>
+
       {champTarget && (
         <ChampionPicker
           champs={dd.champs} version={dd.version} c={c}
@@ -212,6 +307,19 @@ export default function MatchUpTab() {
       )}
     </div>
   )
+}
+
+// Style d'un bouton d'analyse (actif / en cours / désactivé).
+function analyzeBtnStyle(c: boolean, loading: boolean, disabled: boolean): CSSProperties {
+  const accent = c ? '#BA7517' : '#7F77DD'
+  return {
+    padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+    cursor: disabled ? 'default' : 'pointer',
+    color: disabled ? 'var(--text-muted)' : '#fff',
+    background: disabled ? (c ? 'rgba(255,255,255,0.04)' : '#18181B') : accent,
+    border: `1px solid ${disabled ? (c ? 'rgba(186,117,23,0.2)' : '#27272A') : accent}`,
+    opacity: loading ? 0.75 : 1,
+  }
 }
 
 // Colonne de slots d'un camp.
