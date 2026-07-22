@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  createScenario, resizeToMode, setChampion, setLevel, clampLevel,
+  createScenario, resizeToMode, setChampion, setLevel, setBuild, clampLevel,
   slotCounts, emptyChampion, MIN_LEVEL, MAX_LEVEL,
-  type ChampRef,
+  type ChampRef, type BuildRef,
 } from './types'
 
 const AHRI: ChampRef = { id: 'Ahri', name: 'Ahri', image: 'Ahri.png' }
@@ -99,5 +99,32 @@ describe('setLevel — niveau simulé', () => {
   it('index hors bornes → scénario inchangé', () => {
     const s = createScenario('1v1')
     expect(setLevel(s, 'enemies', 3, 5)).toBe(s)
+  })
+})
+
+describe('setBuild — build attaché au slot', () => {
+  const TEMP: BuildRef = { kind: 'temp', blocks: [{ id: 'x', name: 'Build', items: [] }] }
+
+  it('attache un build sans toucher champion ni niveau', () => {
+    let s = createScenario('1v1')
+    s = setChampion(s, 'allies', 0, AHRI, AHRI_STATS)
+    s = setLevel(s, 'allies', 0, 9)
+    const s2 = setBuild(s, 'allies', 0, { kind: 'saved', buildId: 'b1' })
+    expect(s2.allies[0].build).toEqual({ kind: 'saved', buildId: 'b1' })
+    expect(s2.allies[0].champ).toEqual(AHRI)   // champion préservé
+    expect(s2.allies[0].level).toBe(9)         // niveau préservé
+  })
+
+  it('remplace un build existant et peut détacher (none)', () => {
+    let s = createScenario('1v1')
+    s = setBuild(s, 'enemies', 0, TEMP)
+    expect(s.enemies[0].build).toEqual(TEMP)
+    s = setBuild(s, 'enemies', 0, { kind: 'none' })
+    expect(s.enemies[0].build).toEqual({ kind: 'none' })
+  })
+
+  it('index hors bornes → scénario inchangé', () => {
+    const s = createScenario('1v1')
+    expect(setBuild(s, 'allies', 9, TEMP)).toBe(s)
   })
 })

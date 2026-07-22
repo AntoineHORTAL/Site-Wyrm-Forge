@@ -154,3 +154,9 @@ export function setChampion(
 export function setLevel(scenario: MatchUpScenario, side: Side, index: number, level: number): MatchUpScenario {
   return updateSlot(scenario, side, index, slot => ({ ...slot, level: clampLevel(level) }))
 }
+
+// Attache (ou retire) une référence de build à un slot — Lot 2.3. Ne touche ni
+// au champion ni au niveau. `{ kind: 'none' }` détache le build.
+export function setBuild(scenario: MatchUpScenario, side: Side, index: number, build: BuildRef): MatchUpScenario {
+  return updateSlot(scenario, side, index, slot => ({ ...slot, build }))
+}
