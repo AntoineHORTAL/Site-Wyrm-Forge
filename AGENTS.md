@@ -748,6 +748,13 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 
 ## 📋 À faire plus tard
 
+### MatchUp — cap de niveau Top lane 18→20 (Season 16, Role Quest)
+**Mécanique confirmée réelle et sourcée** (wiki officiel LoL + article Season 16) : un champion en **Top lane** qui complète sa *Role Quest* voit son plafond de niveau passer de **18 à 20** ; les autres rôles (Jungle/Mid/ADC/Support) restent plafonnés à 18.
+
+**Non implémenté aujourd'hui — chantier séparé.** Le modèle MatchUp (`src/lib/matchup/types.ts` web ET `Models/MatchUp.cs` WPF) **n'a aucun champ de rôle par slot** : les modes (`1v1`…`5v5`) sont de purs compteurs de slots. Le cap 18/20 dépendrait d'un rôle qui n'existe pas encore → il faut d'abord **introduire un modèle de rôle par slot** dans MatchUp (web + miroir C# + sérialisation localStorage), puis gater `MAX_LEVEL` dessus (18 par défaut, 20 si Top).
+
+**État figé assumé pour l'instant** : `MAX_LEVEL = 18` côté web (aucune régression) ; le WPF autorise déjà 1→20 pour **tous** les slots sans gating (état existant, non modifié). L'écart web/WPF (18 vs 20) est **assumé** — à **aligner sur le même comportement** une fois le rôle disponible. Côté calcul pur, aucun changement requis : `statAtLevel` (web) et `GetStatAtLevel` (WPF) scalent linéairement (`base + per*(level-1)`) sans cap interne, donc 19/20 sont déjà calculés correctement.
+
 ### Offline support (To-Do Lists)
 **Décision** : implémenter quand l'app desktop existera — inutile avant d'avoir les deux clients.
 

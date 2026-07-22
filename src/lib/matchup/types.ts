@@ -103,3 +103,54 @@ export function resizeToMode(scenario: MatchUpScenario, mode: MatchUpMode): Matc
   }
   return { ...scenario, mode, allies: fit(scenario.allies, allies), enemies: fit(scenario.enemies, enemies) }
 }
+
+// ── Mutateurs de slot (purs, testables) — Lot 2.2 ────────────────────────────
+
+export type Side = 'allies' | 'enemies'
+
+export const MIN_LEVEL = 1
+export const MAX_LEVEL = 18   // niveau max d'un champion LoL
+
+// Ramène un niveau dans [1, 18] et le tronque à un entier (miroir du clamp WPF).
+// Valeur non finie (NaN venant d'un <input> vide) → niveau minimum.
+export function clampLevel(level: number): number {
+  if (!Number.isFinite(level)) return MIN_LEVEL
+  return Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.trunc(level)))
+}
+
+// Remplace un slot par le résultat de `fn` sans muter l'original (copie immuable).
+// Index hors bornes → scénario inchangé (garde défensif).
+function updateSlot(
+  scenario: MatchUpScenario,
+  side: Side,
+  index: number,
+  fn: (slot: MatchUpChampion) => MatchUpChampion,
+): MatchUpScenario {
+  const list = scenario[side]
+  if (index < 0 || index >= list.length) return scenario
+  const next = list.slice()
+  next[index] = fn(next[index])
+  return { ...scenario, [side]: next }
+}
+
+// Pose (ou retire) le champion d'un slot. `champ === null` réinitialise le slot
+// à vide (champ/build/stats effacés). Poser un champion fige son snapshot de
+// stats DDragon (`baseStats`) et réinitialise le build (l'ancien référençait
+// l'ancien champion) ; le niveau simulé est conservé.
+export function setChampion(
+  scenario: MatchUpScenario,
+  side: Side,
+  index: number,
+  champ: ChampRef | null,
+  baseStats: RawStats = {},
+): MatchUpScenario {
+  return updateSlot(scenario, side, index, slot => {
+    if (!champ) return emptyChampion()
+    return { ...slot, champ, baseStats, build: { kind: 'none' } }
+  })
+}
+
+// Change le niveau simulé d'un slot (clampé 1..18).
+export function setLevel(scenario: MatchUpScenario, side: Side, index: number, level: number): MatchUpScenario {
+  return updateSlot(scenario, side, index, slot => ({ ...slot, level: clampLevel(level) }))
+}
