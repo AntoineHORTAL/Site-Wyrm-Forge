@@ -9,7 +9,10 @@
 //
 // ── POST /functions/v1/matchup-analyze ──────────────────────────────────────
 //   Body : { advanced: boolean, scenario: { mode, allies[], enemies[] } }
-//     champ = { name, level, stats?: [{label,value}], build?: string[] }
+//     champ = { name, level, stats?: [{label,value}], build?: string[],
+//               role?: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT' }
+//   `role` est OPTIONNEL : absent/inconnu → prompt identique à l'ancien format
+//   (rétrocompatible avec un client WPF/web pré-migration).
 //   Flow : auth → lecture tier (profiles) → mapping tier→{limite,modèle} →
 //          consume_ai_quota (réservation atomique) → appel Anthropic →
 //          refund si échec Anthropic → réponse { analysis, used, limit, ... }.
@@ -64,13 +67,28 @@ function nextWeekStartISO(d = new Date()): string {
 }
 
 // ── Construction du prompt (miroir de BuildPrompt() de ClaudeService.cs) ──────
-interface Champ { name?: unknown; level?: unknown; stats?: unknown; build?: unknown }
+interface Champ { name?: unknown; level?: unknown; stats?: unknown; build?: unknown; role?: unknown }
 interface Scenario { mode?: unknown; allies?: unknown; enemies?: unknown }
+
+// Rôle par slot (OPTIONNEL — ajouté au contrat sans casser les anciens clients).
+// Libellés FR pour enrichir le contexte tactique de l'analyse. Un rôle absent ou
+// inconnu n'ajoute rien : le bloc champion reste alors identique à l'ancien format.
+const ROLE_LABELS: Record<string, string> = {
+  TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support',
+}
+function roleLabel(role: unknown): string | null {
+  if (typeof role !== 'string') return null
+  return ROLE_LABELS[role.toUpperCase()] ?? null
+}
 
 function champBlock(c: Champ, side: string): string {
   const name  = String(c.name ?? '').slice(0, 40)
   const level = Number(c.level) || 1
-  let s = `\n${name} (${side}) niveau ${level} :\n`
+  // Le rôle n'est injecté que s'il est présent ET valide → sans rôle, la ligne
+  // reste strictement identique à l'ancien format (rétrocompatibilité).
+  const rl    = roleLabel(c.role)
+  const who   = rl ? `${side}, ${rl}` : side
+  let s = `\n${name} (${who}) niveau ${level} :\n`
   if (Array.isArray(c.stats)) {
     for (const st of (c.stats as { label?: unknown; value?: unknown }[]).slice(0, 20)) {
       s += `  ${String(st.label ?? '').slice(0, 30)}: ${String(st.value ?? '')}\n`

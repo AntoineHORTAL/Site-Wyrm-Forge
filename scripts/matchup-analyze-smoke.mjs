@@ -83,6 +83,14 @@ const SCENARIO = {
   }],
 }
 
+// Même scénario mais AVEC un rôle par champion (Lot 1 — contrat EF étendu).
+// Sert à vérifier que l'EF accepte le champ `role` et ne dégrade pas.
+const SCENARIO_WITH_ROLE = {
+  ...SCENARIO,
+  allies:  SCENARIO.allies.map(c => ({ ...c, role: 'TOP' })),
+  enemies: SCENARIO.enemies.map(c => ({ ...c, role: 'TOP' })),
+}
+
 function req(method, body) {
   return fetch(FN_URL, {
     method,
@@ -121,7 +129,19 @@ async function main() {
   check(typeof j1?.analysis === 'string' && j1.analysis.trim().length > 0, `analyse non vide reçue (${j1?.analysis?.length ?? 0} car.)`)
   check(j1?.used === usedBefore + 1, `quota décompte : used ${usedBefore} → ${j1?.used}`)
   check(typeof j1?.truncated === 'boolean', `champ truncated présent (${j1?.truncated})`)
-  if (p1.status === 200 && j1?.analysis) console.log(`\n--- extrait analyse ---\n${j1.analysis.slice(0, 240)}…\n-----------------------\n`)
+  if (p1.status === 200 && j1?.analysis) console.log(`\n--- extrait analyse (SANS rôle) ---\n${j1.analysis.slice(0, 200)}…\n-----------------------\n`)
+
+  // 2b) POST AVEC rôle → doit être accepté (200) au même titre que sans rôle.
+  //     (Lot 1 : extension du contrat. Rétrocompat = 2) sans rôle passe déjà.)
+  if ((j1?.remaining ?? 0) > 0) {
+    const p2 = await req('POST', { advanced: false, scenario: SCENARIO_WITH_ROLE })
+    const j2 = await p2.json().catch(() => null)
+    check(p2.status === 200, `POST AVEC rôle (role=TOP) → 200 (nouveau champ accepté)`)
+    check(typeof j2?.analysis === 'string' && j2.analysis.trim().length > 0, `analyse non vide reçue (avec rôle)`)
+    if (p2.status === 200 && j2?.analysis) console.log(`\n--- extrait analyse (AVEC rôle TOP) ---\n${j2.analysis.slice(0, 200)}…\n-----------------------\n`)
+  } else {
+    console.log('ℹ️ Plus de quota pour le cas AVEC rôle — relance sur un compte au quota disponible.')
+  }
 
   // 3) Blocage à 0 — seulement si peu d'unités restantes (coût) ou EXHAUST=1
   const remaining = j1?.remaining ?? 0
