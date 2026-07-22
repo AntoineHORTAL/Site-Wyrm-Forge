@@ -9,10 +9,12 @@ import {
   createScenario, resizeToMode, setChampion, setLevel, setBuild, MIN_LEVEL, MAX_LEVEL,
   type MatchUpScenario, type MatchUpMode, type MatchUpChampion, type Side, type BuildRef,
 } from '@/lib/matchup/types'
-import type { SavedBuildLite } from '@/lib/matchup/build-resolve'
+import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
+import { computeRadar } from '@/lib/matchup/stats-compare'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
 import BuildPicker, { type SavedBuildDisplay } from '@/components/dashboard/matchup/BuildPicker'
+import StatRadar from '@/components/dashboard/matchup/StatRadar'
 
 // ════════════════════════════════════════════════════════════════════════════
 //  MatchUpTab — éditeur de scénario MatchUp (portage web du builder WPF)
@@ -102,6 +104,13 @@ export default function MatchUpTab() {
     return out
   }, [saved])
 
+  // Index DDragon item id → stats (résolution des builds sauvegardés pour le radar).
+  const itemStatsIndex = useMemo<ItemStatsIndex>(() => {
+    const out: ItemStatsIndex = {}
+    for (const it of dd?.items ?? []) out[it.id] = it.stats
+    return out
+  }, [dd])
+
   function changeMode(mode: MatchUpMode) {
     setScenario(s => (s ? resizeToMode(s, mode) : s))
   }
@@ -149,6 +158,10 @@ export default function MatchUpTab() {
 
   const buildSlot = buildTarget ? scenario[buildTarget.side][buildTarget.index] : null
 
+  const hasAlly  = scenario.allies.some(ch => ch.champ)
+  const hasEnemy = scenario.enemies.some(ch => ch.champ)
+  const radar = computeRadar(scenario.allies, scenario.enemies, savedById, itemStatsIndex)
+
   const columnProps = (side: Side, champions: MatchUpChampion[]) => ({
     side, champions, version: dd.version, c,
     describeBuild,
@@ -166,6 +179,20 @@ export default function MatchUpTab() {
         <SlotColumn label="Alliés" color="#5DCAA5" {...columnProps('allies', scenario.allies)} />
         <div style={{ alignSelf: 'center', color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>VS</div>
         <SlotColumn label="Ennemis" color="#E5484D" {...columnProps('enemies', scenario.enemies)} />
+      </div>
+
+      {/* Comparaison de stats — radar seul (parité AddStatsComparison WPF). */}
+      <div style={{ marginTop: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
+          Comparaison des stats
+        </div>
+        {hasAlly && hasEnemy ? (
+          <StatRadar axes={radar} c={c} />
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Ajoute au moins un champion dans chaque camp pour comparer les stats.
+          </p>
+        )}
       </div>
 
       {champTarget && (
