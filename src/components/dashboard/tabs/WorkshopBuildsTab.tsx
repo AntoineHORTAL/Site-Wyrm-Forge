@@ -16,6 +16,11 @@ interface WorkshopBuild {
   titre: string
   description: string
   creator_name: string
+  // Propriétaire réel de la publication (auth.uid() posé à l'INSERT). Seul critère
+  // d'appartenance : creator_name est du texte libre, non vérifiable. NULL sur les
+  // builds publiés avant l'ajout de la colonne → jamais retirables par leur auteur
+  // (la policy wb_delete_owner compare à auth.uid(), et NULL n'est jamais égal).
+  creator_id: string | null
   champion: string
   role: string
   patch: string
@@ -46,6 +51,7 @@ export default function WorkshopBuildsTab() {
   const [importing, setImporting] = useState<string | null>(null)
   const [liking, setLiking]     = useState<string | null>(null)
   const [imported, setImported] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const border  = c ? 'rgba(186,117,23,0.2)' : '#27272A'
   const borderH = c ? 'rgba(186,117,23,0.5)' : '#3F3F46'
@@ -74,6 +80,7 @@ export default function WorkshopBuildsTab() {
             titre:        r.titre      ?? '',
             description:  r.description ?? '',
             creator_name: r.creator_name ?? '',
+            creator_id:   r.creator_id ?? null,
             champion:     r.champion   ?? '',
             role:         r.role       ?? '',
             patch:        r.patch      ?? '',
@@ -151,6 +158,30 @@ export default function WorkshopBuildsTab() {
     setImporting(null)
   }
 
+  // ── Retirer sa propre publication ─────────────────────────────────────────
+  // Suppression réelle : workshop_builds n'a aucun flag de visibilité, retirer = DELETE.
+  // L'autorisation est portée par la RLS (wb_delete_owner : auth.uid() = creator_id) —
+  // le test d'appartenance côté client ne sert qu'à afficher le bouton, il n'autorise rien.
+  async function handleDelete(build: WorkshopBuild) {
+    if (deleting) return
+    if (!confirm(`Retirer « ${build.titre} » du Workshop ?\n\nCette action est irréversible : le build ne sera plus visible par la communauté et ses ♥ et ↓ seront perdus. Ta copie personnelle dans « Builds Items » n'est pas affectée.`)) return
+
+    setDeleting(build.id)
+    // `.select()` est indispensable : un DELETE refusé par la RLS ne lève PAS d'erreur,
+    // il supprime simplement 0 ligne (vérifié en conditions réelles). Sans les lignes
+    // retournées, on retirerait la carte de l'affichage alors que le build est toujours
+    // publié. On ne se fie donc qu'à ce que le serveur dit avoir supprimé.
+    const { data, error } = await supabase
+      .from('workshop_builds').delete().eq('id', build.id).select('id')
+
+    if (!error && data && data.length > 0) {
+      setBuilds(prev => prev.filter(b => b.id !== build.id))
+    } else {
+      console.error('[Workshop] delete refusé ou sans effet', error?.message ?? '0 ligne supprimée')
+    }
+    setDeleting(null)
+  }
+
   // ── Filtres ───────────────────────────────────────────────────────────────
   const filtered = builds.filter(b => {
     if (role !== 'Tous' && b.role.toLowerCase() !== role.toLowerCase()) return false
@@ -223,6 +254,10 @@ export default function WorkshopBuildsTab() {
             const isImported = imported.has(build.id)
             const isImportingThis = importing === build.id
             const isLikingThis = liking === build.id
+            // `creator_id` peut être NULL (builds antérieurs à la colonne) : la comparaison
+            // stricte l'exclut, et c'est voulu — la RLS refuserait la suppression de toute façon.
+            const isMine = !!userId && build.creator_id === userId
+            const isDeletingThis = deleting === build.id
 
             return (
               <div key={build.id} style={{
@@ -351,6 +386,26 @@ export default function WorkshopBuildsTab() {
                         ? 'Connecte-toi pour importer'
                         : 'Importer le build'}
                 </button>
+
+                {/* ── Retirer (propriétaire uniquement) ── */}
+                {isMine && (
+                  <button
+                    onClick={() => handleDelete(build)}
+                    disabled={isDeletingThis}
+                    style={{
+                      width: '100%', padding: '7px',
+                      background: 'transparent',
+                      border: '1px solid rgba(229,72,77,0.35)',
+                      borderRadius: 6, color: '#E5484D',
+                      fontSize: 12, fontWeight: 500,
+                      cursor: isDeletingThis ? 'default' : 'pointer',
+                      fontFamily: 'inherit', transition: 'opacity 0.15s',
+                      opacity: isDeletingThis ? 0.6 : 1,
+                    }}
+                  >
+                    {isDeletingThis ? 'Retrait…' : '🗑 Retirer du Workshop'}
+                  </button>
+                )}
               </div>
             )
           })}
