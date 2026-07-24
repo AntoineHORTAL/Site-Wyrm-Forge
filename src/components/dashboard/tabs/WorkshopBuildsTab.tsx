@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import { removeWorkshopBuild } from '@/lib/workshop-builds'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface WBItem {
@@ -167,17 +168,15 @@ export default function WorkshopBuildsTab() {
     if (!confirm(`Retirer « ${build.titre} » du Workshop ?\n\nCette action est irréversible : le build ne sera plus visible par la communauté et ses ♥ et ↓ seront perdus. Ta copie personnelle dans « Builds Items » n'est pas affectée.`)) return
 
     setDeleting(build.id)
-    // `.select()` est indispensable : un DELETE refusé par la RLS ne lève PAS d'erreur,
-    // il supprime simplement 0 ligne (vérifié en conditions réelles). Sans les lignes
-    // retournées, on retirerait la carte de l'affichage alors que le build est toujours
-    // publié. On ne se fie donc qu'à ce que le serveur dit avoir supprimé.
-    const { data, error } = await supabase
-      .from('workshop_builds').delete().eq('id', build.id).select('id')
+    // Logique de suppression partagée avec le toggle « Dépublier » de BuildsTab
+    // (helper removeWorkshopBuild : DELETE RLS-gardé + `.select()` obligatoire car
+    // un refus RLS retire 0 ligne sans lever d'erreur). Ici on cible par `id` propre.
+    const { removed, error } = await removeWorkshopBuild(supabase, { column: 'id', value: build.id })
 
-    if (!error && data && data.length > 0) {
+    if (removed) {
       setBuilds(prev => prev.filter(b => b.id !== build.id))
     } else {
-      console.error('[Workshop] delete refusé ou sans effet', error?.message ?? '0 ligne supprimée')
+      console.error('[Workshop] delete refusé ou sans effet', error ?? '0 ligne supprimée')
     }
     setDeleting(null)
   }

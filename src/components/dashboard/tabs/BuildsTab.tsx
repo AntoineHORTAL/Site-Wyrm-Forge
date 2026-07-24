@@ -6,6 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import SkillOrderEditor, { type SkillOrder } from '@/components/builder/SkillOrderEditor'
 import RunesEditor, { type RunesPage } from '@/components/builder/RunesEditor'
 import { aggregateItemStats } from '@/lib/champion-stats'
+import {
+  publishWorkshopBuild, removeWorkshopBuild,
+  type WorkshopBlock,
+} from '@/lib/workshop-builds'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface DDItem {
@@ -133,6 +137,15 @@ export default function BuildsTab() {
   const [savingBuild, setSavingBuild]     = useState(false)
   const [editingBuildId, setEditingBuildId] = useState<string | null>(null)
   const [userId, setUserId]           = useState<string | null>(null)
+  const [creatorName, setCreatorName] = useState('')       // username pour la publication Workshop
+
+  // Publication Workshop : map source_build_id (= item_builds.id) → id de la ligne
+  // workshop_builds correspondante. Une entrée ⇒ build déjà publié (bouton « Dépublier »).
+  // L'index unique uq_workshop_builds_source garantit au plus une publication par build.
+  const [publishedMap, setPublishedMap] = useState<Record<string, string>>({})
+  const [publishing, setPublishing]     = useState<string | null>(null)  // build en cours de (dé)publication
+  // Erreur de (dé)publication remontée dans l'UI (pas seulement en console) — clé par build.
+  const [publishError, setPublishError] = useState<{ id: string; message: string } | null>(null)
 
   // API
   const [version, setVersion]       = useState('')
@@ -190,15 +203,19 @@ export default function BuildsTab() {
         setVersion(v)
         setUserId(user?.id ?? null)
 
-        const [iRes, cRes, buildsRes] = await Promise.all([
+        const [iRes, cRes, buildsRes, profileRes] = await Promise.all([
           fetch(`${DDN}/cdn/${v}/data/fr_FR/item.json`),
           fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
           user
             ? supabase.from('item_builds').select('*').order('created_at', { ascending: false })
             : Promise.resolve({ data: [] }),
+          user
+            ? supabase.from('profiles').select('username').eq('id', user.id).single()
+            : Promise.resolve({ data: null }),
         ])
         const iData = await iRes.json()
         const cData = await cRes.json()
+        setCreatorName((profileRes as any).data?.username ?? '')
 
         // Map complète (pour lookup composants/évolutions)
         const byId: Record<string, DDItem> = {}
@@ -276,6 +293,22 @@ export default function BuildsTab() {
             }),
           })),
         })))
+
+        // Détection « déjà publié » : on lit les workshop_builds liés à nos builds
+        // par source_build_id. wb_select_public autorise la lecture ; l'index unique
+        // garantit au plus une ligne par build → map source_build_id → workshop id.
+        const buildIds: string[] = rows.map((r: any) => r.id)
+        if (user && buildIds.length > 0) {
+          const { data: wbRows } = await supabase
+            .from('workshop_builds')
+            .select('id, source_build_id')
+            .in('source_build_id', buildIds)
+          const map: Record<string, string> = {}
+          for (const w of (wbRows ?? []) as any[]) {
+            if (w.source_build_id) map[w.source_build_id] = w.id
+          }
+          setPublishedMap(map)
+        }
       } catch {
         setApiError('Erreur lors du chargement des données Riot.')
       } finally {
@@ -484,6 +517,71 @@ export default function BuildsTab() {
   async function deleteBuild(id: string) {
     await supabase.from('item_builds').delete().eq('id', id)
     setSavedBuilds(prev => prev.filter(b => b.id !== id))
+    // Le build perso disparaît de la liste. S'il était publié, la ligne
+    // workshop_builds survit (FK ON DELETE SET NULL) — on nettoie juste la map locale.
+    setPublishedMap(prev => { const n = { ...prev }; delete n[id]; return n })
+  }
+
+  // ── Toggle Publier / Dépublier vers le Workshop ───────────────────────────
+  // Convertit les blocs perso (DDItem complet) → format PascalCase attendu par
+  // workshop_builds.items (inverse de la conversion « slim » de handleImport côté
+  // WorkshopBuildsTab). IconUrl laissé vide : la page Workshop reconstruit l'image
+  // depuis l'Id numérique, elle n'utilise pas ce champ.
+  function toWorkshopBlocks(build: SavedBuild): WorkshopBlock[] {
+    return build.blocks.map(bl => ({
+      Id:    bl.id,
+      Title: bl.name,
+      Items: bl.items.map(({ item, count }) => ({
+        Id:      Number(item.id),
+        Name:    item.name,
+        Gold:    item.gold.total,
+        Count:   count,
+        IconUrl: '',
+      })),
+    }))
+  }
+
+  async function handlePublish(build: SavedBuild) {
+    if (!userId || publishing) return
+    setPublishing(build.id)
+    setPublishError(null)
+    const res = await publishWorkshopBuild(supabase, {
+      sourceBuildId: build.id,
+      creatorId:     userId,
+      creatorName:   creatorName || 'Anonyme',
+      titre:         build.name,
+      champion:      build.champ?.id ?? '',
+      patch:         version,
+      items:         toWorkshopBlocks(build),
+    })
+    if (res.ok && res.id) {
+      setPublishedMap(prev => ({ ...prev, [build.id]: res.id! }))
+    } else {
+      // Remontée UI (pas seulement console) : une publication échouée ne doit jamais
+      // ressembler à un no-op silencieux.
+      console.error('[Builds] publication échouée', res.error)
+      setPublishError({ id: build.id, message: 'Publication impossible. Réessaie dans un instant.' })
+    }
+    setPublishing(null)
+  }
+
+  async function handleUnpublish(build: SavedBuild) {
+    if (publishing) return
+    const wbId = publishedMap[build.id]
+    if (!wbId) return
+    if (!confirm(`Retirer « ${build.name} » du Workshop ?\n\nLe build ne sera plus visible par la communauté et ses ♥ et ↓ seront perdus. Ta copie personnelle n'est pas affectée.`)) return
+
+    setPublishing(build.id)
+    setPublishError(null)
+    // Même helper que le bouton « Retirer » du Workshop : on cible la ligne par son id.
+    const { removed, error } = await removeWorkshopBuild(supabase, { column: 'id', value: wbId })
+    if (removed) {
+      setPublishedMap(prev => { const n = { ...prev }; delete n[build.id]; return n })
+    } else {
+      console.error('[Builds] dépublication refusée ou sans effet', error ?? '0 ligne supprimée')
+      setPublishError({ id: build.id, message: 'Retrait impossible. Réessaie dans un instant.' })
+    }
+    setPublishing(null)
   }
 
   // ── Fermer le détail et scroller vers l'item ──────────────────────────────
@@ -577,6 +675,8 @@ export default function BuildsTab() {
           {savedBuilds.map(build => {
             // Tous les items du build (preview)
             const allBuildItems = build.blocks.flatMap(b => b.items).slice(0, 6)
+            const isPublished = !!publishedMap[build.id]
+            const isBusy      = publishing === build.id
             return (
               <div key={build.id} style={{
                 padding: 18, borderRadius: 10,
@@ -671,6 +771,37 @@ export default function BuildsTab() {
                     🗑
                   </button>
                 </div>
+
+                {/* Toggle Publier / Dépublier vers le Workshop communauté */}
+                <button
+                  onClick={() => isPublished ? handleUnpublish(build) : handlePublish(build)}
+                  disabled={!userId || isBusy}
+                  title={isPublished
+                    ? 'Retirer ce build du Workshop communauté'
+                    : 'Partager ce build dans le Workshop communauté'}
+                  style={{
+                    width: '100%', padding: '7px',
+                    background: isPublished ? 'transparent' : 'rgba(93,202,165,0.12)',
+                    border: `1px solid ${isPublished ? 'rgba(229,72,77,0.35)' : 'rgba(93,202,165,0.4)'}`,
+                    borderRadius: 6,
+                    color: isPublished ? '#E5484D' : '#5DCAA5',
+                    fontSize: 12, fontWeight: 500,
+                    cursor: !userId || isBusy ? 'default' : 'pointer',
+                    fontFamily: 'inherit', transition: 'opacity 0.15s',
+                    opacity: isBusy ? 0.6 : 1,
+                  }}
+                >
+                  {isBusy
+                    ? (isPublished ? 'Retrait…' : 'Publication…')
+                    : (isPublished ? '🗑 Dépublier' : '↑ Publier au Workshop')}
+                </button>
+
+                {/* Erreur de (dé)publication — visible dans l'UI, pas seulement en console */}
+                {publishError?.id === build.id && (
+                  <div style={{ fontSize: 11, color: '#E5484D', marginTop: -4 }}>
+                    {publishError.message}
+                  </div>
+                )}
               </div>
             )
           })}
