@@ -81,18 +81,17 @@ function mapEntries(rawEntries: any[]): any[] {
 
 // C3 — résolution des entrées de rang à partir d'un puuid.
 //
-// CHEMIN SÛR retenu (2 appels Riot) : summoner-v4 by-puuid → league-v4 by-summoner.
-// Riot a publié `GET /lol/league/v4/entries/by-puuid/{puuid}` (1 seul appel), mais
-// nous n'avons AUCUNE doc de cet endpoint présente dans ce repo pour le confirmer
-// avec certitude — on n'implémente donc PAS ce raccourci à l'aveugle (cf. AGENTS.md :
-// « ne pas bricoler un appel non vérifié »). L'appel est isolé dans cette seule
-// fonction pour que le passage à `entries/by-puuid` (1 appel) soit un changement
-// d'UNE LIGNE le jour où l'endpoint est confirmé.
+// UN SEUL appel Riot : `league-v4/entries/by-puuid`, vérifié en conditions réelles
+// le 2026-07-28 (200 + vraies entrées de rang).
 //
-// Le summoner-v4 fetché ici donne accès à profileIconId/summonerLevel, mais ils ne
-// sont PAS exposés dans la réponse du chemin puuid (voir asymétrie de contrat en
-// tête de fichier) — cohérence garantie même après un futur passage à l'endpoint
-// 1-appel, qui ne les fournirait de toute façon pas.
+// L'implémentation initiale passait par summoner-v4 by-puuid → league-v4
+// `by-summoner`, faute de doc confirmant la variante by-puuid. Ce couple s'est
+// révélé MORT en production (403) : voir le bandeau « PANNE RÉSOLUE » d'AGENTS.md.
+// Ne pas y revenir.
+//
+// profileIconId/summonerLevel ne sont volontairement PAS exposés ici (asymétrie de
+// contrat documentée en tête de fichier) : ils viennent de summoner-v4, que ce
+// chemin n'appelle plus du tout.
 async function fetchRankEntriesByPuuid(
   platform: string,
   puuid: string,
