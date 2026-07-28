@@ -1,6 +1,16 @@
 // Fire-and-forget harvest des stats par rang.
 // Appelé depuis riot-matches après cache miss, start===0.
 // Lit le rang depuis riot_cache sans appel Riot supplémentaire.
+//
+// C2 (Lot C, dual-read) : riot-rank écrit désormais DEUX clés avec le même corps
+// pour chaque résolution par Riot ID — la clé historique `rank:{platform}:{gn}:{tl}`
+// (source d'origine, inchangée) ET la nouvelle `rank:{platform}:puuid:{puuid}`
+// (voir bandeau de couplage en tête de riot-rank/index.ts). On lit ici la clé
+// puuid EN PREMIER (source la plus stable — un Riot ID peut changer, un puuid
+// non), avec repli sur la clé historique si absente (couvre une entrée déposée
+// avant le déploiement du dual-write, ou un cache expiré côté puuid mais pas
+// côté historique). Sûr par construction : les deux formes de corps exposent le
+// même `entries[].queueType`/`.tier` utilisés ci-dessous.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 function db() {
@@ -32,13 +42,28 @@ export function harvestRankStats(
   ;(async () => {
     try {
       const client = db()
-      const rankCacheKey = `rank:${platform}:${gameName.toLowerCase()}:${tagLine.toLowerCase()}`
 
-      const { data: cacheRow } = await client
+      // C2 : clé puuid d'abord, repli sur la clé historique (voir bandeau ci-dessus).
+      const puuidCacheKey      = `rank:${platform}:puuid:${puuid}`
+      const historicalCacheKey = `rank:${platform}:${gameName.toLowerCase()}:${tagLine.toLowerCase()}`
+
+      let cacheRow: { response_body: unknown } | null = null
+
+      const { data: byPuuid } = await client
         .from('riot_cache')
         .select('response_body')
-        .eq('cache_key', rankCacheKey)
+        .eq('cache_key', puuidCacheKey)
         .maybeSingle()
+      cacheRow = byPuuid ?? null
+
+      if (!cacheRow?.response_body) {
+        const { data: byHistorical } = await client
+          .from('riot_cache')
+          .select('response_body')
+          .eq('cache_key', historicalCacheKey)
+          .maybeSingle()
+        cacheRow = byHistorical ?? null
+      }
 
       if (!cacheRow?.response_body) return
 
