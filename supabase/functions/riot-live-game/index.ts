@@ -299,8 +299,30 @@ Deno.serve(async (req) => {
       return jsonResponse({ ...body, requested_puuid: puuid }, 200, { 'X-Cache': 'MISS' })
     }
 
+    // 429 « server rate limit » — délestage CÔTÉ RIOT, pas notre quota.
+    // Mesuré le 2026-07-28 : le service spectator EUW1 refuse par intermittence
+    // (~1 appel sur 3) avec `x-rate-limit-type: server` et un `retry-after` de
+    // 20-30 s, alors que la clé est très loin de ses plafonds (3000 req/10 s sur
+    // SPECTATOR-V5) et que le circuit breaker est fermé. Les trois types de 429
+    // Riot n'ont pas le même sens : `application` et `method` nous incriminent,
+    // `server` non — c'est l'endpoint qui est saturé en amont.
+    // Conséquence : ce n'est PAS une erreur dure. On remonte `retry_after_s`
+    // pour que le client repropose l'action au lieu d'afficher un échec, et on
+    // ne mémorise RIEN (ni positif ni négatif) — l'état de la partie est inconnu.
+    if (specRes.status === 429) {
+      const retryAfterS = Number(specRes.headers.get('retry-after') ?? '30') || 30
+      const limitType   = specRes.headers.get('x-rate-limit-type') ?? 'unknown'
+      await incrementQuota(FN, riotCalls)
+      console.warn(`riot-live-game: Riot 429 (type=${limitType}, retry_after=${retryAfterS}s) sur ${platform}`)
+      return jsonResponse(
+        { error: 'Le service Riot est momentanément saturé. Réessaie dans quelques secondes.', reason: 'riot_busy', retry_after_s: retryAfterS },
+        503,
+        { 'Retry-After': String(retryAfterS) },
+      )
+    }
+
     if (!specRes.ok) {
-      // 403 (clé expirée) / 429 / 5xx : transitoire, jamais mémorisé (positif ni négatif).
+      // 403 (clé) / 5xx : transitoire, jamais mémorisé (ni positif ni négatif).
       await incrementQuota(FN, riotCalls)
       return jsonResponse({ error: `Riot API ${specRes.status}` }, specRes.status)
     }
