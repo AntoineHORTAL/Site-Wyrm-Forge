@@ -101,24 +101,21 @@ async function fetchRankEntriesByPuuid(
   | { ok: true; entries: unknown[]; callsUsed: number }
   | { ok: false; status: number; callsUsed: number }
 > {
-  // 1. summonerId via summoner-v4 by-puuid (nécessaire pour l'appel league-v4 ci-dessous)
-  const sumRes = await fetch(
-    `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`,
-    { headers },
-  )
-  if (!sumRes.ok) return { ok: false, status: sumRes.status, callsUsed: 1 }
-  const sum = await sumRes.json()
-  const summonerId: string = sum.id ?? ''
-
-  // 2. entries via league-v4 by-summoner
+  // UN SEUL appel : league-v4 `entries/by-puuid`.
+  // L'ancien couple summoner-v4 by-puuid → league-v4 `by-summoner` est MORT en
+  // production (constaté le 2026-07-28) : summoner-v4 répond 200, mais league-v4
+  // `by-summoner` renvoie 403 — Riot a retiré les variantes par summonerId.
+  // Diagnostic établi par le delta de `riot_daily_quota.calls_by_function` :
+  // +3 sur le chemin Riot ID et +2 sur le chemin puuid, donc l'échec est bien au
+  // dernier appel de chaque chaîne, pas au premier.
   const leagueRes = await fetch(
-    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${encodeURIComponent(summonerId)}`,
+    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`,
     { headers },
   )
-  if (!leagueRes.ok) return { ok: false, status: leagueRes.status, callsUsed: 2 }
+  if (!leagueRes.ok) return { ok: false, status: leagueRes.status, callsUsed: 1 }
   // deno-lint-ignore no-explicit-any
   const rawEntries: any[] = await leagueRes.json()
-  return { ok: true, entries: mapEntries(rawEntries), callsUsed: 2 }
+  return { ok: true, entries: mapEntries(rawEntries), callsUsed: 1 }
 }
 
 Deno.serve(async (req) => {
@@ -283,9 +280,20 @@ Deno.serve(async (req) => {
     const profileIconId: number = sum.profileIconId   ?? 29
     const summonerLevel: number = sum.summonerLevel   ?? 1
 
-    // 3. Entries league-v4
+    // 3. Entries league-v4 — variante `by-puuid`.
+    // ⚠️ CORRECTIF DE PANNE (2026-07-28) : cet appel utilisait
+    // `entries/by-summoner/{summonerId}`, que Riot a retiré — il renvoyait 403,
+    // donc riot-rank échouait à TOUS les coups. Aucun 403 n'étant mémorisé
+    // (cache négatif réservé aux 404), chaque consultation repartait en appel
+    // Riot : le quota journalier de 1000 a été brûlé intégralement les 24 et 25
+    // juillet (978 appels riot-rank le 25), ouvrant le circuit breaker et
+    // mettant tout le site en 503. Effet collatéral : la clé de cache `rank:`
+    // n'étant jamais écrite, `harvestRankStats` sortait immédiatement et
+    // `rank_stat_samples` est resté vide (0 ligne) depuis l'origine.
+    // summoner-v4 reste appelé juste au-dessus : lui fonctionne, et il fournit
+    // profileIconId/summonerLevel que la page /summoner consomme.
     const leagueRes = await fetch(
-      `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${encodeURIComponent(summonerId)}`,
+      `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`,
       { headers },
     )
     riotCalls++
