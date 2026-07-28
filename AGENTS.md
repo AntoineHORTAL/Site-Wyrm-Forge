@@ -884,6 +884,164 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ---
 
+## 🟡 Contrat client normatif — `riot-live-game` (Lot D0/E0)
+
+> **Ce bloc est LA source de vérité du contrat client de `riot-live-game`.** La page « Live Game » sera implémentée **deux fois**, dans deux dépôts qui ne partagent aucun code (site Next.js — Lot D ; app WPF C# — Lot E, renvoi court dans son `AGENTS.md`). La parité s'obtient par **spécification**, pas par du code partagé — exactement le patron déjà éprouvé pour MatchUp (`ClaudeService.cs` ↔ `src/lib/matchup/payload.ts`). Tout nom de champ ci-dessous est vérifié contre `supabase/functions/riot-live-game/index.ts` — en cas de divergence future entre ce texte et le code, **le code fait foi**.
+
+### A. Contrat de réponse
+
+Trois formes, aucun champ inventé (copie stricte des types `GameBody` / `NotInGameBody` / `Participant` de l'EF) :
+
+**200 — en partie :**
+```ts
+{
+  in_game: true,
+  game: {
+    game_id: number
+    platform_id: string
+    queue_id: number            // gameQueueConfigId ?? 0
+    map_id: number
+    game_mode: string            // ex. "CLASSIC", "ARAM"
+    game_type: string
+    game_start_time: number      // epoch ms — 0 = écran de chargement, voir §C
+    game_length_s: number        // ⚠️ FIGÉ par le TTL cache (jusqu'à 5 min) — voir §C, ne JAMAIS afficher brut
+    banned_champions: Array<{ champion_id: number, team_id: number, pick_turn: number }>
+  },
+  participants: Array<{
+    puuid: string
+    riot_id: string               // peut être '' — voir §C
+    team_id: number                // 100 | 200 — TABLE CRITIQUE, voir §B
+    champion_id: number
+    spell1_id: number
+    spell2_id: number
+    profile_icon_id: number
+    perks: { perk_ids: number[], perk_style: number, perk_sub_style: number }
+    bot: boolean                   // voir §C
+  }>,
+  ranks: null,                     // TOUJOURS null en V1 — voir §C
+  requested_puuid: string,         // ajouté APRÈS lecture du cache, jamais stocké dans le corps partagé
+}
+```
+
+**200 — pas en partie (état NOMINAL, PAS un 404) :**
+```ts
+{ in_game: false, requested_puuid: string }
+```
+C'est l'état le plus fréquent (la majorité des joueurs, la majorité du temps) — jamais traité comme une erreur, jamais rouge à l'écran (voir §E).
+
+**Erreurs** — le corps est toujours `{ error: string, ...détails }` :
+
+| Statut | `reason` | Corps additionnel | Déclencheur |
+|---|---|---|---|
+| 400 | — | — | param manquant, région invalide, ou PUUID mal formé |
+| 403 | — | — | `live_game_enabled = false` (kill-switch, `app_settings`) |
+| 404 | — | — | Riot ID inexistant, **account-v1 SEUL** — jamais depuis spectator-v5 (voir §C) |
+| 429 | — | `retry_after_s` (2ᵉ limiteur seulement) | nos limiteurs (`isRateLimited` / `checkIpRateLimit`) |
+| 503 | `quota_exceeded` | `resets_in` (secondes avant minuit UTC) | notre circuit breaker ouvert (quota Riot journalier épuisé) |
+| 503 | `riot_busy` | `retry_after_s` | délestage **de Riot lui-même** (spectator EUW1, transitoire) |
+| 500 | — | — | exception serveur inattendue |
+
+### B. ⚠️ TABLE CRITIQUE — `team_id`
+
+| `team_id` | Vocabulaire Live Client Data (WPF) | Couleur écran |
+|---|---|---|
+| `100` | `ORDER` | Bleu |
+| `200` | `CHAOS` | Rouge |
+
+**Pourquoi cette table est la plus critique du contrat.** Côté site, `team_id` n'est qu'une couleur d'affichage — une inversion produirait une carte bleue à droite au lieu de gauche, visible et anodin. **Côté WPF, `team_id` est la clé de jointure des rangs** : le client résout le rang de chaque participant via des appels séparés à `riot-rank`, puis doit rattacher chaque rang résolu au bon joueur affiché. La jointure se fait sur **`(champion_id, team_id)`**, jamais sur `riot_id` (voir §C — `riotIdTagLine` n'est **pas** exposé sur `/playerlist`, seulement sur `/activeplayer`, donc indisponible pour désigner un participant distant depuis spectator-v5).
+
+Une inversion de `team_id` dans ce contexte **n'entraîne aucun plantage** — c'est le seul bug de ce chantier qui produit des données **fausses ET plausibles** : chaque joueur affiche un rang crédible (Or, Platine, Diamant…), simplement celui du mauvais adversaire. Aucun test manuel superficiel ne le détecte ; seule une vérification champion par champion contre le client Riot le révèle.
+
+### C. Valeurs dégénérées — comportement obligatoire pour les deux fronts
+
+- **`riot_id: ''`** (possible, cf. `mapGameBody` — `p.riotId ?? ''`) → repli d'affichage sur le **nom du champion**, jamais une ligne vide. Côté WPF : ne **jamais** l'utiliser comme clé de jointure (voir §B), seulement en confirmation opportuniste si non vide.
+- **`game_start_time: 0`** → écran de chargement : afficher « En chargement » (ou équivalent), **jamais** un chrono à 00:00.
+- **`game_length_s` est FIGÉ** par le TTL de cache (30 s en chargement/pas-en-partie, **5 min** en partie) → **ne jamais l'afficher brut**, la valeur est datée du moment du dernier MISS serveur. Les deux fronts calculent l'écoulé **depuis `game_start_time`** côté client (horloge locale). Côté WPF, `LiveGameService.GetGameTime()` (Live Client Data locale, si le joueur observe sa propre partie) est encore préférable quand disponible. Le chrono affiché ne doit **jamais être négatif** — clamp à 0 si l'horloge client est en avance sur le serveur.
+- **`ranks: null`** → toujours `null` en V1, emplacement réservé pour un enrichissement serveur futur (Scope Raisonnable, winrate par champion). Les deux clients **doivent le lire défensivement dès maintenant** (`?? fallback`, jamais `ranks.foo` non gardé) pour n'avoir jamais besoin d'être redéployés le jour où le serveur le remplit — même motif que le `role?` optionnel de `matchup-analyze`.
+- **`bot: true`** → étiqueter explicitement le participant (ex. badge « IA ») — les bots n'ont pas de rang réel, ne pas tenter de leur résoudre un rang via `riot-rank`.
+- **`banned_champions` vide** (aveugle, ARAM, tout mode sans bans) → **masquer le bloc entièrement**, jamais afficher un bloc « Bans » vide.
+
+### D. Tables de libellés normatives
+
+> Une seule liste par dépôt. Ne pas la recopier deux fois dans le même dépôt — si un futur écran a besoin des mêmes libellés, réutiliser la constante déjà posée pour Live Game (site) ou celle déjà posée pour Live Game (WPF), ne pas en écrire une troisième.
+
+#### `queue_id` → libellé FR
+
+⚠️ **Trois versions divergentes existaient déjà dans ce repo** avant ce contrat : `src/app/summoner/[region]/[riotId]/page.tsx` (~l.20), `src/app/match/[platform]/[matchId]/page.tsx` (~l.28), `src/lib/prac.ts` (~l.47) — trois `Record<number,string>` distincts, ni les mêmes clés ni les mêmes libellés (ex. `"Classée Solo/Duo"` vs `"Solo/Duo"` ; `400`/`430` fusionnés en `"Normale"` dans `prac.ts` mais distingués ailleurs ; `700` Clash présent **seulement** dans `prac.ts` ; `1020`/`1400`/`1900` présents **seulement** dans la page match). Cette dette n'est **pas corrigée ici** (hors périmètre D0/E0, documentation uniquement) — la liste ci-dessous est la référence **pour Live Game uniquement**, construite en fusionnant les trois sources (libellés les plus complets retenus) :
+
+| `queue_id` | Libellé FR retenu |
+|---|---|
+| `0` | Personnalisée |
+| `400` | Normale Draft |
+| `420` | Classée Solo/Duo |
+| `430` | Normale Aveugle |
+| `440` | Classée Flex |
+| `450` | ARAM |
+| `700` | Clash |
+| `900` | URF |
+| `1020` | Légendes Uniques |
+| `1400` | Ultime Spellbook |
+| `1700` | Arena |
+| `1900` | URF (pick) |
+
+Le site recopie cette liste **une fois** (nouvelle constante dédiée à Live Game, ou réutilisation si un des trois fichiers existants est refactoré — au choix de l'implémentation D, hors scope ici) ; le WPF la recopie **une fois** en C#. Ne jamais synchroniser les quatre listes entre elles après coup — c'est précisément la classe de bug que ce contrat vise à éviter pour les **futurs** écrans, la dette **existante** des trois listes site reste telle quelle.
+
+#### `tier` LoL (rang classé) → libellé FR + couleur
+
+⚠️ **Piège de lecture** : ne pas confondre avec les couleurs des **tiers d'abonnement Wyrm Forge** (apprenti/forgeron/maître/légion/architecte/architecte+, documentées plus haut dans ce fichier § Base de données — table `profiles`). Il s'agit ici du rang **LoL** (Fer → Challenger), un concept entièrement différent qui partage juste le mot « tier ».
+
+`TIER_COLORS` / `TIER_FR` existent déjà, **identiques au caractère près**, en **trois** exemplaires : `src/app/summoner/[region]/[riotId]/page.tsx` (~l.31-40), `src/app/matches/[region]/[riotId]/page.tsx` (~l.56-65) et `src/lib/prac.ts` (~l.31-40) — **réutiliser l'un des trois, ne surtout pas en réécrire un quatrième** :
+
+| `tier` | Libellé FR | Couleur |
+|---|---|---|
+| `IRON` | Fer | `#5A5A5A` |
+| `BRONZE` | Bronze | `#B87333` |
+| `SILVER` | Argent | `#A8A8A8` |
+| `GOLD` | Or | `#E4A800` |
+| `PLATINUM` | Platine | `#4FCEAC` |
+| `EMERALD` | Émeraude | `#00BA57` |
+| `DIAMOND` | Diamant | `#4A90D9` |
+| `MASTER` | Maître | `#9B4DCA` |
+| `GRANDMASTER` | Grand Maître | `#E84057` |
+| `CHALLENGER` | Challenger | `#F4E342` |
+
+### E. Les 9 états d'interface (+ 1 sous-état)
+
+Texte FR normatif — les deux fronts affichent EXACTEMENT ces messages (à l'interpolation des variables près) :
+
+| # | État | Texte FR | Traitement visuel |
+|---|---|---|---|
+| 1 | Chargement (requête en vol) | « Recherche d'une partie en cours… » | neutre |
+| 2 | `in_game:false` | « Ce joueur n'est pas en partie actuellement. » | **NOMINAL — jamais rouge**, jamais traité comme une erreur |
+| 3 | 403 kill-switch | « Le suivi de partie en direct arrive bientôt. » | **non-rouge**, même famille visuelle que les onglets `soon` du dashboard — le message brut de l'EF (`La fonctionnalité "partie en cours" est actuellement désactivée.`) n'est **pas** montré tel quel au joueur |
+| 4 | 404 Riot ID inexistant | « Invocateur introuvable. » (repris tel quel du backend) | erreur |
+| 5 | 400 | « Requête invalide. » (ne devrait jamais survenir en usage normal — bug client si vu) | erreur |
+| 6 | 429 (nos limiteurs) | « Trop de requêtes. Réessaie dans une minute. » ou, si `retry_after_s` fourni, « Trop de recherches. Réessaie dans {retry_after_s}s. » | erreur transitoire |
+| 7 | 503 `quota_exceeded` | « Service temporairement indisponible. Réessaie dans {resets_in formaté, ex. "3 h"}. » | erreur transitoire (rare — quota journalier global) |
+| 8 | 503 `riot_busy` | « Le service Riot est momentanément saturé. Réessaie dans {retry_after_s} secondes. » | transitoire, **aucun retry auto** (voir §F) |
+| 9 | 500 / réseau | « Erreur serveur inattendue. » / « Erreur réseau, vérifie ta connexion. » | erreur |
+
+**Sous-état « rangs partiels »** (par joueur, jamais global) : les rangs ne viennent **pas** de `riot-live-game` (`ranks` est toujours `null`, voir §C) mais de 10 appels séparés à `riot-rank?puuid=` faits par chaque client après réception de la partie. Si l'un de ces 10 appels échoue (429, 503, PUUID improbable), **seul le joueur concerné** affiche `—` à la place de son rang — les 9 autres lignes restent intactes. Ne jamais faire échouer tout l'écran pour un seul rang manquant.
+
+### F. Règles d'appel — non négociables
+
+- **Discriminant d'erreur = le COUPLE `(status, body.reason)`, jamais le seul statut.** Deux 503 de sens opposé : `quota_exceeded` (notre circuit breaker, tout le site est coupé, rare) vs `riot_busy` (Riot déleste lui-même, ~1 appel sur 3 mesuré sur spectator EUW1, transitoire et fréquent). Traiter les deux comme un seul cas générique « 503 » afficherait le mauvais message dans la moitié des cas.
+- **`retry_after_s` et `resets_in` se lisent dans le CORPS JSON, jamais dans les headers HTTP.** `_shared/cors.ts` ne pose aucun `Access-Control-Expose-Headers` → le navigateur ne peut lire ni `Retry-After` ni `X-Cache` en JS, même si l'EF les pose bien dans la réponse. Corollaire de méthode : la vérification de la mutualisation du cache (10 joueurs → 1 appel Riot) **ne peut pas se vérifier depuis l'UI/devtools réseau côté client** — seulement via le delta de `riot_daily_quota` en base.
+- **AUCUN retry automatique sur `riot_busy`.** Mesuré au STOP B (28/07/2026) : un 503 `riot_busy` **a déjà consommé un appel Riot** (la requête a atteint Riot avant d'être refusée en aval). Un retry en boucle côté client reproduirait exactement le brûlage de quota qui a mis tout le site en 503 les 24 et 25 juillet (voir § Piège backend `riot-rank` ci-dessus). Respecter `retry_after_s`, laisser l'utilisateur relancer manuellement.
+- **Budget de jetons `isRateLimited`** : dans `riot-rank`, `isRateLimited` s'exécute **avant** le cache (vérifié : l.147 puis `cacheGet` l.153) → **un HIT consomme quand même un jeton**. Bucket 20/min/IP/fonction. Une consultation Live Game complète = **11 jetons** (1 appel `riot-live-game` + 10 appels `riot-rank`, un par participant) ⇒ deux chargements dans la même minute déclenchent des 429 partiels (certains rangs échouent, pas la partie elle-même). **Décision actée : verrou de 30 s côté front sur le bouton « Actualiser », pas de modification backend en V1.**
+- **Coût réel (jamais un forfait)** : 1 appel Riot par chemin puuid (spectator-v5 seul), 2 par chemin Riot ID (account-v1 + spectator-v5). Mutualisation : 1 appel spectator-v5 couvre les 10 joueurs de la partie pendant le TTL (5 min).
+- **Pas d'auto-poll en V1** — aucun des deux fronts ne doit re-solliciter l'EF en boucle pendant la partie ; rafraîchissement uniquement sur action utilisateur (bouton « Actualiser », verrouillé 30 s ci-dessus).
+- **Kill-switch `live_game_enabled` à `'false'`** : les deux fronts gèrent le 403 comme un état normal (voir état #3 §E), jamais comme une panne.
+
+### G. Divergences ASSUMÉES — ne pas « corriger »
+
+- **Version DDragon** : le site prend systématiquement `versions[0]` (dernière version dynamique, cf. `src/lib/matchup/ddragon.ts`, `src/app/summoner/.../page.tsx`, etc.) ; le WPF (`LiveGameService.cs`, propre à l'indicateur de comeback) retombe sur la constante **`"14.24.1"`** si le fetch échoue. Toléré — écart cosmétique (icônes/splash légèrement datés en cas de fallback), jamais bloquant. ⚠️ **Ne pas confondre** avec `ScenarioService.MapImageUrl`, où le figeage sur `14.24.1` est **volontaire et permanent** (alignement pixel-perfect des tracés de scénario avec le site) — deux justifications totalement différentes pour la même chaîne de version.
+- **`riot-rank?puuid=` ne garantit pas `summonerId`/`profileIconId`/`summonerLevel`** (asymétrie de contrat documentée plus haut, § `riot-rank`) — sans incidence pour Live Game : `profile_icon_id` est déjà présent dans chaque participant de la réponse `riot-live-game` elle-même (spectator-v5), les deux fronts n'ont jamais besoin de le redemander à `riot-rank`.
+- **WPF EUW-only** (`RiotService.Platform = "euw1"` en dur) — le site gère les 11 plateformes de `ROUTING`, le WPF n'en a besoin que d'une. Pas un bug, portée volontairement réduite du client desktop.
+- **Partie personnalisée ⇒ `in_game:false`** : spectator-v5 n'expose **jamais** les parties personnalisées (limite Riot, pas un bug de l'EF ni des fronts). C'est le premier réflexe de test d'un développeur qui code ce Lot (lancer une perso pour tester vite) — sans message dédié à ce cas précis, ce sera diagnostiqué à tort comme un bug d'intégration. **Les deux fronts doivent le documenter explicitement** (commentaire de code minimum) pour ne pas faire perdre ce temps à la prochaine personne qui reproduit le réflexe.
+
+---
+
 ## 💰 Modèle freemium (à activer quand Pricing sera réactivé)
 
 ### Règle Riot Developer Agreement
