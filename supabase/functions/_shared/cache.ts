@@ -9,6 +9,11 @@ const TTL_MS: Record<string, number> = {
   'riot-match-detail':                    -1,   // permanent — completed matches are immutable
   'patch-notes-generator': 24 * 60 * 60 * 1000, // 24h — DDragon versions list changes rarely
   'patch-notes':            1 * 60 * 60 * 1000, // 1h  — published patch notes list
+  // Fallback court seulement — riot-live-game passe TOUJOURS un `expiresAtIso`
+  // explicite (4ᵉ paramètre de cacheSet) car le TTL réel varie selon l'état de
+  // la partie : 30s (pas en partie / écran de chargement) ou 5 min (en partie).
+  // Cette entrée ne sert que si un futur appel oubliait ce paramètre.
+  'riot-live-game':            30 * 1000,
 }
 
 function db() {

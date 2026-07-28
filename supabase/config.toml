@@ -28,6 +28,11 @@ verify_jwt = false
 [functions.patch-notes]
 verify_jwt = false
 
+# riot-live-game : composition de la partie en cours (spectator-v5) — publique,
+# gardée en amont par le feature flag live_game_enabled (app_settings).
+[functions.riot-live-game]
+verify_jwt = false
+
 # Génération des patch notes via Anthropic — réservée aux admins ou au cron interne
 [functions.patch-notes-generator]
 verify_jwt = true
