@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
-  TEAM_ORDER, TEAM_CHAOS, teamSide,
+  TEAM_ORDER, TEAM_CHAOS, teamSide, splitTeams,
   QUEUE_LABELS_LIVE, queueLabel,
   normalizePlatform, isKnownPlatform, KNOWN_PLATFORMS,
   isValidPuuid, parseRiotId,
@@ -49,6 +49,78 @@ describe('team_id — table critique §B', () => {
   it('valeur hors {100,200} → null, jamais un camp par défaut', () => {
     expect(teamSide(0)).toBeNull()
     expect(teamSide(300)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STOP D3 — séparation des camps en partie MIROIR
+// ─────────────────────────────────────────────────────────────────────────────
+describe('splitTeams — STOP D3 : partie miroir', () => {
+  // Yasuo (157) joué DES DEUX CÔTÉS, et Lux (99) aussi. Si la répartition
+  // s'appuyait sur le champion (id ou nom), ces joueurs seraient ambigus.
+  const mirror = [
+    { puuid: 'blue-yasuo', team_id: 100, champion_id: 157 },
+    { puuid: 'blue-lux', team_id: 100, champion_id: 99 },
+    { puuid: 'blue-lee', team_id: 100, champion_id: 64 },
+    { puuid: 'red-yasuo', team_id: 200, champion_id: 157 },
+    { puuid: 'red-lux', team_id: 200, champion_id: 99 },
+    { puuid: 'red-zed', team_id: 200, champion_id: 238 },
+  ]
+
+  it('sépare par team_id, JAMAIS par champion', () => {
+    const t = splitTeams(mirror)
+    expect(t.order.map(p => p.puuid)).toEqual(['blue-yasuo', 'blue-lux', 'blue-lee'])
+    expect(t.chaos.map(p => p.puuid)).toEqual(['red-yasuo', 'red-lux', 'red-zed'])
+    expect(t.unknown).toEqual([])
+  })
+
+  it('le même champion_id existe des deux côtés sans fusion ni perte', () => {
+    const t = splitTeams(mirror)
+    // Yasuo présent une fois dans chaque camp — jamais dédupliqué.
+    expect(t.order.filter(p => p.champion_id === 157)).toHaveLength(1)
+    expect(t.chaos.filter(p => p.champion_id === 157)).toHaveLength(1)
+    // Aucun participant perdu : 6 entrées en entrée, 6 en sortie.
+    expect(t.order.length + t.chaos.length + t.unknown.length).toBe(mirror.length)
+  })
+
+  it('les puuid restent uniques → clé React sûre en partie miroir', () => {
+    // champion_id NE PEUT PAS servir de clé React ici : 157 apparaît 2 fois.
+    const champIds = mirror.map(p => p.champion_id)
+    expect(new Set(champIds).size).toBeLessThan(champIds.length)
+    const puuids = mirror.map(p => p.puuid)
+    expect(new Set(puuids).size).toBe(puuids.length)
+  })
+
+  it('composition complète 5v5 avec miroir → 5 et 5', () => {
+    const full = [
+      ...[1, 2, 3, 4, 5].map(i => ({ puuid: `b${i}`, team_id: 100, champion_id: i === 1 ? 157 : i })),
+      ...[1, 2, 3, 4, 5].map(i => ({ puuid: `r${i}`, team_id: 200, champion_id: i === 1 ? 157 : i + 100 })),
+    ]
+    const t = splitTeams(full)
+    expect(t.order).toHaveLength(5)
+    expect(t.chaos).toHaveLength(5)
+  })
+
+  it('team_id inattendu → `unknown`, jamais rattaché arbitrairement à un camp', () => {
+    const t = splitTeams([...mirror, { puuid: 'ghost', team_id: 300, champion_id: 1 }])
+    expect(t.unknown.map(p => p.puuid)).toEqual(['ghost'])
+    expect(t.order).toHaveLength(3)
+    expect(t.chaos).toHaveLength(3)
+  })
+
+  it('fonctionne aussi sur les bans (même forme team_id)', () => {
+    const bans = [
+      { champion_id: 157, team_id: 100, pick_turn: 1 },
+      { champion_id: 157, team_id: 200, pick_turn: 2 }, // ban miroir : légal
+      { champion_id: -1, team_id: 200, pick_turn: 4 },  // ban passé
+    ]
+    const t = splitTeams(bans)
+    expect(t.order).toHaveLength(1)
+    expect(t.chaos).toHaveLength(2)
+  })
+
+  it('liste vide → trois listes vides, pas de throw', () => {
+    expect(splitTeams([])).toEqual({ order: [], chaos: [], unknown: [] })
   })
 })
 

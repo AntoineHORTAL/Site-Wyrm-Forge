@@ -12,17 +12,18 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { computeItemImpact, type ItemCatalog, type WindowStats } from '@/lib/item-impact'
+// DDragon : cartes + URLs partagées (Lot D3) — ce bloc était recopié à
+// l'identique ici, dans /summoner et dans /matches.
+import {
+  loadDDragonMaps, champImg, itemImg, spellImg, runeImg, itemDataUrl,
+  type ChampInfo, type SpellInfo, type RuneInfo,
+} from '@/lib/ddragon'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const FN_URL   = (name: string, params: Record<string, string>) =>
   `${SUPA_URL}/functions/v1/${name}?${new URLSearchParams(params).toString()}`
-const DDN      = 'https://ddragon.leagueoflegends.com'
-const champImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/champion/${img}`
-const itemImg  = (v: string, id: number)  => `${DDN}/cdn/${v}/img/item/${id}.png`
-const spellImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/spell/${img}`
-const runeImg  = (path: string)            => `${DDN}/cdn/img/${path}`
 
 // Mapping queueId → label
 const QUEUES: Record<number, string> = {
@@ -34,10 +35,6 @@ const QUEUES: Record<number, string> = {
 const POS: Record<string, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MIDDLE: 'MID', BOTTOM: 'ADC', UTILITY: 'SUP',
 }
-
-interface ChampInfo { id: string; name: string; image: string }
-interface SpellInfo { id: string; name: string; image: string }
-interface RuneInfo  { id: number; name: string; icon: string }
 
 interface ItemEvent  { ts: number; itemId: number; type: 'PURCHASED' | 'SOLD' | 'UNDONE' }
 interface SkillEvent { ts: number; slot: number /* 1=Q 2=W 3=E 4=R */ }
@@ -191,56 +188,24 @@ export default function MatchPage() {
           if (profile?.riot_rank) setMyRank(profile.riot_rank)
         }
 
-        // 3. Versions DDragon
-        const vRes = await fetch(`${DDN}/api/versions.json`)
-        const vList: string[] = await vRes.json()
-        const v = vList[0]
-        if (cancelled) return
-        setVersion(v)
-
-        // 4. Resources DDragon en parallèle. Authorization seulement si connecté :
-        //    il alimente le log match_viewed (quêtes app) côté Edge Function. Un
-        //    anonyme appelle avec la clé anon seule (riot-match-detail est public).
+        // 3. DDragon (loader partagé, mémoïsé) ET détail du match EN PARALLÈLE.
+        //    Le parallélisme est essentiel : le détail est l'appel lent, il ne
+        //    doit pas attendre les ressources DDragon.
+        //    Authorization seulement si connecté : il alimente le log
+        //    match_viewed (quêtes app) côté Edge Function. Un anonyme appelle
+        //    avec la clé anon seule (riot-match-detail est public).
         const detailHeaders: Record<string, string> = { apikey: SUPA_KEY }
         if (session) detailHeaders.Authorization = `Bearer ${session.access_token}`
-        const [cRes, sRes, rRes, dRes] = await Promise.all([
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/summoner.json`),
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`),
+        const [dd, dRes] = await Promise.all([
+          loadDDragonMaps(),
           fetch(FN_URL('riot-match-detail', { matchId, platform }), { headers: detailHeaders }),
         ])
         if (cancelled) return
 
-        // Champions
-        const cData = await cRes.json()
-        const cm: Record<number, ChampInfo> = {}
-        Object.values(cData.data).forEach((ch: unknown) => {
-          const c = ch as { key: string; id: string; name: string; image: { full: string } }
-          cm[Number(c.key)] = { id: c.id, name: c.name, image: c.image.full }
-        })
-        setChampMap(cm)
-
-        // Summs
-        const sData = await sRes.json()
-        const sm: Record<number, SpellInfo> = {}
-        Object.values(sData.data).forEach((sp: unknown) => {
-          const s = sp as { key: string; id: string; name: string; image: { full: string } }
-          sm[Number(s.key)] = { id: s.id, name: s.name, image: s.image.full }
-        })
-        setSpellMap(sm)
-
-        // Runes
-        type RawRune = { id: number; name: string; icon: string }
-        type RawTree = { id: number; name: string; icon: string; slots: { runes: RawRune[] }[] }
-        const rData: RawTree[] = await rRes.json()
-        const rm: Record<number, RuneInfo> = {}
-        rData.forEach(tree => {
-          rm[tree.id] = { id: tree.id, name: tree.name, icon: tree.icon }
-          tree.slots.forEach(slot => slot.runes.forEach(r => {
-            rm[r.id] = { id: r.id, name: r.name, icon: r.icon }
-          }))
-        })
-        setRuneMap(rm)
+        setVersion(dd.version)
+        setChampMap(dd.champs)
+        setSpellMap(dd.spells)
+        setRuneMap(dd.runes)
 
         // Détail match
         const dData = await dRes.json()
@@ -1770,7 +1735,7 @@ function BuildTimeline({ me, detail, version }: {
   const [itemNames, setItemNames] = useState<Record<string, string>>({})
   useEffect(() => {
     if (!version) return
-    fetch(`${DDN}/cdn/${version}/data/fr_FR/item.json`)
+    fetch(itemDataUrl(version))
       .then(r => r.json())
       .then(j => {
         const names: Record<string, string> = {}
@@ -1894,7 +1859,7 @@ function ItemImpact({ me, detail, version }: {
 
   useEffect(() => {
     if (!version || itemLoaded) return
-    fetch(`${DDN}/cdn/${version}/data/fr_FR/item.json`)
+    fetch(itemDataUrl(version))
       .then(r => r.json())
       .then(j => { setItemData(j.data ?? {}); setItemLoaded(true) })
       .catch(() => setItemLoaded(true))

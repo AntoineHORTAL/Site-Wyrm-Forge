@@ -7,9 +7,11 @@
  * client normatif — riot-live-game (Lot D0/E0) »).
  * Lot D2 : types, fetch, libellés et chrono extraits dans `src/lib/live-game.ts`
  * (module pur + testé) — cette page ne porte plus que le rendu et l'état React.
+ * Lot D3 : composition des deux équipes (`LiveComposition`) + cartes DDragon
+ * partagées (`src/lib/ddragon.ts`).
  *
- * Le rendu de la composition (10 joueurs, bans, rangs) arrive au Lot D3 : ici,
- * un succès `in_game:true` n'affiche qu'un résumé sobre.
+ * Les rangs des 10 joueurs arrivent au Lot D4 (`ranks` vaut toujours `null`
+ * en V1, ils viennent de 10 appels séparés à `riot-rank`).
  *
  * 'use client' est OBLIGATOIRE : en SSR toutes les requêtes partiraient de
  * l'IP Vercel, et les limiteurs IP de riot-live-game (isRateLimited 20/min,
@@ -28,6 +30,8 @@ import {
   queueLabel, elapsedSeconds, formatElapsed, stateMessage, cooldownFor,
   type LiveGameState,
 } from '@/lib/live-game'
+import { loadDDragonMaps, type DDragonMaps } from '@/lib/ddragon'
+import LiveComposition from '@/components/live/LiveComposition'
 
 export default function LiveGamePage() {
   const { region: rawRegion, riotId: riotIdEncoded } =
@@ -54,6 +58,10 @@ export default function LiveGamePage() {
   // depuis game_start_time (jamais game_length_s, figé jusqu'à 5 min par le
   // TTL de cache serveur) — voir `elapsedSeconds`.
   const [nowMs, setNowMs] = useState(() => Date.now())
+  // Cartes DDragon (champions / sorts / runes). Chargées EN PARALLÈLE de l'EF
+  // et indépendamment d'elle : un échec DDragon dégrade les icônes en carrés
+  // neutres, il ne doit jamais empêcher d'afficher la composition.
+  const [dd, setDd] = useState<DDragonMaps | null>(null)
 
   const runFetch = useCallback(() => {
     // Entrées invalides → état 400 local, sans appel réseau : le premier
@@ -73,6 +81,17 @@ export default function LiveGamePage() {
   // Pas d'auto-poll en V1 (AGENTS.md §F) : un seul fetch au montage / au
   // changement d'URL, jamais de boucle. Le rafraîchissement est manuel.
   useEffect(() => { runFetch() }, [runFetch])
+
+  // DDragon : une seule fois au montage (le loader est mémoïsé au niveau
+  // module, donc gratuit sur les visites suivantes). Volontairement hors de
+  // `runFetch` : « Actualiser » ne doit pas retélécharger le patch.
+  useEffect(() => {
+    let cancelled = false
+    loadDDragonMaps()
+      .then(maps => { if (!cancelled) setDd(maps) })
+      .catch(() => { /* icônes dégradées, la composition reste lisible */ })
+    return () => { cancelled = true }
+  }, [])
 
   // Décompte du verrou : purement visuel, il ne redéclenche JAMAIS de fetch
   // de lui-même — c'est précisément ce qui distingue un verrou d'un retry
@@ -182,22 +201,33 @@ export default function LiveGamePage() {
         </div>
       )}
 
-      {/* Succès — résumé D2, le rendu des 10 joueurs arrive au Lot D3. */}
+      {/* Succès — bandeau de partie + composition des deux équipes (Lot D3). */}
       {state.kind === 'in_game' && (() => {
         // §C : game_start_time === 0 ⇒ écran de chargement, surtout PAS un
         // chrono à 00:00. `elapsedSeconds` renvoie null dans ce cas.
         const elapsed = elapsedSeconds(state.game.game_start_time, nowMs)
         return (
-          <div style={{
-            textAlign: 'center', padding: '48px 32px', borderRadius: 12,
-            background: 'rgba(93,202,165,0.06)', border: '1px solid rgba(93,202,165,0.25)',
-          }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#5DCAA5', marginBottom: 6 }}>
-              Partie en cours — {state.participants.length} joueurs
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, flexWrap: 'wrap',
+              padding: '12px 16px', borderRadius: 12,
+              background: 'rgba(93,202,165,0.06)', border: '1px solid rgba(93,202,165,0.25)',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#5DCAA5' }}>
+                {queueLabel(state.game.queue_id)}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                {elapsed === null ? 'En chargement' : formatElapsed(elapsed)}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              {queueLabel(state.game.queue_id)} · {elapsed === null ? 'En chargement' : formatElapsed(elapsed)}
-            </div>
+
+            <LiveComposition
+              game={state.game}
+              participants={state.participants}
+              requestedPuuid={state.requestedPuuid}
+              dd={dd}
+            />
           </div>
         )
       })()}

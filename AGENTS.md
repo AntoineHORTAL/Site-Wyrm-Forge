@@ -721,7 +721,7 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 | `/tournois/[slug]/admin` | Fonctionnel — panneau organisateur (garde created_by/admin), actions via EF `tournament-admin` |
 | `/tournois/[slug]/match/[code]` | À FAIRE (étape D) — les cartes du bracket pointent déjà dessus |
 | `/tournois/creer` | À FAIRE (étape E) |
-| `/live/[region]/[riotId]` | Squelette (Lot D1) — les 9 états d'interface du contrat `riot-live-game` (§ Contrat client normatif ci-dessous), appel EF inline. Rendu de la composition (10 joueurs) = Lot D3. Aucun point d'entrée depuis `/summoner` pour l'instant (Lot D5). |
+| `/live/[region]/[riotId]` | Fonctionnel (Lots D1→D3) — les 9 états d'interface du contrat `riot-live-game` (§ Contrat client normatif ci-dessous) + composition des 2 équipes. Logique dans `src/lib/live-game.ts` (module pur testé : types, fetch, libellés, `elapsedSeconds`), rendu dans `src/components/live/LiveComposition.tsx`, icônes via `src/lib/ddragon.ts`. **Plus d'appel EF inline** (extrait au Lot D2). Rangs des 10 joueurs = Lot D4 (`ranks` est toujours `null`). Aucun point d'entrée depuis `/summoner` pour l'instant (Lot D5). |
 
 ### Impact d'items (`/match/...`) — précisions techniques
 - **Cache v2** : `riot-match-detail` utilise `match:v2:${matchId}`. Matchs pré-déploiement → cache permanent v1, Vue 1 stats indisponible (dégradé propre).

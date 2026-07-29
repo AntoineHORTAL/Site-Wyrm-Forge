@@ -5,11 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
 import type { MatchInfo, RankEntry, RankResponse } from '@/lib/riot-types'
 
-const DDN      = 'https://ddragon.leagueoflegends.com'
-const champImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/champion/${img}`
-const itemImg  = (v: string, id: number)  => `${DDN}/cdn/${v}/img/item/${id}.png`
-const spellImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/spell/${img}`
-const runeImg  = (path: string)            => `${DDN}/cdn/img/${path}`
+// DDragon : cartes + URLs partagées (Lot D3) — ce bloc était recopié à
+// l'identique ici, dans /match et dans /matches.
+import {
+  loadDDragonMaps, champImg, itemImg, spellImg, runeImg, profileIconImg,
+  type ChampInfo, type SpellInfo, type RuneInfo,
+} from '@/lib/ddragon'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -85,10 +86,6 @@ function timeAgo(ts: number) {
   return `il y a ${Math.floor(h / 24)}j`
 }
 
-interface ChampInfo { id: string; name: string; image: string }
-interface SpellInfo { id: string; name: string; image: string }
-interface RuneInfo  { id: number; name: string; icon: string }
-
 export default function SummonerPage() {
   const { region: rawRegion, riotId: riotIdEncoded } =
     useParams<{ region: string; riotId: string }>()
@@ -156,43 +153,14 @@ export default function SummonerPage() {
       setCosmetics({ badges: [] })
 
       try {
-        // DDragon
-        const vRes = await fetch(`${DDN}/api/versions.json`)
-        const versions: string[] = await vRes.json()
-        const v = versions[0]
-        setVersion(v)
-
-        const [cRes, sRes, rRes] = await Promise.all([
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/summoner.json`),
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`),
-        ])
-        const [cData, sData, rData] = await Promise.all([cRes.json(), sRes.json(), rRes.json()])
-
+        // DDragon — loader partagé et mémoïsé (une seule salve réseau par
+        // session, au lieu d'un rechargement complet à chaque navigation).
+        const dd = await loadDDragonMaps()
         if (cancelled) return
-
-        const cm: Record<number, ChampInfo> = {}
-        Object.values(cData.data).forEach((ch: any) => {
-          cm[Number(ch.key)] = { id: ch.id, name: ch.name, image: ch.image.full }
-        })
-        setChampMap(cm)
-
-        const sm: Record<number, SpellInfo> = {}
-        Object.values(sData.data).forEach((sp: any) => {
-          sm[Number(sp.key)] = { id: sp.id, name: sp.name, image: sp.image.full }
-        })
-        setSpellMap(sm)
-
-        const rm: Record<number, RuneInfo> = {}
-        rData.forEach((tree: any) => {
-          rm[tree.id] = { id: tree.id, name: tree.name, icon: tree.icon }
-          tree.slots?.forEach((slot: any) =>
-            slot.runes?.forEach((rune: any) => {
-              rm[rune.id] = { id: rune.id, name: rune.name, icon: rune.icon }
-            })
-          )
-        })
-        setRuneMap(rm)
+        setVersion(dd.version)
+        setChampMap(dd.champs)
+        setSpellMap(dd.spells)
+        setRuneMap(dd.runes)
 
         // 1. Rang d'abord — peuple le cache riot_cache avant l'appel riot-matches,
         //    pour que le harvest harvestRankStats puisse y lire le tier immédiatement.
@@ -429,7 +397,7 @@ export default function SummonerPage() {
                 />
               ) : version ? (
                 <img
-                  src={`${DDN}/cdn/${version}/img/profileicon/${profileIconId}.png`}
+                  src={profileIconImg(version, profileIconId)}
                   alt=""
                   style={{ width: 72, height: 72, borderRadius: 10, display: 'block',
                            border: '2px solid rgba(255,255,255,0.12)' }}

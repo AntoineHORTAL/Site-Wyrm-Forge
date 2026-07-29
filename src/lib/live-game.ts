@@ -80,6 +80,35 @@ export function teamSide(teamId: number): TeamSide | null {
   return null
 }
 
+export type SplitTeams<T> = { order: T[]; chaos: T[]; unknown: T[] }
+
+/**
+ * Répartit les participants (ou les bans) en deux camps — **STOP D3**.
+ *
+ * ⚠️ La répartition se fait EXCLUSIVEMENT sur `team_id`, jamais sur le
+ * champion. En partie miroir (le même champion joué des deux côtés, cas
+ * fréquent en ARAM et possible en Draft via un swap), tout regroupement par
+ * `champion_id` ou par nom de champion serait ambigu : les deux occurrences
+ * se confondraient et un joueur pourrait basculer dans le mauvais camp.
+ *
+ * Corollaire côté rendu : les clés React ne doivent JAMAIS dériver du
+ * champion — `champion_id` n'est pas unique dans une partie miroir. Utiliser
+ * `puuid` (unique par participant).
+ *
+ * `unknown` recueille les `team_id` inattendus au lieu de les faire
+ * silencieusement disparaître de l'écran.
+ */
+export function splitTeams<T extends { team_id: number }>(rows: T[]): SplitTeams<T> {
+  const out: SplitTeams<T> = { order: [], chaos: [], unknown: [] }
+  for (const row of rows) {
+    const side = teamSide(row.team_id)
+    if (side === 'order') out.order.push(row)
+    else if (side === 'chaos') out.chaos.push(row)
+    else out.unknown.push(row)
+  }
+  return out
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Libellés (AGENTS.md §D — « le site recopie cette liste UNE fois »)
 // ─────────────────────────────────────────────────────────────────────────────
