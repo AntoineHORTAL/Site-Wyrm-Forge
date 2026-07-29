@@ -6,7 +6,7 @@ import {
   isValidPuuid, parseRiotId,
   elapsedSeconds, formatElapsed, formatResetsIn,
   stateTone, stateMessage, cooldownFor, REFRESH_COOLDOWN_S,
-  mapLiveGameResponse, fetchLiveGame,
+  mapLiveGameResponse, fetchLiveGame, buildLiveHref,
   pickRankedEntry, winratePct, mapRankResponse, fetchParticipantRanks,
   MAX_RANK_CALLS_PER_LOAD, SOLO_QUEUE, FLEX_QUEUE,
   type LiveGameInfo, type LiveGameState,
@@ -188,6 +188,40 @@ describe('parseRiotId', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // STOP D2 — le cœur du lot
 // ─────────────────────────────────────────────────────────────────────────────
+describe('buildLiveHref — Lot D5, point d’entrée depuis /summoner', () => {
+  it('propage un PUUID valide → chemin canonique de l’EF (1 appel Riot, pas 2)', () => {
+    const href = buildLiveHref('euw1', 'Hortal', 'EUW', PUUID)
+    expect(href).toBe(`/live/euw1/Hortal%23EUW?puuid=${PUUID}`)
+  })
+
+  it('sans PUUID → repli sur le Riot ID seul, lien toujours valide', () => {
+    for (const missing of [undefined, null, '']) {
+      expect(buildLiveHref('euw1', 'Hortal', 'EUW', missing)).toBe('/live/euw1/Hortal%23EUW')
+    }
+  })
+
+  it('PUUID mal formé OMIS plutôt que propagé (l’EF le rejetterait en 400)', () => {
+    // Le GUID anonymisé du LCU — 36 caractères, jamais un vrai PUUID Riot.
+    const lcuGuid = '5b3f8d2e-1a4c-4f7b-9e2d-3c8a7f1b6d40'
+    expect(buildLiveHref('euw1', 'Hortal', 'EUW', lcuGuid)).toBe('/live/euw1/Hortal%23EUW')
+  })
+
+  it('encode le # et les caractères spéciaux du Riot ID', () => {
+    // Le `#` DOIT être encodé : non encodé, tout ce qui suit devient un
+    // fragment et le tag disparaîtrait côté serveur comme côté routeur.
+    const href = buildLiveHref('kr', 'Hide on bush', 'KR1', null)
+    expect(href).toBe('/live/kr/Hide%20on%20bush%23KR1')
+    expect(href).not.toContain('#')
+  })
+
+  it('l’URL produite se relit avec parseRiotId (aller-retour sans perte)', () => {
+    const href = buildLiveHref('euw1', 'Ho rtal', 'EUW', PUUID)
+    const segment = href.split('/')[3].split('?')[0]
+    const parsed = parseRiotId(segment)
+    expect(parsed).toEqual({ gameName: 'Ho rtal', tagLine: 'EUW', valid: true })
+  })
+})
+
 describe('elapsedSeconds — STOP D2', () => {
   it('calcule l’écoulé depuis game_start_time', () => {
     expect(elapsedSeconds(GAME.game_start_time, GAME.game_start_time + 137_000)).toBe(137)

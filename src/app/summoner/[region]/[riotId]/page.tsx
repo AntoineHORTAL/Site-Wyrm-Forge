@@ -2,7 +2,11 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
+// Lot D5 — construction du lien vers /live (module pur et testé : c'est lui
+// qui décide de propager ou non le ?puuid=, donc le coût en appels Riot).
+import { buildLiveHref } from '@/lib/live-game'
 import type { MatchInfo, RankEntry, RankResponse } from '@/lib/riot-types'
 
 // DDragon : cartes + URLs partagées (Lot D3) — ce bloc était recopié à
@@ -298,6 +302,14 @@ export default function SummonerPage() {
   const flexEntry  = rankData?.entries.find(e => e.queueType === 'RANKED_FLEX_SR')
   const isLoading  = loadingInit
 
+  // Lot D5 — lien vers /live. Le PUUID vient de riot-rank (ou de riot-matches
+  // selon lequel a répondu en premier), DÉJÀ résolu par le chargement de cette
+  // page : le passer coûte zéro appel ici et en économise un sur la page
+  // cible. Repli assumé sur le Riot ID seul tant qu'il n'est pas résolu — le
+  // lien reste correct, il coûte juste l'account-v1 supplémentaire, ce qui
+  // vaut mieux qu'un bouton grisé pendant le chargement.
+  const liveHref = buildLiveHref(region, gameName, tagLine, puuid)
+
   function RankBadge({ e }: { e: RankEntry }) {
     const color  = TIER_COLORS[e.tier] ?? '#A1A1AA'
     const tierFr = TIER_FR[e.tier] ?? e.tier
@@ -443,6 +455,30 @@ export default function SummonerPage() {
                 </div>
               )}
               {rankError && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>{rankError}</div>}
+
+              {/* Lot D5 — point d'entrée vers /live.
+                  Le lien ne pré-vérifie DÉLIBÉRÉMENT pas `in_game` : le faire
+                  coûterait un appel spectator-v5 à CHAQUE visite de /summoner,
+                  pour une information vraie la plupart du temps ("pas en
+                  partie") et périmée dès le clic. L'état réel se découvre sur
+                  la page cible, qui sait déjà l'afficher comme un état NOMINAL. */}
+              <Link
+                href={liveHref}
+                /* prefetch={false} est REQUIS ici, pas cosmétique : le prefetch
+                   par défaut de next/link déclencherait une requête RSC vers
+                   /live dès que le lien entre dans le viewport — donc une
+                   requête réseau sans clic, ce qu'interdit le STOP D5. */
+                prefetch={false}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+                  padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  textDecoration: 'none', color: '#5DCAA5',
+                  background: 'rgba(93,202,165,0.08)',
+                  border: '1px solid rgba(93,202,165,0.25)',
+                }}
+              >
+                Partie en direct →
+              </Link>
             </div>
             {(soloEntry || flexEntry) && (
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

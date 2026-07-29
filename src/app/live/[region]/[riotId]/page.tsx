@@ -43,9 +43,11 @@ export default function LiveGamePage() {
   const platform = normalizePlatform(rawRegion)
   const { gameName, tagLine, valid: riotIdValid } = parseRiotId(riotIdEncoded ?? '')
 
-  // ?puuid= optionnel (viendra de /summoner au Lot D5) — ignoré silencieusement
-  // s'il est mal formé plutôt que de faire échouer la page : ce n'est qu'une
-  // optimisation de chemin d'appel, jamais une entrée obligatoire.
+  // ?puuid= optionnel, posé par le lien de /summoner (Lot D5, `buildLiveHref`)
+  // — ignoré silencieusement s'il est mal formé plutôt que de faire échouer la
+  // page : ce n'est qu'une optimisation de chemin d'appel (1 appel Riot au
+  // lieu de 2), jamais une entrée obligatoire. Une URL collée à la main sans
+  // puuid reste parfaitement valide.
   const puuidQP = searchParams.get('puuid')
   const validPuuid = isValidPuuid(puuidQP) ? puuidQP : null
 

@@ -187,6 +187,31 @@ export function parseRiotId(raw: string): ParsedRiotId {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Lien d'entrée vers /live — Lot D5
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Construit l'URL de la page Live Game d'un joueur.
+ *
+ * ⚠️ Le `?puuid=` n'est PAS décoratif : il fait emprunter à l'EF son chemin
+ * canonique (spectator-v5 seul, 1 appel Riot) au lieu du chemin de confort
+ * (account-v1 + spectator-v5, 2 appels). Sur une consultation complète, ça
+ * ramène le coût de 12 à 11 appels — et le Riot ID reste dans le chemin, donc
+ * l'URL demeure lisible, partageable et valide même si le PUUID est retiré.
+ *
+ * Un PUUID mal formé (typiquement le GUID anonymisé du LCU, 36 caractères) est
+ * OMIS plutôt que propagé : l'EF le rejetterait en 400, ce qui transformerait
+ * une simple optimisation ratée en page cassée. Le repli sur le seul Riot ID
+ * coûte un appel de plus, jamais une erreur.
+ */
+export function buildLiveHref(
+  platform: string, gameName: string, tagLine: string, puuid?: string | null,
+): string {
+  const path = `/live/${platform}/${encodeURIComponent(`${gameName}#${tagLine}`)}`
+  return isValidPuuid(puuid) ? `${path}?puuid=${encodeURIComponent(puuid)}` : path
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Chrono — STOP D2
 // ─────────────────────────────────────────────────────────────────────────────
 
