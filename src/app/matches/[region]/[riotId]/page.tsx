@@ -22,6 +22,9 @@ import { useParams, useRouter } from 'next/navigation'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
 import { createClient } from '@/lib/supabase/client'
 import type { MatchInfo, RankEntry, RankResponse } from '@/lib/riot-types'
+// Libellés + couleurs des rangs LoL — table partagée (Lot D4). Ne pas
+// confondre avec les couleurs des tiers d'abonnement Wyrm Forge.
+import { TIER_COLORS, TIER_FR } from '@/lib/lol-tiers'
 
 const DDN      = 'https://ddragon.leagueoflegends.com'
 const champImg = (v: string, img: string) => `${DDN}/cdn/${v}/img/champion/${img}`
@@ -51,17 +54,6 @@ const QUEUES: Record<number, string> = {
 
 const POS: Record<string, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MIDDLE: 'MID', BOTTOM: 'ADC', UTILITY: 'SUP',
-}
-
-const TIER_COLORS: Record<string, string> = {
-  IRON: '#5A5A5A', BRONZE: '#B87333', SILVER: '#A8A8A8', GOLD: '#E4A800',
-  PLATINUM: '#4FCEAC', EMERALD: '#00BA57', DIAMOND: '#4A90D9',
-  MASTER: '#9B4DCA', GRANDMASTER: '#E84057', CHALLENGER: '#F4E342',
-}
-const TIER_FR: Record<string, string> = {
-  IRON: 'Fer', BRONZE: 'Bronze', SILVER: 'Argent', GOLD: 'Or',
-  PLATINUM: 'Platine', EMERALD: 'Émeraude', DIAMOND: 'Diamant',
-  MASTER: 'Maître', GRANDMASTER: 'Grand Maître', CHALLENGER: 'Challenger',
 }
 
 // Mappe les labels d'affichage vers les codes plateforme Riot (ex: EUW → euw1)

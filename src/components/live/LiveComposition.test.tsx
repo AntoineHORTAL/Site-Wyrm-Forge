@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import LiveComposition from './LiveComposition'
-import type { LiveGameInfo, LiveParticipant } from '@/lib/live-game'
+import type { LiveGameInfo, LiveParticipant, RanksByPuuid } from '@/lib/live-game'
 import type { DDragonMaps } from '@/lib/ddragon'
 
 // Cartes DDragon minimales — Yasuo est le champion MIROIR.
@@ -73,7 +73,9 @@ const render = (over: Partial<Parameters<typeof LiveComposition>[0]> = {}) =>
   renderToStaticMarkup(
     <LiveComposition
       game={GAME} participants={PARTICIPANTS}
-      requestedPuuid="p-blue-yasuo" dd={DD} {...over}
+      requestedPuuid="p-blue-yasuo" dd={DD}
+      ranks={{}} ranksLoading={false}
+      {...over}
     />,
   )
 
@@ -170,5 +172,82 @@ describe('LiveComposition — STOP D3 : partie miroir', () => {
   it('aucune image DDragon n’est demandée sans version chargée', () => {
     const html = render({ dd: null })
     expect(html).not.toContain('ddragon.leagueoflegends.com')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STOP D4 — dégradation PAR JOUEUR
+// ─────────────────────────────────────────────────────────────────────────────
+describe('LiveComposition — rangs (Lot D4)', () => {
+  const entry = (tier: string, rank: string, lp: number, wins: number, losses: number) => ({
+    queueType: 'RANKED_SOLO_5x5', tier, rank, lp, wins, losses,
+  })
+
+  /** 9 joueurs classés, 1 (RedZed) en échec — le cas central du STOP D4. */
+  const RANKS_WITH_ONE_FAILURE: RanksByPuuid = {
+    'p-blue-yasuo': { status: 'ranked', entry: entry('GOLD', 'II', 42, 60, 40), winrate: 60, games: 100 },
+    'p-blue-lux': { status: 'ranked', entry: entry('PLATINUM', 'IV', 12, 30, 30), winrate: 50, games: 60 },
+    'p-blue-lee': { status: 'ranked', entry: entry('DIAMOND', 'I', 88, 55, 45), winrate: 55, games: 100 },
+    'p-blue-ashe': { status: 'ranked', entry: entry('MASTER', 'I', 300, 120, 100), winrate: 55, games: 220 },
+    'p-blue-thresh': { status: 'unranked' },
+    'p-red-yasuo': { status: 'ranked', entry: entry('SILVER', 'III', 5, 10, 20), winrate: 33, games: 30 },
+    'p-red-zed': { status: 'unavailable' },              // ⟵ le rang qui a échoué
+    'p-red-teemo': { status: 'ranked', entry: entry('IRON', 'IV', 0, 1, 9), winrate: 10, games: 10 },
+    'p-red-garen': { status: 'ranked', entry: entry('EMERALD', 'II', 55, 40, 35), winrate: 53, games: 75 },
+    'p-red-bot': { status: 'bot' },
+  }
+
+  it('un rang en échec ne dégrade QUE sa ligne — les 9 autres restent intactes', () => {
+    const html = render({ ranks: RANKS_WITH_ONE_FAILURE })
+    // Les rangs résolus sont bien tous affichés.
+    for (const t of ['Or II', 'Platine IV', 'Diamant I', 'Argent III', 'Fer IV', 'Émeraude II']) {
+      expect(html).toContain(t)
+    }
+    expect(html).toContain('Non classé')          // p-blue-thresh, réponse valide
+    expect(html).toContain('Rang indisponible')   // p-red-zed, title du « — »
+    // Un SEUL joueur est en échec : un seul title « Rang indisponible ».
+    expect((html.match(/Rang indisponible/g) ?? []).length).toBe(1)
+  })
+
+  it('« Non classé » n’est PAS traité comme un échec', () => {
+    const html = render({ ranks: { 'p-blue-thresh': { status: 'unranked' } } })
+    expect(html).toContain('Non classé')
+    expect(html).not.toContain('Rang indisponible')
+  })
+
+  it('Maître/GM/Challenger sans division (l’API renvoie pourtant rank:"I")', () => {
+    const html = render({ ranks: RANKS_WITH_ONE_FAILURE })
+    expect(html).toContain('Maître')
+    expect(html).not.toContain('Maître I')
+  })
+
+  it('LP et winrate affichés pour un joueur classé', () => {
+    const html = render({ ranks: RANKS_WITH_ONE_FAILURE })
+    expect(html).toContain('42 LP')
+    expect(html).toContain('60%')
+    expect(html).toContain('(100)')
+  })
+
+  it('un bot n’affiche jamais de rang', () => {
+    const html = render({ ranks: { 'p-red-bot': { status: 'bot' } } })
+    expect(html).not.toContain('Non classé')
+  })
+
+  it('rangs non encore résolus → « … » pendant le chargement, « — » ensuite', () => {
+    expect(render({ ranks: {}, ranksLoading: true })).toContain('…')
+    const done = render({ ranks: {}, ranksLoading: false })
+    expect(done).not.toContain('…')
+    expect(done).toContain('—')
+  })
+
+  it('TOUS les rangs en échec → la composition reste entièrement lisible', () => {
+    const allFailed: RanksByPuuid = Object.fromEntries(
+      PARTICIPANTS.map(p => [p.puuid, { status: 'unavailable' as const }]),
+    )
+    const html = render({ ranks: allFailed })
+    // Aucun rang, mais les 10 joueurs et les deux équipes sont toujours là.
+    expect(html).toContain('Équipe bleue')
+    expect(html).toContain('Équipe rouge')
+    for (const n of ['BlueYasuo', 'RedYasuo', 'RedGaren']) expect(html).toContain(n)
   })
 })

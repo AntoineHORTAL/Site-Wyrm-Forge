@@ -9,19 +9,21 @@
  * champion serait ambigu. Même raison pour les clés React : `puuid`, jamais
  * `champion_id` qui n'est pas unique dans ce cas.
  *
- * Les rangs ne sont PAS affichés ici : `riot-live-game` renvoie toujours
- * `ranks: null` en V1, ils viendront de 10 appels séparés à `riot-rank` au
- * Lot D4 (avec dégradation par joueur — un rang manquant affiche « — » sans
- * casser les 9 autres lignes).
+ * Lot D4 — les rangs ne viennent PAS de `riot-live-game` (`ranks` y vaut
+ * toujours `null`) mais d'appels séparés à `riot-rank?puuid=`, résolus en
+ * `Promise.allSettled` par la page. La dégradation est PAR JOUEUR : une ligne
+ * dont le rang a échoué affiche « — » pendant que les 9 autres restent
+ * intactes (contrat §E, sous-état « rangs partiels »).
  */
 import {
   splitTeams,
-  type LiveGameInfo, type LiveParticipant,
+  type LiveGameInfo, type LiveParticipant, type PlayerRank, type RanksByPuuid,
 } from '@/lib/live-game'
 import {
   champImg, spellImg, runeImg, profileIconImg,
   type DDragonMaps,
 } from '@/lib/ddragon'
+import { formatTier, tierColor } from '@/lib/lol-tiers'
 
 const SIDE_STYLE = {
   order: { label: 'Équipe bleue', color: '#4A90D9', bg: 'rgba(74,144,217,0.06)', border: 'rgba(74,144,217,0.25)' },
@@ -29,12 +31,15 @@ const SIDE_STYLE = {
 } as const
 
 export default function LiveComposition({
-  game, participants, requestedPuuid, dd,
+  game, participants, requestedPuuid, dd, ranks, ranksLoading,
 }: {
   game: LiveGameInfo
   participants: LiveParticipant[]
   requestedPuuid: string
   dd: DDragonMaps | null
+  /** Rangs par puuid. Une entrée absente = pas encore résolue. */
+  ranks: RanksByPuuid
+  ranksLoading: boolean
 }) {
   const teams = splitTeams(participants)
   const bans = splitTeams(game.banned_champions)
@@ -43,11 +48,11 @@ export default function LiveComposition({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <TeamPanel
         side="order" players={teams.order} bans={bans.order}
-        requestedPuuid={requestedPuuid} dd={dd}
+        requestedPuuid={requestedPuuid} dd={dd} ranks={ranks} ranksLoading={ranksLoading}
       />
       <TeamPanel
         side="chaos" players={teams.chaos} bans={bans.chaos}
-        requestedPuuid={requestedPuuid} dd={dd}
+        requestedPuuid={requestedPuuid} dd={dd} ranks={ranks} ranksLoading={ranksLoading}
       />
 
       {/* Un team_id inattendu ne doit pas faire disparaître un joueur de
@@ -63,13 +68,15 @@ export default function LiveComposition({
 }
 
 function TeamPanel({
-  side, players, bans, requestedPuuid, dd,
+  side, players, bans, requestedPuuid, dd, ranks, ranksLoading,
 }: {
   side: 'order' | 'chaos'
   players: LiveParticipant[]
   bans: { champion_id: number; team_id: number; pick_turn: number }[]
   requestedPuuid: string
   dd: DDragonMaps | null
+  ranks: RanksByPuuid
+  ranksLoading: boolean
 }) {
   const s = SIDE_STYLE[side]
   return (
@@ -126,6 +133,8 @@ function TeamPanel({
             dd={dd}
             highlight={p.puuid === requestedPuuid}
             accent={SIDE_STYLE[side].color}
+            rank={ranks[p.puuid]}
+            ranksLoading={ranksLoading}
           />
         ))}
       </div>
@@ -133,13 +142,45 @@ function TeamPanel({
   )
 }
 
+/**
+ * Cellule de rang — le SEUL endroit qui distingue les quatre états.
+ * `unranked` (« Non classé ») n'est PAS un échec : c'est une réponse valide.
+ * Seul `unavailable` (et un rang jamais résolu) affiche « — ».
+ */
+function RankCell({ rank, loading }: { rank: PlayerRank | undefined; loading: boolean }) {
+  const dim: React.CSSProperties = {
+    flexShrink: 0, fontSize: 11, color: 'var(--text-dim)',
+    minWidth: 96, textAlign: 'right',
+  }
+
+  if (!rank) return <div style={dim}>{loading ? '…' : '—'}</div>
+  if (rank.status === 'bot') return <div style={dim}>—</div>
+  if (rank.status === 'unavailable') return <div style={{ ...dim }} title="Rang indisponible">—</div>
+  if (rank.status === 'unranked') return <div style={dim}>Non classé</div>
+
+  const { entry, winrate, games } = rank
+  return (
+    <div style={{ flexShrink: 0, minWidth: 96, textAlign: 'right' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: tierColor(entry.tier) }}>
+        {formatTier(entry.tier, entry.rank)}
+        <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}> · {entry.lp} LP</span>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums' }}>
+        {winrate}% <span style={{ opacity: 0.7 }}>({games})</span>
+      </div>
+    </div>
+  )
+}
+
 function PlayerRow({
-  p, dd, highlight, accent,
+  p, dd, highlight, accent, rank, ranksLoading,
 }: {
   p: LiveParticipant
   dd: DDragonMaps | null
   highlight: boolean
   accent: string
+  rank: PlayerRank | undefined
+  ranksLoading: boolean
 }) {
   const champ = dd?.champs[p.champion_id]
   const spell1 = dd?.spells[p.spell1_id]
@@ -226,14 +267,9 @@ function PlayerRow({
         </div>
       </div>
 
-      {/* Rang — emplacement réservé D4. `ranks` vaut toujours null en V1 :
-          afficher « — » plutôt que de laisser un vide inexpliqué. */}
-      <div style={{
-        flexShrink: 0, fontSize: 11, color: 'var(--text-dim)',
-        minWidth: 52, textAlign: 'right',
-      }}>
-        —
-      </div>
+      {/* Rang (Lot D4) — dégradation par joueur : cette cellule seule tombe
+          à « — » si l'appel riot-rank de CE joueur a échoué. */}
+      <RankCell rank={rank} loading={ranksLoading} />
 
       {/* Icône de profil, en bout de ligne (donnée déjà présente dans la
           réponse spectator-v5 — jamais besoin de la redemander à riot-rank). */}

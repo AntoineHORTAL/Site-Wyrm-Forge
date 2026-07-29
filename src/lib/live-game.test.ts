@@ -7,6 +7,8 @@ import {
   elapsedSeconds, formatElapsed, formatResetsIn,
   stateTone, stateMessage, cooldownFor, REFRESH_COOLDOWN_S,
   mapLiveGameResponse, fetchLiveGame,
+  pickRankedEntry, winratePct, mapRankResponse, fetchParticipantRanks,
+  MAX_RANK_CALLS_PER_LOAD, SOLO_QUEUE, FLEX_QUEUE,
   type LiveGameInfo, type LiveGameState,
 } from './live-game'
 
@@ -479,5 +481,177 @@ describe('fetchLiveGame — couche réseau', () => {
     await expect(fetchLiveGame({ platform: 'euw1', puuid: PUUID, gameName: '', tagLine: '' }))
       .resolves.toEqual({ kind: 'server_error', network: false })
     expect(seen.calls).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lot D4 — rangs
+// ─────────────────────────────────────────────────────────────────────────────
+const solo = (tier = 'GOLD', rank = 'II') => ({
+  queueType: SOLO_QUEUE, tier, rank, lp: 42, wins: 60, losses: 40,
+})
+const flex = () => ({ queueType: FLEX_QUEUE, tier: 'SILVER', rank: 'I', lp: 10, wins: 5, losses: 5 })
+
+describe('pickRankedEntry — Solo/Duo prioritaire, Flex en repli', () => {
+  it('choisit Solo/Duo quand les deux existent', () => {
+    expect(pickRankedEntry([flex(), solo()])?.queueType).toBe(SOLO_QUEUE)
+  })
+  it('retombe sur Flex si pas de Solo/Duo', () => {
+    expect(pickRankedEntry([flex()])?.queueType).toBe(FLEX_QUEUE)
+  })
+  it('ignore les autres files (TFT, arena…)', () => {
+    expect(pickRankedEntry([{ queueType: 'RANKED_TFT', tier: 'GOLD' }])).toBeNull()
+  })
+  it('liste vide / non-tableau / entrées cassées → null', () => {
+    expect(pickRankedEntry([])).toBeNull()
+    expect(pickRankedEntry(null)).toBeNull()
+    expect(pickRankedEntry([null, { nope: 1 }])).toBeNull()
+  })
+})
+
+describe('winratePct', () => {
+  it('arrondit correctement', () => {
+    expect(winratePct(60, 40)).toBe(60)
+    expect(winratePct(1, 2)).toBe(33)
+  })
+  it('0 partie → 0, jamais NaN', () => {
+    expect(winratePct(0, 0)).toBe(0)
+    expect(Number.isNaN(winratePct(0, 0))).toBe(false)
+  })
+})
+
+describe('mapRankResponse — 4 états distincts', () => {
+  it('200 + entrée classée → ranked avec winrate et games', () => {
+    const r = mapRankResponse(200, { puuid: PUUID, entries: [solo()] })
+    expect(r.status).toBe('ranked')
+    if (r.status !== 'ranked') throw new Error('unreachable')
+    expect(r.entry.tier).toBe('GOLD')
+    expect(r.winrate).toBe(60)
+    expect(r.games).toBe(100)
+  })
+  it('200 sans entrée → unranked (réponse VALIDE, pas un échec)', () => {
+    expect(mapRankResponse(200, { puuid: PUUID, entries: [] })).toEqual({ status: 'unranked' })
+  })
+  it('429 / 503 / 500 → unavailable', () => {
+    for (const s of [429, 503, 500, 404]) {
+      expect(mapRankResponse(s, { error: 'x' })).toEqual({ status: 'unavailable' })
+    }
+  })
+  it('le chemin ?puuid= ne fournit PAS profileIconId — on ne le suppose jamais', () => {
+    // Asymétrie de contrat documentée : seul `entries` est garanti ici.
+    const r = mapRankResponse(200, { puuid: PUUID, entries: [solo()] })
+    expect(r.status).toBe('ranked')
+  })
+})
+
+describe('fetchParticipantRanks — dégradation PAR JOUEUR (STOP D4)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+  const P = (n: number, bot = false) => ({ puuid: `puuid-${n}`.padEnd(78, 'x'), bot })
+  const TEN = Array.from({ length: 10 }, (_, i) => P(i))
+
+  const stubEnv = () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://x.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key')
+  }
+
+  /** `failFor` : liste d'index dont l'appel échoue (rejet réseau ou statut). */
+  const stubRanks = (failFor: number[] = [], mode: 'reject' | 'status' = 'reject', status = 503) => {
+    const seen = { urls: [] as string[] }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.urls.push(url)
+      const idx = TEN.findIndex(p => url.includes(encodeURIComponent(p.puuid)))
+      if (failFor.includes(idx)) {
+        if (mode === 'reject') throw new TypeError('network down')
+        return new Response(JSON.stringify({ error: 'x' }), { status })
+      }
+      return new Response(JSON.stringify({ puuid: 'p', entries: [solo()] }), { status: 200 })
+    }))
+    return seen
+  }
+
+  it('10 joueurs classés → 10 appels, 10 rangs', async () => {
+    stubEnv(); const seen = stubRanks()
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    expect(seen.urls).toHaveLength(10)
+    expect(res.callsIssued).toBe(10)
+    expect(Object.values(res.ranks).every(r => r.status === 'ranked')).toBe(true)
+  })
+
+  it('UN rejet ne vide PAS la grille — 9 rangs survivent', async () => {
+    // C'est exactement ce que `Promise.all` casserait : un seul rejet ferait
+    // échouer la promesse entière et laisserait les 10 lignes sans rang.
+    stubEnv(); stubRanks([3], 'reject')
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    const vals = Object.values(res.ranks)
+    expect(vals.filter(r => r.status === 'ranked')).toHaveLength(9)
+    expect(res.ranks[TEN[3].puuid]).toEqual({ status: 'unavailable' })
+  })
+
+  it('plusieurs échecs mêlés à des succès : chacun isolé', async () => {
+    stubEnv(); stubRanks([0, 4, 9], 'status', 429)
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    expect(Object.values(res.ranks).filter(r => r.status === 'ranked')).toHaveLength(7)
+    expect(Object.values(res.ranks).filter(r => r.status === 'unavailable')).toHaveLength(3)
+  })
+
+  it('TOUS en échec → 10 « unavailable », toujours pas de throw', async () => {
+    stubEnv(); stubRanks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 'reject')
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    expect(Object.values(res.ranks).every(r => r.status === 'unavailable')).toBe(true)
+  })
+
+  it('les bots sont exclus AVANT tout appel (aucun jeton gaspillé)', async () => {
+    stubEnv()
+    const withBots = [...TEN.slice(0, 8), P(8, true), P(9, true)]
+    const seen = stubRanks()
+    const res = await fetchParticipantRanks(withBots, 'euw1')
+    expect(seen.urls).toHaveLength(8)     // 10 participants, 8 appels
+    expect(res.callsIssued).toBe(8)
+    expect(res.ranks[withBots[8].puuid]).toEqual({ status: 'bot' })
+  })
+
+  it('envoie bien ?puuid= et ?platform=', async () => {
+    stubEnv(); const seen = stubRanks()
+    await fetchParticipantRanks([P(0)], 'kr')
+    const u = new URL(seen.urls[0])
+    expect(u.pathname).toBe('/functions/v1/riot-rank')
+    expect(u.searchParams.get('platform')).toBe('kr')
+    expect(u.searchParams.get('puuid')).toBe(P(0).puuid)
+  })
+
+  it('remonte le plus grand retry_after_s des 429 (pour prolonger le verrou)', async () => {
+    stubEnv()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const idx = TEN.findIndex(p => url.includes(encodeURIComponent(p.puuid)))
+      if (idx === 2) return new Response(JSON.stringify({ retry_after_s: 20 }), { status: 429 })
+      if (idx === 5) return new Response(JSON.stringify({ retry_after_s: 47 }), { status: 429 })
+      return new Response(JSON.stringify({ entries: [solo()] }), { status: 200 })
+    }))
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    expect(res.retryAfterS).toBe(47)
+  })
+
+  it('aucun 429 → retryAfterS null (le verrou de 30 s suffit)', async () => {
+    stubEnv(); stubRanks()
+    expect((await fetchParticipantRanks(TEN, 'euw1')).retryAfterS).toBeNull()
+  })
+
+  it('env absente → tout « unavailable », zéro appel', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', '')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', '')
+    const seen = stubRanks()
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    expect(seen.urls).toHaveLength(0)
+    expect(res.callsIssued).toBe(0)
+    expect(Object.values(res.ranks).every(r => r.status === 'unavailable')).toBe(true)
+  })
+
+  it('le coût annoncé borne bien une partie pleine', async () => {
+    stubEnv(); stubRanks()
+    const res = await fetchParticipantRanks(TEN, 'euw1')
+    // 10 riot-rank + 1 riot-live-game = 11 jetons, sur DEUX buckets distincts
+    // (isRateLimited est indexé par function_name).
+    expect(res.callsIssued).toBeLessThanOrEqual(MAX_RANK_CALLS_PER_LOAD)
   })
 })

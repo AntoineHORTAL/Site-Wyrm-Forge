@@ -11,6 +11,9 @@ import {
   loadDDragonMaps, champImg, itemImg, spellImg, runeImg, profileIconImg,
   type ChampInfo, type SpellInfo, type RuneInfo,
 } from '@/lib/ddragon'
+// Libellés + couleurs des rangs LoL — table partagée (Lot D4). Ne pas
+// confondre avec les couleurs des tiers d'abonnement Wyrm Forge.
+import { TIER_COLORS, TIER_FR } from '@/lib/lol-tiers'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -27,17 +30,6 @@ const QUEUES: Record<number, string> = {
 
 const POS: Record<string, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MIDDLE: 'MID', BOTTOM: 'ADC', UTILITY: 'SUP',
-}
-
-const TIER_COLORS: Record<string, string> = {
-  IRON: '#5A5A5A', BRONZE: '#B87333', SILVER: '#A8A8A8', GOLD: '#E4A800',
-  PLATINUM: '#4FCEAC', EMERALD: '#00BA57', DIAMOND: '#4A90D9',
-  MASTER: '#9B4DCA', GRANDMASTER: '#E84057', CHALLENGER: '#F4E342',
-}
-const TIER_FR: Record<string, string> = {
-  IRON: 'Fer', BRONZE: 'Bronze', SILVER: 'Argent', GOLD: 'Or',
-  PLATINUM: 'Platine', EMERALD: 'Émeraude', DIAMOND: 'Diamant',
-  MASTER: 'Maître', GRANDMASTER: 'Grand Maître', CHALLENGER: 'Challenger',
 }
 
 // Distribution de rang Solo Queue — LeagueOfGraphs · S1 2026 · Avr. 2026

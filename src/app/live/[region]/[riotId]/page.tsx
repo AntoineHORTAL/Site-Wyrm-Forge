@@ -26,9 +26,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
-  fetchLiveGame, normalizePlatform, isKnownPlatform, parseRiotId, isValidPuuid,
-  queueLabel, elapsedSeconds, formatElapsed, stateMessage, cooldownFor,
-  type LiveGameState,
+  fetchLiveGame, fetchParticipantRanks, normalizePlatform, isKnownPlatform,
+  parseRiotId, isValidPuuid, queueLabel, elapsedSeconds, formatElapsed,
+  stateMessage, cooldownFor,
+  type LiveGameState, type RanksByPuuid,
 } from '@/lib/live-game'
 import { loadDDragonMaps, type DDragonMaps } from '@/lib/ddragon'
 import LiveComposition from '@/components/live/LiveComposition'
@@ -62,6 +63,11 @@ export default function LiveGamePage() {
   // et indépendamment d'elle : un échec DDragon dégrade les icônes en carrés
   // neutres, il ne doit jamais empêcher d'afficher la composition.
   const [dd, setDd] = useState<DDragonMaps | null>(null)
+  // Rangs des participants (Lot D4). Résolus APRÈS la partie, en un second
+  // temps : la composition s'affiche immédiatement, les rangs se remplissent
+  // ensuite. Un échec par joueur ne touche que sa ligne.
+  const [ranks, setRanks] = useState<RanksByPuuid>({})
+  const [ranksLoading, setRanksLoading] = useState(false)
 
   const runFetch = useCallback(() => {
     // Entrées invalides → état 400 local, sans appel réseau : le premier
@@ -72,9 +78,26 @@ export default function LiveGamePage() {
       return
     }
     setState({ kind: 'loading' })
+    setRanks({})
     fetchLiveGame({ platform, puuid: validPuuid, gameName, tagLine }).then(next => {
       setState(next)
       setCooldown(cooldownFor(next))
+      if (next.kind !== 'in_game') return
+
+      // Rangs : jusqu'à 10 appels riot-rank, en allSettled (voir
+      // fetchParticipantRanks). Volontairement NON await'é ici — la
+      // composition est déjà rendue, les rangs arrivent en second.
+      setRanksLoading(true)
+      fetchParticipantRanks(next.participants, platform).then(res => {
+        setRanks(res.ranks)
+        setRanksLoading(false)
+        // Si un appel riot-rank a été rate-limité, le délai qu'il impose peut
+        // dépasser notre verrou de 30 s : on prolonge plutôt que de rouvrir le
+        // bouton sur un budget déjà épuisé.
+        if (res.retryAfterS != null) {
+          setCooldown(c => Math.max(c, res.retryAfterS!))
+        }
+      })
     })
   }, [platform, gameName, tagLine, riotIdValid, validPuuid])
 
@@ -227,6 +250,8 @@ export default function LiveGamePage() {
               participants={state.participants}
               requestedPuuid={state.requestedPuuid}
               dd={dd}
+              ranks={ranks}
+              ranksLoading={ranksLoading}
             />
           </div>
         )

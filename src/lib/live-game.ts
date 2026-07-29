@@ -444,6 +444,182 @@ export function mapLiveGameResponse(status: number, body: unknown): LiveGameStat
 // Couche réseau (seule fonction impure du module)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Rangs des participants (Lot D4)
+// ─────────────────────────────────────────────────────────────────────────────
+// `riot-live-game` renvoie TOUJOURS `ranks: null` en V1 (emplacement réservé
+// serveur). Les rangs viennent donc d'appels séparés à `riot-rank?puuid=`,
+// un par participant, faits par le client.
+
+/** Une entrée de classement, telle que `mapEntries` la renvoie côté EF. */
+export type RankEntryLite = {
+  queueType: string
+  tier: string
+  rank: string
+  lp: number
+  wins: number
+  losses: number
+}
+
+/**
+ * État du rang d'UN joueur. Quatre cas distincts — surtout ne pas les
+ * confondre à l'affichage :
+ *  - `ranked`      : classé, on a tier/division/LP/winrate
+ *  - `unranked`    : réponse valide MAIS aucune file classée (début de saison,
+ *                    joueur non classé) → « Non classé », ce n'est PAS un échec
+ *  - `unavailable` : l'appel a échoué (429, 503, réseau…) → « — »
+ *  - `bot`         : participant IA, aucun rang n'existe → aucun appel émis
+ */
+export type PlayerRank =
+  | { status: 'ranked'; entry: RankEntryLite; winrate: number; games: number }
+  | { status: 'unranked' }
+  | { status: 'unavailable' }
+  | { status: 'bot' }
+
+export type RanksByPuuid = Record<string, PlayerRank>
+
+/** Résultat global du chargement des rangs, verrou compris. */
+export type RanksResult = {
+  ranks: RanksByPuuid
+  /** Nombre d'appels `riot-rank` réellement émis (bots exclus). */
+  callsIssued: number
+  /** Plus grand `retry_after_s` renvoyé par un 429, s'il y en a eu. */
+  retryAfterS: number | null
+}
+
+/** File classée préférée : Solo/Duo d'abord, Flex en repli. */
+export const SOLO_QUEUE = 'RANKED_SOLO_5x5'
+export const FLEX_QUEUE = 'RANKED_FLEX_SR'
+
+/**
+ * Choisit l'entrée à afficher parmi celles renvoyées par `riot-rank`.
+ * Solo/Duo prioritaire (c'est le rang « de référence » pour un joueur), Flex
+ * en repli. Les autres files (TFT, arena…) sont ignorées : elles n'ont pas de
+ * sens dans une composition de Faille.
+ */
+export function pickRankedEntry(entries: unknown): RankEntryLite | null {
+  if (!Array.isArray(entries)) return null
+  const valid = entries.filter((e): e is RankEntryLite =>
+    !!e && typeof (e as RankEntryLite).tier === 'string' && typeof (e as RankEntryLite).queueType === 'string')
+  return valid.find(e => e.queueType === SOLO_QUEUE)
+    ?? valid.find(e => e.queueType === FLEX_QUEUE)
+    ?? null
+}
+
+/** Winrate en %, arrondi. 0 partie → 0 (jamais NaN dans le rendu). */
+export function winratePct(wins: number, losses: number): number {
+  const games = (wins ?? 0) + (losses ?? 0)
+  if (games <= 0) return 0
+  return Math.round((wins / games) * 100)
+}
+
+/**
+ * Coût d'une consultation complète, en jetons `isRateLimited`.
+ *
+ * ⚠️ Les buckets sont **par fonction** (`fn_riot_rate_increment` est indexé sur
+ * `(ip_hash, function_name, window_start)`), pas globaux :
+ *  - `riot-live-game` : 1 jeton / chargement, sur un bucket de 20/min → large.
+ *  - `riot-rank`      : jusqu'à 10 jetons / chargement, sur SON bucket de
+ *    20/min → **2 chargements par minute maximum**.
+ *
+ * C'est exactement ce que borne `REFRESH_COOLDOWN_S` (30 s) : au plus deux
+ * chargements dans la même minute, donc au plus 20 appels `riot-rank`, soit
+ * pile la limite. Raccourcir ce verrou ferait échouer des rangs (429 partiels)
+ * sans qu'aucune erreur globale ne s'affiche — dégradation silencieuse.
+ *
+ * Rappel : dans `riot-rank`, `isRateLimited` s'exécute AVANT le cache, donc
+ * même un HIT consomme un jeton. Le cache ne protège pas du rate limit.
+ */
+export const MAX_RANK_CALLS_PER_LOAD = 10
+
+/** Traduit une réponse `riot-rank` en état de rang pour un joueur. */
+export function mapRankResponse(status: number, body: unknown): PlayerRank {
+  if (status < 200 || status >= 300) return { status: 'unavailable' }
+  const entry = pickRankedEntry((body as { entries?: unknown } | null)?.entries)
+  if (!entry) return { status: 'unranked' }
+  return {
+    status: 'ranked',
+    entry,
+    winrate: winratePct(entry.wins, entry.losses),
+    games: (entry.wins ?? 0) + (entry.losses ?? 0),
+  }
+}
+
+/** Un appel `riot-rank?puuid=`. Ne throw jamais. */
+async function fetchOneRank(
+  puuid: string, platform: string, supaUrl: string, supaKey: string,
+): Promise<{ rank: PlayerRank; retryAfterS: number | null }> {
+  let res: Response
+  try {
+    res = await fetch(
+      `${supaUrl}/functions/v1/riot-rank?${new URLSearchParams({ puuid, platform }).toString()}`,
+      { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` } },
+    )
+  } catch {
+    return { rank: { status: 'unavailable' }, retryAfterS: null }
+  }
+  const body = await res.json().catch(() => null)
+  const retryAfterS = res.status === 429 && typeof (body as { retry_after_s?: unknown })?.retry_after_s === 'number'
+    ? (body as { retry_after_s: number }).retry_after_s
+    : null
+  return { rank: mapRankResponse(res.status, body), retryAfterS }
+}
+
+/**
+ * Charge les rangs des participants — **dégradation PAR JOUEUR**.
+ *
+ * ⚠️ `Promise.allSettled`, jamais `Promise.all` : avec `all`, un seul rejet
+ * (429 sur un joueur, coupure réseau, PUUID improbable) ferait échouer la
+ * promesse entière et viderait la grille des 10 rangs. Ici, chaque appel est
+ * isolé — un échec ne touche QUE la ligne concernée, qui affichera « — »
+ * pendant que les 9 autres restent intactes (contrat §E, sous-état
+ * « rangs partiels »).
+ *
+ * Les bots sont exclus AVANT tout appel : ils n'ont pas de rang (§C), leur en
+ * demander un gaspillerait un jeton de rate limit pour un 404 garanti.
+ */
+export async function fetchParticipantRanks(
+  participants: Pick<LiveParticipant, 'puuid' | 'bot'>[],
+  platform: string,
+): Promise<RanksResult> {
+  const ranks: RanksByPuuid = {}
+  const targets: string[] = []
+
+  for (const p of participants) {
+    if (p.bot) { ranks[p.puuid] = { status: 'bot' }; continue }
+    if (!p.puuid) continue
+    targets.push(p.puuid)
+  }
+
+  const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supaKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supaUrl || !supaKey) {
+    for (const puuid of targets) ranks[puuid] = { status: 'unavailable' }
+    return { ranks, callsIssued: 0, retryAfterS: null }
+  }
+
+  const settled = await Promise.allSettled(
+    targets.map(puuid => fetchOneRank(puuid, platform, supaUrl, supaKey)),
+  )
+
+  let retryAfterS: number | null = null
+  settled.forEach((r, i) => {
+    const puuid = targets[i]
+    if (r.status === 'fulfilled') {
+      ranks[puuid] = r.value.rank
+      if (r.value.retryAfterS != null) {
+        retryAfterS = Math.max(retryAfterS ?? 0, r.value.retryAfterS)
+      }
+    } else {
+      // `fetchOneRank` n'est pas censé rejeter (tout est capturé), mais on ne
+      // suppose rien : un rejet inattendu dégrade CE joueur, pas la grille.
+      ranks[puuid] = { status: 'unavailable' }
+    }
+  })
+
+  return { ranks, callsIssued: targets.length, retryAfterS }
+}
+
 export type FetchLiveGameParams = {
   platform: string
   /** Chemin canonique : 1 seul appel Riot côté serveur. */
