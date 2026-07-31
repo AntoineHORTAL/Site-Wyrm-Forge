@@ -1,10 +1,19 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
-/* Colonnes de liens du footer.
+/* Liens légaux de la barre basse — routes réelles (src/app/{cgu,confidentialite,
+   mentions-legales}/page.tsx), contrairement aux colonnes ci-dessous encore en '#'. */
+const legalLinks = [
+  { label: 'Conditions',      href: '/cgu' },
+  { label: 'Confidentialité', href: '/confidentialite' },
+  { label: 'Mentions légales', href: '/mentions-legales' },
+]
+
+/* Colonnes de liens du footer (les liens légaux vivent dans `legalLinks` ci-dessus).
    - Routes inexistantes pour l'instant → '#' (placeholder, à brancher plus tard)
    - Liens fonctionnels : ancres de la home (#features, #communaute) + téléchargement
    - Réseaux sociaux : '#' tant que les URLs ne sont pas fournies */
@@ -110,9 +119,13 @@ export default function Footer() {
         <span style={{ color: c ? '#5F5E5A' : '#52525B', fontSize: 12 }}>
           © 2026 Wyrm Forge. Non affilié à Riot Games.
         </span>
-        <div style={{ display: 'flex', gap: 24 }}>
-          <a href="#" style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>Conditions</a>
-          <a href="#" style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>Confidentialité</a>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
+          {legalLinks.map((l) => (
+            <Link key={l.href} href={l.href}
+              style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>
+              {l.label}
+            </Link>
+          ))}
         </div>
       </div>
 
