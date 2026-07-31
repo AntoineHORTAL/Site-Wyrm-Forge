@@ -789,7 +789,7 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 ## 📋 À faire plus tard
 
 ### Quotas IA différenciés rapide / détaillée (MatchUp, puis PostGame)
-**Constat de coût** : l'« analyse rapide » (`max_tokens=400`) coûte **~16× moins cher** que l'« analyse détaillée » (`max_tokens=3000`) — mesuré au sondage sur Haiku : **~0,0008 $ vs ~0,013 $** par appel. Or aujourd'hui les deux **consomment le même compteur hebdomadaire** : `usage_counters` avec une seule `feature = 'matchup_analyze'` (⚠️ la clé réelle en base est `matchup_analyze`, pas `matchup`). `matchup-analyze` ne distingue pas `advanced` true/false pour le quota.
+**Constat de coût** : ⚠️ **le ratio « ~16× » de la première version de ce paragraphe est FAUX — le vrai ratio mesuré est 3,5×** (voir § Coût réel mesuré ci-dessous). Le 16× comparait deux scénarios différents, pas rapide vs détaillée à scénario constant. Sur un scénario identique (5v5 complet, Sonnet 5), l'« analyse rapide » (`max_tokens=400`) coûte **15,7 crédits** contre **55,7** pour la détaillée (`max_tokens=3000`) — soit **3,5×**, pas 16×. Toute décision de calibrage prise sur le 16× est à refaire. Aujourd'hui les deux **consomment le même compteur hebdomadaire** : `usage_counters` avec une seule `feature = 'matchup_analyze'` (⚠️ la clé réelle en base est `matchup_analyze`, pas `matchup`). `matchup-analyze` ne distingue pas `advanced` true/false pour le quota.
 
 **Piste à cadrer** : séparer en **deux compteurs distincts** (ex. `matchup_quick` et `matchup_detailed`), chacun avec sa propre limite par tier — permettrait p. ex. de débloquer **plus d'analyses rapides** pour Apprenti (gratuit) **sans** gonfler le budget détaillé (plus coûteux, surtout Sonnet pour Maître+).
 
@@ -799,6 +799,61 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 - **Affichage quota** : potentiellement **2 jauges au lieu d'1**, côté WPF (`ClaudeService`/`MatchUpAnalysisResult`) **et** web (`src/lib/matchup/api.ts` `getQuota` + `MatchUpTab`).
 
 **Prérequis / cadrage générique** : la **même question se posera pour PostGame** (analyse IA post-partie, pas encore construite). → **Concevoir une architecture de quota différenciée générique dès PostGame** (compteurs paramétrés par variante d'analyse), plutôt que de la retrofit sur MatchUp seul. Le patron `usage_counters` + `consume_ai_quota`/`refund_ai_quota` reste la base (cf. §MatchUp Web + doc `matchup-analyze`) — c'est la granularité `feature` qui évolue.
+
+### Coût réel mesuré de `matchup-analyze` (Lot 1 chantier Budget IA — 2026-07-31)
+
+Mesures **réelles** (appels Anthropic non mockés, `usage.input_tokens`/`output_tokens` de la réponse API), prompt byte-identique à la prod. Unité : **1 crédit = 0,001 $**. Tarif **standard** Sonnet 5 (3,00 $/15,00 $ par MTok).
+
+> ⚠️ **Sonnet 5 est en tarif d'introduction (2,00 $/10,00 $) jusqu'au 31/08/2026** — soit **+50 % de coût au 1ᵉʳ septembre**. Tous les chiffres ci-dessous sont au tarif standard : budgéter sur la facture de juillet/août, c'est être court de 50 % en septembre.
+
+#### Ce qui coûte réellement
+- **C'est le template de réponse qui coûte, pas la complexité de l'input.** De 265 à 3 579 tokens d'entrée (×13,5), le coût ne fait que ×2. À 5v5 complet, l'input ne pèse que **19 %** de la facture.
+- **Le prompt détaillé actuel (6 sections) tronque systématiquement** : 5/5 runs à `stop_reason=max_tokens` sur un 5v5 complet. **Tout utilisateur Maître+ qui lance une analyse détaillée 5v5 reçoit aujourd'hui une analyse coupée.**
+- **L'analyse rapide Sonnet (15,7 cr) coûte MOINS cher que l'analyse détaillée Haiku (18,1 cr)** — raccourcir la réponse est un levier plus puissant que dégrader le modèle. À retenir avant d'arbitrer « Haiku par défaut ».
+
+#### Prompt de réponse — V2 condensé (mesuré, **PAS déployé**)
+Réécriture du bloc de consignes du prompt `advanced` : 6 sections → **4**, budget explicite de 400 mots, interdiction de recopier les stats. Les 3 phases (early/mid/late) sont **conservées**, fusionnées en une section à une phrase par phase — aucune information actionnable perdue (contrôle qualité sur sortie réelle : conseils tactiques spécifiques, exploitation des builds, note de difficulté justifiée).
+
+| Cas (Sonnet 5, détaillée) | V1 (6 sections) | V2 (4 sections) | Gain |
+|---|---|---|---|
+| 1v1, sans stats | 27,4 cr · 1 776 tok | **10,7 cr** · 647 tok | −61 % |
+| 1v1, 20 stats | 34,7 cr · 2 165 tok | **13,5 cr** · 736 tok | −61 % |
+| 2v2, 20 stats, 3 items | 44,9 cr · 2 704 tok | **16,2 cr** · 783 tok | −64 % |
+| **5v5 complet, 6 items** | 55,7 cr · **3 000 tok (tronqué 5/5)** | **24,0 cr** · 872 tok (**tronqué 0/6**) | **−57 %** |
+
+Vérifié une seconde fois sur un 5v5 aux **stats différenciées par champion** (les 10 champions du premier jeu d'essai portaient les mêmes stats, ce que le modèle remarquait par un préambule méta) : **878 tokens de sortie, 23,9 cr, 0/4 tronqué** — écart de 0,7 % avec le jeu synthétique, et le préambule disparaît. La mesure est donc représentative.
+
+- **Aucun des deux clients ne parse les sections** — web `MatchUpTab.tsx:310` (`whiteSpace: pre-wrap`), WPF `MatchUpEditorView.xaml.cs:890` (`TextBlock` unique). Vérifié dans les deux dépôts : la réécriture ne peut casser aucun affichage. C'est ce qui rend la refonte du format libre.
+
+#### Vérification finale à `max_tokens=1400` (la valeur réellement déployée)
+Mesurer à 3000 n'aurait pas testé la configuration de prod — c'est précisément à 1400 qu'une troncature redevient possible. 16 runs sur le prompt définitif (consigne « 2 puces » renforcée incluse) :
+
+| Cas | in | out moy | out max | tronqué | crédits |
+|---|---|---|---|---|---|
+| 1v1 sans stats | 385 | 596 | 612 | 0/2 | 10,1 |
+| 1v1 · 20 stats | 877 | 700 | 722 | 0/2 | 13,1 |
+| 2v2 · 3 items | 1 557 | 799 | 831 | 0/2 | 16,6 |
+| 5v5 complet | 3 699 | 803 | 870 | **0/6** | **23,1** |
+| 5v5 stats différenciées | 3 699 | 819 | 876 | **0/4** | **23,4** |
+
+**0 troncature sur 16 runs. Sortie max 876 / 1400 → 37 % de marge.** Le durcissement de la consigne n'a pas fait remonter le coût (23,1 vs 24,0 avant).
+
+⚠️ **Écart de consigne résiduel, non bloquant** : la section « Forces et faiblesses » demande exactement 2 puces par camp. Après reformulation contraignante, la sortie respecte généralement la cible (4 puces au total), avec un dépassement occasionnel à 8. **Sans impact budgétaire** — la longueur totale reste stable et sous le plafond. Ne pas « corriger » à nouveau sans mesurer : la consigne actuelle est le meilleur compromis trouvé.
+> 🪤 Piège de méthode rencontré : le compteur de puces du script de contrôle utilisait `/^\s*[-*•]/`, qui matche aussi `**Camp allié :**` (astérisque de gras) — il sur-comptait de 2 par réponse et faisait croire à une violation systématique. Vérifier un instrument de mesure avant de conclure d'un écart.
+
+#### Budget tier Maître (135 crédits/semaine)
+| | V1 | V2 |
+|---|---|---|
+| Analyses détaillées 5v5 finançables/sem | **2,4** | **5,6** (5,2 au coût max observé) |
+
+**Le plafond actuel de l'EF est de 100/semaine** — soit 5 570 crédits/sem/utilisateur en V1, **41× le budget soutenable**. En V2 avec un plafond de 4/semaine : 4 × 23,4 = **93,5 crédits au coût mesuré**. Contre le plafond structurel dur (une analyse qui irait au bout des 1400 tokens) : 4 × 32,1 = 128,4 cr, **95 % du budget — il n'y a pas de place pour une 5ᵉ analyse/semaine dans cette configuration**.
+
+> **Statut : ADOPTÉ dans le code, pas encore en production.** L'EF `matchup-analyze` porte désormais le prompt V2 et `max_tokens=1400`. ⚠️ **Committer n'est pas déployer** : le déploiement se fait par la GitHub Action **au push**. Tant que le commit n'est pas poussé, la prod tourne encore sur V1/3000. Scripts de mesure rejouables dans le scratchpad de session (`measure-matchup-cost.mjs`, `measure-prompt-v2.mjs`, `verify-v2-realstats.mjs`, `measure-final.mjs`).
+>
+> **⚠️ Le plafond hebdomadaire n'a PAS été touché** : `TIER_CONFIG` reste à 100/semaine pour Maître et au-dessus. Le prompt V2 divise le coût par 2,3 mais **ne résout pas à lui seul l'écart de budget** — à 100 analyses/semaine on est encore à 2 340 crédits, soit 17× les 135 du budget. Le passage à un plafond de 4/semaine est une décision distincte, non prise ici.
+
+#### Instrumentation prod à poser (non faite)
+`supabase/functions/matchup-analyze/index.ts:244-249` — `doc.usage` est disponible et actuellement **jeté**. Un `console.log` structuré (`model`, `advanced`, `tier`, `in_tok`, `out_tok`, `stop_reason`) y donne le **taux de troncature réel en prod**, la métrique qui tranchera le `max_tokens` cible. Pas de `user_id` (le `tier` suffit au budget, et évite d'inscrire une donnée nominative dans les logs). `console.log` plutôt qu'une table : zéro migration, zéro RLS, zéro latence sur le chemin payant.
 
 ### Offline support (To-Do Lists)
 **Décision** : implémenter quand l'app desktop existera — inutile avant d'avoir les deux clients.

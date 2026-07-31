@@ -2,8 +2,12 @@
 //  Edge Function : matchup-analyze — analyse IA d'un match up League of Legends
 // ════════════════════════════════════════════════════════════════════════════
 // Proxy serveur pour l'appel Anthropic : la clé ANTHROPIC_API_KEY reste CÔTÉ
-// SERVEUR (secret Supabase), jamais exposée au client WPF. Reprend le prompt
-// validé au sondage (miroir de BuildPrompt() de ClaudeService.cs).
+// SERVEUR (secret Supabase), jamais exposée au client WPF. Le prompt est
+// reconstruit ici — le client n'envoie que des données structurées.
+// Prompt de réponse détaillée : V2 (4 sections), voir buildPrompt + AGENTS.md
+// §« Coût réel mesuré de matchup-analyze ». L'ancien format à 6 sections (V1,
+// miroir historique de BuildPrompt() de ClaudeService.cs) tronquait à chaque
+// analyse 5v5 et coûtait 2,3× plus cher.
 //
 // Auth : JWT obligatoire (verify_jwt=true dans config.toml + getUser en code).
 //
@@ -118,18 +122,29 @@ ${alliesNames} VS ${enemiesNames}
 ${stats}
 Donne uniquement : qui domine en early/late et la principale force/faiblesse de chaque côté.`
   }
-  return `Tu es un expert League of Legends. Analyse en détail ce match up ${mode} :
+  // Prompt V2 (Lot 1 chantier Budget IA, 2026-07-31) — 4 sections au lieu de 6.
+  // Mesuré : −57 % de coût sur un 5v5 complet (55,7 → 24,0 crédits) et surtout
+  // ZÉRO troncature (l'ancien format à 6 sections saturait max_tokens 5/5 fois
+  // dès 4 champions : toute analyse détaillée 5v5 partait coupée).
+  // Trois leviers, par ordre d'impact : budget global explicite en mots ; fusion
+  // des 3 phases en une section (elles sont CONSERVÉES, une phrase chacune —
+  // seul le préambule répété par section disparaît) ; interdiction de recopier
+  // les stats (avec 10 champions × 20 stats, leur ré-énoncé était un poste de
+  // sortie majeur). Aucun client ne parse les sections (web MatchUpTab.tsx l.310
+  // `whiteSpace: pre-wrap`, WPF MatchUpEditorView.xaml.cs l.890 TextBlock
+  // unique) : le format de réponse est libre, seule sa LONGUEUR est contrainte.
+  return `Tu es un expert League of Legends. Analyse ce match up ${mode} :
 ${alliesNames} VS ${enemiesNames}
 ${stats}
 
-Fournis une analyse complète incluant :
-1. Phase de lane (early game 1-10 min) : qui domine et pourquoi
-2. Mid game (10-20 min) : pics de puissance, objectifs prioritaires
-3. Late game (20+ min) : qui scale le mieux
-4. Forces et faiblesses de chaque côté
-5. Conseils tactiques spécifiques (positionnement, trading pattern, win conditions)
-6. Note de difficulté du match up (1-10)
-Sois précis et basé sur les stats fournies.`
+Réponds en 400 mots maximum, en français, avec exactement ces 4 sections :
+
+1. Déroulé de partie — une phrase par phase : early (1-10 min), mid (10-20 min), late (20+ min). Qui domine, pourquoi, et l'objectif prioritaire.
+2. Forces et faiblesses — exactement 2 puces pour le camp allié et exactement 2 pour le camp ennemi, soit 4 puces au total et pas une de plus. 12 mots maximum par puce. Ne garde que les 2 points les plus décisifs par camp.
+3. Conseils tactiques — 3 puces maximum : positionnement, trading pattern, win condition.
+4. Difficulté — une note sur 10 suivie d'une seule phrase de justification.
+
+Va droit au but : aucune introduction, aucune conclusion. Appuie-toi sur les stats fournies sans les recopier.`
 }
 
 // Valide la forme minimale du scénario. Retourne un message d'erreur ou null.
@@ -221,9 +236,16 @@ Deno.serve(async (req) => {
     // ── Appel Anthropic (clé serveur) ─────────────────────────────────────
     // Sonnet : thinking désactivé (writeup structuré, pas une tâche de raisonnement →
     // évite que l'adaptive thinking mange le budget max_tokens). Haiku : off par défaut.
+    // max_tokens détaillée : 1400 (Lot 1 chantier Budget IA). Calé sur la sortie
+    // maximale RÉELLEMENT observée du prompt V2 (876 tokens sur 16 runs à 1400,
+    // 1004 sur les campagnes à 3000) + ~40 % de marge. L'ancienne valeur de 3000
+    // n'était pas un budget mais un plafond que le prompt V1 atteignait
+    // systématiquement (5/5 runs tronqués dès 4 champions).
+    // ⚠️ Ne pas remonter cette valeur sans refaire la mesure : à 4 analyses/sem,
+    // 1400 tokens de sortie consomment déjà 95 % du budget hebdo du tier Maître.
     const payload: Record<string, unknown> = {
       model,
-      max_tokens: advanced ? 3000 : 400,
+      max_tokens: advanced ? 1400 : 400,
       messages: [{ role: 'user', content: prompt }],
     }
     if (model.startsWith('claude-sonnet')) payload.thinking = { type: 'disabled' }
