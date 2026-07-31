@@ -38,12 +38,31 @@ const FEATURE = 'matchup_analyze'
 const HAIKU   = 'claude-haiku-4-5'
 const SONNET  = 'claude-sonnet-5'
 
-// Mapping tier → { limite hebdo, modèle }. Soft-cap 100 sur les tiers "illimités"
-// (garde-fou anti-abus coût Sonnet). Les clés accentuées matchent les valeurs DB.
+// Mapping tier → { limite hebdo, modèle }. Les clés accentuées matchent la DB.
+//
+// ⚠️⚠️ CE COMPTEUR EST PARTAGÉ ENTRE ANALYSE RAPIDE ET ANALYSE DÉTAILLÉE.
+// Il n'existe qu'une seule `feature` ('matchup_analyze') et `consume_ai_quota`
+// est appelée avec la même limite quel que soit `advanced`. Conséquence directe
+// du passage de Maître à 4 : un utilisateur Maître dispose de 4 analyses PAR
+// SEMAINE AU TOTAL, rapides et détaillées confondues — pas de 4 détaillées EN
+// PLUS des rapides. Quatre analyses rapides épuisent son quota détaillé.
+// C'est une limite d'ARCHITECTURE, pas un choix : exprimer « 4 détaillées + N
+// rapides » exige les deux compteurs séparés (`matchup_quick` /
+// `matchup_detailed`) décrits dans AGENTS.md § Quotas IA différenciés. Tant que
+// ce chantier n'est pas fait, 4 est un plafond global.
+//
+// Calibrage du 4 (Lot 1 chantier budget IA) : une analyse détaillée Sonnet 5v5
+// coûte 23,4 crédits mesurés, 32,1 au pire structurel (1400 tokens de sortie).
+// 4 × 32,1 = 128,4 sur un budget de 135 crédits/semaine, soit 95 %. Il n'y a
+// pas de place pour une 5ᵉ — ne pas remonter sans refaire la mesure.
 const TIER_CONFIG: Record<string, { limit: number; model: string }> = {
   'apprenti':    { limit: 3,   model: HAIKU },
   'forgeron':    { limit: 10,  model: HAIKU },
-  'maître':      { limit: 100, model: SONNET },
+  'maître':      { limit: 4,   model: SONNET },   // 100 → 4 (Lot 1 budget IA)
+  // ⚠️ Tiers supérieurs NON recalibrés : toujours 100/sem, soit ~2 340 crédits
+  // au coût mesuré. Si leur budget est du même ordre que les 135 de Maître, ils
+  // sont encore ~17× au-dessus. Hors périmètre du Lot 1 (qui ne cadrait que
+  // Maître) — à trancher avec le budget propre à chacun de ces tiers.
   'légion':      { limit: 100, model: SONNET },
   'architecte':  { limit: 100, model: SONNET },
   'architecte+': { limit: 100, model: SONNET },
