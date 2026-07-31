@@ -80,7 +80,15 @@ BEGIN
 END;
 $$;
 
+-- ⚠️ REVOKE FROM PUBLIC NE SUFFIT PAS SUR SUPABASE. Les ALTER DEFAULT PRIVILEGES
+-- du projet accordent EXECUTE sur les fonctions de `public` NOMINATIVEMENT aux
+-- rôles anon et authenticated. Or révoquer le pseudo-rôle PUBLIC ne retire pas
+-- un grant nominatif : la fonction reste appelable en RPC avec la simple clé
+-- anon. Vérifié empiriquement le 2026-07-31 — consume_ai_quota et
+-- refund_ai_quota, pourtant documentées « service_role only », s'exécutaient
+-- sous anon. Même correctif que 20260606000010_security_p1_revoke.sql.
 REVOKE ALL ON FUNCTION public.consume_ai_credits(uuid, int, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.consume_ai_credits(uuid, int, int) FROM anon, authenticated;
 -- Aucun GRANT → réservée service_role (Edge Functions).
 
 -- ── refund_ai_credits : rendre les crédits sur échec fournisseur ─────────────
@@ -114,5 +122,10 @@ BEGIN
 END;
 $$;
 
+-- Même remarque que ci-dessus : les deux REVOKE sont nécessaires. C'est
+-- particulièrement critique ICI — une fonction de remboursement appelable par
+-- n'importe qui permet de se rendre des crédits à volonté, donc d'annuler
+-- entièrement le budget IA.
 REVOKE ALL ON FUNCTION public.refund_ai_credits(uuid, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.refund_ai_credits(uuid, int) FROM anon, authenticated;
 -- Aucun GRANT → réservée service_role.
