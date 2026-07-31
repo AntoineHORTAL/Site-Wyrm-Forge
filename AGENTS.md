@@ -854,6 +854,41 @@ Mesurer à 3000 n'aurait pas testé la configuration de prod — c'est précisé
 
 ---
 
+## 🟡 PostGame — première brique (EF `postgame-analyze`, 2026-07-31)
+
+**UNE seule des 9 combinaisons prévues** (3 profondeurs × 3 modes) : profondeur **`simple`** × mode **`perso`**. Le but est de valider le patron EF/prompt/coût avant de généraliser — les 8 autres réutiliseront cette structure. `depth`/`mode` sont **déjà dans le contrat** et bornés à leur unique valeur admise (400 sinon) : ouvrir les autres combinaisons ne cassera aucun client.
+
+### Patron réutilisé sans modification
+Proxy Anthropic serveur + `verify_jwt = true` + **`consume_ai_credits` sur le pot « Chaleur de la Forge »** — le même solde que MatchUp, pas un compteur PostGame. C'est la 2ᵉ preuve que le patron est réutilisable tel quel : aucune migration, aucune fonction SQL nouvelle.
+
+### Source de données
+Appel **interne** à `riot-match-detail` (`fetch` vers `${SUPABASE_URL}/functions/v1/…` avec la clé anon, patron de `prac-track`) plutôt qu'un accès Riot direct : bénéficie de son cache permanent, de son comptage de quota et de son circuit breaker. Le client n'envoie que `{ matchId, puuid }` — **aucune stat ne transite par lui**, il ne peut donc rien falsifier.
+
+- `platform` déduite du préfixe du matchId (`EUW1_…` → `euw1`) si absente, puis validée contre la liste `ROUTING`.
+- `participantId` Riot = index dans `participants` + 1 (convention de `riot-match-detail`) — c'est ce qui relie le joueur à ses `itemEvents` et à ses morts dans `kills[]`.
+- **Noms d'objets** : DDragon `item.json` mémoïsé au **niveau module** (instances Deno chaudes → un fetch par instance). Pas de cache DB : `riot_cache.function_name` porte un CHECK qu'il faudrait étendre par migration pour un simple libellé. Échec DDragon → dégradation silencieuse en « objet {id} ».
+
+### Coût mesuré POUR CETTE combinaison
+26 appels réels (4 cas × 2 modèles : partie courte / moyenne / longue / pire cas aux plafonds de l'EF).
+
+| Modèle | Entrée max | Sortie max / `MAX_TOKENS` | Troncatures | **Coût pire cas** |
+|---|---|---|---|---|
+| Haiku 4.5 | 974 | 317 / 900 | 0/13 | **6 crédits** |
+| Sonnet 5 | 1 140 | 543 / 900 | 0/13 | **17 crédits** |
+
+**Chiffré séparément de MatchUp, et c'est nécessaire** : le contenu diffère (un seul joueur, mais un historique d'achats et de morts). Le résultat tombe au même niveau que l'analyse **rapide** de MatchUp (6/17), pas la détaillée (11/33) — cohérence à ne pas confondre avec une reprise de constantes.
+
+La sortie est **quasi constante** quelle que soit la taille de l'entrée (~290 Haiku, ~400 Sonnet) : c'est le template de réponse qui pilote le coût, pas le volume de données. Confirmation directe de la leçon du Lot 1. **Ne pas rallonger les consignes du prompt sans re-mesurer.**
+
+Prompt **condensé dès le départ** (4 sections, budget de 300 mots, interdiction de recopier les chiffres) — l'erreur du prompt V1 de MatchUp, corrigée après coup, n'a pas été reproduite.
+
+### Client (site uniquement — WPF hors périmètre à ce stade)
+`src/lib/postgame/api.ts` + `src/components/dashboard/tabs/PostGameTab.tsx`, branché sur l'onglet `postgame` (admin + tiers maître+, remplace le `DevPreviewScreen`). Sélecteur des 10 derniers matchs via `riot-matches`, un seul bouton, solde décrémenté à l'écran. `canAffordPostGame(quota)` garde le bouton — **même raison que côté MatchUp** : un solde non nul ne garantit pas qu'on peut s'offrir l'action.
+
+> **Statut : non déployé.** L'EF existe dans le dépôt et `config.toml` porte `verify_jwt = true`, mais rien n'est poussé ni testé en conditions réelles. Aucune migration requise.
+
+---
+
 ## 🟡 Chaleur de la Forge — pot de crédits IA (migration 20260731000001)
 
 **Modèle de quota IA du projet.** Remplace le comptage « N analyses par feature ». Un utilisateur dispose d'un **solde hebdomadaire unique en crédits**, **fongible entre TOUTES les features IA** présentes et futures (MatchUp, PostGame, …) : premier arrivé premier servi, aucune réservation par feature. Chaque appel débite son **coût réel**, calculé côté serveur.

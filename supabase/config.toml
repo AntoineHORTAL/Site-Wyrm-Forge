@@ -75,6 +75,9 @@ verify_jwt = true
 [functions.matchup-analyze]
 verify_jwt = true
 
+[functions.postgame-analyze]
+verify_jwt = true
+
 [functions.riot-link-init]
 verify_jwt = true
 

@@ -14,6 +14,7 @@ import WorkshopJungleTab from './tabs/WorkshopJungleTab'
 import AdminTab from './tabs/AdminTab'
 import PatchNotesTab from './tabs/PatchNotesTab'
 import MatchUpTab from './tabs/MatchUpTab'
+import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
 import Pricing from '@/components/landing/Pricing'
@@ -256,10 +257,11 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
             : <LockedScreen title={tabTitles.matchup.title} subtitle={tabTitles.matchup.subtitle} c={c} badge="Analyse IA" />
         )}
 
-        {/* Post Game : encore en dev preview (déverrouillé admin + maître+) */}
+        {/* Post Game : première brique réelle (admin + maître+) — une seule des
+            9 combinaisons prévues, profondeur « simple » × mode « perso ». */}
         {activeTab === 'postgame' && (
           (isAdmin || isProTier)
-            ? <DevPreviewScreen title={tabTitles.postgame.title} c={c} isAdmin={isAdmin} />
+            ? <PostGameTab profile={profile} />
             : <LockedScreen title={tabTitles.postgame.title} subtitle={tabTitles.postgame.subtitle} c={c} badge="Analyse IA" />
         )}
 
