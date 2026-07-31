@@ -87,7 +87,14 @@ Deno.serve(async (req) => {
     // positif est scopé de la même façon par cohérence — inoffensif aujourd'hui
     // (contenu identique quelle que soit la région) mais évite le même piège si un
     // futur correctif s'appuie sur cette clé.
-    const cacheKey = `match:v2:${routing}:${matchId}`
+    // v2 → v3 (2026-07-31, cadrage PostGame) : ajout des runes COMPLÈTES
+    // (6 perks + stat shards) au bloc participant. Le bump est nécessaire parce
+    // que le cache de cette EF est PERMANENT (expires 2099) : sans nouvelle clé,
+    // les matchs déjà vus resserviraient éternellement un corps sans runes.
+    // Les entrées v2 sont LAISSÉES EN PLACE (aucune purge) — elles expirent
+    // d'elles-mêmes en 2099 et ne coûtent que du stockage. Prix du bump : les
+    // matchs déjà consultés repayent 2 appels Riot à leur prochaine ouverture.
+    const cacheKey = `match:v3:${routing}:${matchId}`
 
     // Résolution parallèle : cache + user JWT — getUser est nécessaire sur HIT aussi
     // (match_viewed doit être loggé quelle que soit la provenance du résultat)
@@ -351,6 +358,34 @@ Deno.serve(async (req) => {
       })
     }
 
+    // ── Runes complètes (cache v3) ───────────────────────────────────────────
+    // Riot expose : perks.styles[0] = arbre primaire (4 sélections, la 1re est
+    // la keystone), perks.styles[1] = arbre secondaire (2 sélections), et
+    // perks.statPerks = les 3 fragments (offense / flex / defense).
+    // On aplatit les 6 perks dans l'ordre de jeu — `selected[0]` est donc
+    // toujours la keystone. L'ordre par INDEX (0 = primaire, 1 = secondaire)
+    // reprend l'hypothèse déjà faite par le calcul de keystoneId ci-dessous :
+    // la changer pour un lookup par `description` modifierait silencieusement
+    // des valeurs déjà servies.
+    type PerkSel = { perk?: number }
+    type PerkStyle = { style?: number; selections?: PerkSel[] }
+    // deno-lint-ignore no-explicit-any
+    function mapPerks(perks: any) {
+      const styles: PerkStyle[] = Array.isArray(perks?.styles) ? perks.styles : []
+      const ids = (s?: PerkStyle) =>
+        (s?.selections ?? []).map((x) => x?.perk ?? 0).filter((n) => n > 0)
+      return {
+        primaryStyle: styles[0]?.style ?? 0,
+        subStyle:     styles[1]?.style ?? 0,
+        selected:     [...ids(styles[0]), ...ids(styles[1])],   // 6 ids, keystone en [0]
+        statPerks: {
+          offense: perks?.statPerks?.offense ?? 0,
+          flex:    perks?.statPerks?.flex    ?? 0,
+          defense: perks?.statPerks?.defense ?? 0,
+        },
+      }
+    }
+
     // deno-lint-ignore no-explicit-any
     const participants = m.info.participants.map((p: any, idx: number) => ({
       itemEvents:      itemEvents[idx + 1]  ?? [],
@@ -384,8 +419,14 @@ Deno.serve(async (req) => {
       level:           p.champLevel ?? 1,
       summoner1Id:     p.summoner1Id,
       summoner2Id:     p.summoner2Id,
+      // ⚠️ keystoneId / secondaryStyleId sont CONSERVÉS tels quels : six
+      // consommateurs les lisent déjà (page /match, /summoner, /matches,
+      // AccueilTab côté site ; RiotService + MatchHistoryView côté WPF). Le
+      // champ `perks` ci-dessous est purement ADDITIF — ne pas les retirer au
+      // prétexte qu'ils sont redondants avec perks.selected[0] / perks.subStyle.
       keystoneId:      p.perks?.styles?.[0]?.selections?.[0]?.perk ?? 0,
       secondaryStyleId: p.perks?.styles?.[1]?.style ?? 0,
+      perks:           mapPerks(p.perks),
       items:           [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5],
       trinket:         p.item6,
       pentaKills:      p.pentaKills ?? 0,
