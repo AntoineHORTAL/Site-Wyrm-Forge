@@ -788,7 +788,10 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ## 📋 À faire plus tard
 
-### Quotas IA différenciés rapide / détaillée (MatchUp, puis PostGame)
+### ~~Quotas IA différenciés rapide / détaillée~~ — ABANDONNÉ (2026-07-31)
+> **Chantier clos sans être réalisé.** La séparation en deux compteurs `matchup_quick`/`matchup_detailed` a été **remplacée** par le pot de crédits fongible « Chaleur de la Forge » (§ dédié ci-dessus), qui résout le même problème sans cloisonner le budget : chaque appel débite son coût réel sur un solde unique, donc une analyse rapide ne consomme plus l'équivalent d'une détaillée. **Ne pas réintroduire de compteur par feature** — ce serait recloisonner ce que ce chantier vient d'unifier. Le texte ci-dessous est conservé pour l'historique du raisonnement.
+
+#### (historique) Quotas IA différenciés rapide / détaillée (MatchUp, puis PostGame)
 **Constat de coût** : ⚠️ **le ratio « ~16× » de la première version de ce paragraphe est FAUX — le vrai ratio mesuré est 3,5×** (voir § Coût réel mesuré ci-dessous). Le 16× comparait deux scénarios différents, pas rapide vs détaillée à scénario constant. Sur un scénario identique (5v5 complet, Sonnet 5), l'« analyse rapide » (`max_tokens=400`) coûte **15,7 crédits** contre **55,7** pour la détaillée (`max_tokens=3000`) — soit **3,5×**, pas 16×. Toute décision de calibrage prise sur le 16× est à refaire. Aujourd'hui les deux **consomment le même compteur hebdomadaire** : `usage_counters` avec une seule `feature = 'matchup_analyze'` (⚠️ la clé réelle en base est `matchup_analyze`, pas `matchup`). `matchup-analyze` ne distingue pas `advanced` true/false pour le quota.
 
 **Piste à cadrer** : séparer en **deux compteurs distincts** (ex. `matchup_quick` et `matchup_detailed`), chacun avec sa propre limite par tier — permettrait p. ex. de débloquer **plus d'analyses rapides** pour Apprenti (gratuit) **sans** gonfler le budget détaillé (plus coûteux, surtout Sonnet pour Maître+).
@@ -846,24 +849,56 @@ Mesurer à 3000 n'aurait pas testé la configuration de prod — c'est précisé
 |---|---|---|
 | Analyses détaillées 5v5 finançables/sem | **2,4** | **5,6** (5,2 au coût max observé) |
 
-#### Plafond effectif appliqué (Lot 1, clôture)
+---
 
-`TIER_CONFIG['maître']` passe de **100 à 4 analyses/semaine**. Budget consommé :
+## 🟡 Chaleur de la Forge — pot de crédits IA (migration 20260731000001)
 
-| Référence | Coût/analyse | 4/semaine sur 135 crédits |
+**Modèle de quota IA du projet.** Remplace le comptage « N analyses par feature ». Un utilisateur dispose d'un **solde hebdomadaire unique en crédits**, **fongible entre TOUTES les features IA** présentes et futures (MatchUp, PostGame, …) : premier arrivé premier servi, aucune réservation par feature. Chaque appel débite son **coût réel**, calculé côté serveur.
+
+### Unité et budgets — source des chiffres
+> ⚠️ Ces valeurs n'étaient documentées **nulle part** avant ce chantier (elles circulaient à l'oral). Elles sont consignées ici pour être la référence. **La conversion crédit→$ est une ESTIMATION**, pas une facturation réelle : elle sert à dimensionner un budget, pas à refléter la facture Anthropic au centime.
+
+- **1 crédit = 0,001 $** de coût Anthropic estimé.
+- Budgets hebdomadaires par tier (cadrage « Chaleur de la Forge », Lot 0) : **Apprenti 15**, **Forgeron 65**, **Maître 135**.
+- ⚠️ **Légion / Architecte / Architecte+ / admin n'ont PAS été définis** par ce cadrage. Alignés sur Maître (135) pour les trois tiers, 1000 pour admin — choix conservateur côté budget, mais qui **ne différencie plus les tiers payants supérieurs**. À trancher.
+
+### Coût d'un appel — dépend du MODÈLE, pas seulement de `advanced`
+Tarif **pire cas** (discipline actée au Lot 1) : input max mesuré sur un 5v5 complet + sortie au plafond `max_tokens`, arrondi au crédit supérieur.
+
+| | Rapide (400 tok out) | Détaillée (1400 tok out) |
 |---|---|---|
-| Coût mesuré (5v5 réel) | 23,4 cr | **93,5 cr — 69 %** |
-| Pire structurel (1400 tokens de sortie atteints) | 32,1 cr | **128,4 cr — 95 %** |
+| **Sonnet 5** (3 $/15 $ MTok) | **17** cr | **33** cr |
+| **Haiku 4.5** (1 $/5 $ MTok) | **6** cr | **11** cr |
 
-**Aucune place pour une 5ᵉ analyse** (5 × 32,1 = 160,5 > 135). Ne pas remonter le plafond ni `max_tokens` sans refaire la mesure.
+> Le cadrage ne citait que 32,1 / 16,3 — ce sont les chiffres **Sonnet**. Les appliquer aux tiers Haiku (Apprenti, Forgeron) les surfacturerait d'un **facteur 3**. D'où `COST_CREDITS` indexé par modèle dans l'EF.
 
-Aucune migration : le compteur hebdomadaire existe déjà (`usage_counters`, PK `(user_id, feature, period_start)`, fenêtre lundi 00:00 UTC via `date_trunc('week', now() AT TIME ZONE 'UTC')`). `p_limit` est un **paramètre d'appel** de `consume_ai_quota` — changer `TIER_CONFIG` suffit, le reset est implicite au changement de `period_start`.
+Ce que chaque tier peut donc s'offrir : Apprenti 1 détaillée ou 2 rapides · Forgeron 5 détaillées ou 10 rapides · **Maître 4 détaillées** (132/135) ou 7 rapides — les 4 détaillées de Maître restent exactement le calibrage du Lot 1.
 
-**UX au plafond, vérifiée sur les deux clients** (rien à construire) : EF → `429` + `{ over_quota: true, used, limit, remaining: 0, resets_at }`, **sans appel Anthropic payant** ; web → boutons désactivés en amont (`MatchUpTab.tsx:221`) + message avec compteur et date de reset ; WPF → `ClaudeService.cs:62`, même message FR. Ni 500, ni échec silencieux.
+### Fonctions SQL
+| Fonction | Rôle |
+|---|---|
+| `consume_ai_credits(p_user_id uuid, p_cost int, p_limit int) → int` | Débit atomique. Retourne le total consommé ; **NULL = solde insuffisant, aucune écriture** (donc aucun appel payant). |
+| `refund_ai_credits(p_user_id uuid, p_cost int) → void` | Rembourse le montant exact si l'appel fournisseur échoue après débit. |
 
-> ⚠️ **Deux limites connues et NON traitées par ce Lot :**
-> 1. **Le plafond de 4 est GLOBAL (rapide + détaillée confondues)** — voir le commentaire de `TIER_CONFIG`. 4 analyses rapides épuisent le quota détaillé d'un Maître. Corrigeable seulement par les compteurs séparés du § Quotas IA différenciés.
-> 2. **Légion / Architecte / Architecte+ restent à 100/semaine**, soit ~2 340 crédits au coût mesuré. Le Lot 1 ne cadrait que Maître ; leur recalibrage attend le budget propre à chaque tier.
+SECURITY DEFINER, `REVOKE FROM PUBLIC`, **aucun GRANT** → service_role uniquement. Advisory lock + décision portée par le seul prédicat `WHERE uc.count + p_cost <= p_limit` du `DO UPDATE` → pas de fenêtre TOCTOU.
+
+- **Nom distinct de `consume_ai_quota`, délibérément** : une surcharge de même nom et même arité (`uuid, int, int` vs `uuid, text, int`) ferait lever une ambiguïté PostgREST (`PGRST203`) à la résolution du RPC. `consume_ai_quota`/`refund_ai_quota` sont **laissées en place** (aucun DROP) pour tout consommateur non migré.
+- **Garde-fou non évident** : `p_cost > p_limit` est refusé **avant** l'INSERT. La branche INSERT du `ON CONFLICT` ne porte pas le prédicat du `DO UPDATE` — sans ce test, la toute première consommation de la semaine écrirait `count = p_cost` au-delà du budget.
+
+### AUCUNE migration de schéma — et pourquoi
+`usage_counters` est **inchangée**. La colonne `feature` est conservée et figée à la valeur générique **`'ai_credits'`** : la PK `(user_id, feature, period_start)` donne alors exactement **une ligne par (utilisateur, semaine)**, ce que demande le modèle. Supprimer la colonne aurait imposé un DROP/recreate de PK sur une table vivante — donc une fenêtre où des compteurs en cours pouvaient être perdus, pour un bénéfice nul.
+
+> ⚠️ **Conséquence de bascule** : les lignes `feature='matchup_analyze'` (compteur en **nombre d'analyses**) ne sont ni migrées ni supprimées — elles deviennent **inertes**. Un utilisateur ayant déjà consommé des analyses la semaine du déploiement **repart à 0** sur le pot crédits : rien n'est perdu, mais il y a un **sur-octroi ponctuel sur cette seule semaine**. Les deux sémantiques de `count` (analyses vs crédits) ne doivent **jamais** cohabiter sur une même valeur de `feature`.
+
+### Contrat client — le solde seul ne suffit plus
+`GET` renvoie `{ used, limit, remaining, model, resets_at, costs: { quick, detailed } }`. **`costs` est indispensable** : un solde restant ne dit plus si l'action est finançable (20 crédits payent une rapide à 17, pas une détaillée à 33).
+
+**Le booléen unique `remaining <= 0` a donc été remplacé sur les DEUX clients** par une décision par action — c'était le piège principal de ce chantier : le conserver aurait désactivé les deux boutons dès que le moins cher devenait inabordable, reproduisant exactement le défaut corrigé.
+- Web : `canAfford(quota, advanced)` (`src/lib/matchup/payload.ts`, testé) → `canQuick` / `canDetailed` dans `MatchUpTab.tsx`.
+- WPF : `MatchUpAnalysisResult.CanAfford(bool advanced)` → `SetAnalysisButtonsEnabled` dans `MatchUpEditorView.xaml.cs`.
+- Coût **jamais transmis par le client** (patron intent→grant) : il est recalculé serveur à chaque appel.
+- Message 429 différencié sur les deux clients : « Chaleur de la Forge épuisée » vs « Il te reste N braises, il en faut M pour une analyse détaillée ».
+- Repli si `costs` absent (réponse d'une EF pré-crédits) : coûts à 0 → tout est considéré finançable côté client, le serveur restant l'autorité. Un faux « solde épuisé » serait plus grave qu'un 429 propre.
 
 > **Statut : DÉPLOYÉ EN PRODUCTION le 2026-07-31** — commits `ea86417` (prompt V2 + `max_tokens=1400`) et `7a9c283` (plafond Maître 4/sem), poussés sur `main`, run GitHub Actions `30637694396` vert (`Deployed Functions on project …: matchup-analyze`). Scripts de mesure rejouables dans le scratchpad de session (`measure-matchup-cost.mjs`, `measure-prompt-v2.mjs`, `verify-v2-realstats.mjs`, `measure-final.mjs`).
 
@@ -924,8 +959,7 @@ Aucune migration : le compteur hebdomadaire existe déjà (`usage_counters`, PK 
   - `riot-match-detail` logue `event_type='match_viewed'` dans `app_events` (fire-and-forget, uniquement si JWT présent) — alimente la vérification de `app_view_match`.
 - `quest-status` : lecture de l'état des quêtes du jour (GET ou POST, JWT obligatoire). Retourne `{ day, streak, earned_today, cap, quests[] }` avec `completed_today` et `progress` par quête. Le flag `quests_enabled` N'est PAS vérifié — lecture pure disponible même quand les quêtes sont off. Quatre requêtes DB en parallèle (`quest_definitions` pool_eligible + `quest_completions` + `quest_streaks` + `app_settings` cap). `streak` = null si jamais de complétion. `earned_today` = somme des rewards des complétions du jour. `progress` = `{ current, target }` pour les quêtes `app_event` (lecture `app_events`), `null` pour les quêtes `lol` (pas d'appel Riot). Consommé par le dashboard web (M7) et le futur overlay desktop.
 - `matchup-analyze` (MatchUp — analyse IA, chantier clos 2026-07-21) : proxy Anthropic **serveur** pour l'analyse d'un match up (POST, **`verify_jwt = true`** — JWT obligatoire, à la différence des EF Riot). La clé `ANTHROPIC_API_KEY` reste **côté serveur, jamais exposée au client** (le WPF appelait l'API Anthropic en direct → supprimé). Body `{ advanced: boolean, scenario: { mode, allies[], enemies[] } }` (champ = `{ name, level, stats?: [{label,value}], build?: string[], role?: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT' }` — `role` **optionnel**, absent/inconnu ⇒ prompt identique à l'ancien format ; envoyé par les deux clients depuis 2026-07-23, cf. §MatchUp Web). Reconstruit le prompt **côté serveur** (miroir de l'ancien `BuildPrompt` WPF) → le client n'envoie que des données structurées, jamais le prompt.
-  - **Gating par tier** (mapping `tier → { limite hebdo, modèle }` **dans l'EF**, PAS en DB — les fonctions SQL ne connaissent pas les tiers, elles reçoivent `p_limit` calculé) : Apprenti 3/sem + Haiku, Forgeron 10/sem + Haiku, **Maître 4/sem + Sonnet** (recalibré au Lot 1 chantier budget IA, était 100), Légion/Architecte(+) 100/sem + Sonnet, admin illimité (100) + Sonnet. Tier inconnu/absent → plancher Apprenti. Modèles épinglés : `claude-haiku-4-5` / `claude-sonnet-5`.
-  - ⚠️ **La limite est un plafond GLOBAL rapide + détaillée, pas un quota d'analyses détaillées.** Une seule `feature = 'matchup_analyze'` et `consume_ai_quota` reçoit la même `p_limit` quel que soit `advanced`. Pour Maître, 4 analyses rapides épuisent donc le quota détaillé. Séparer les deux exige les compteurs `matchup_quick`/`matchup_detailed` (§ Quotas IA différenciés).
+  - **Gating par tier** (mapping `tier → { budget hebdo EN CRÉDITS, modèle }` **dans l'EF**, PAS en DB — les fonctions SQL ne connaissent pas les tiers, elles reçoivent `p_limit` calculé) : Apprenti 15 cr + Haiku, Forgeron 65 cr + Haiku, Maître/Légion/Architecte(+) 135 cr + Sonnet, admin 1000 cr + Sonnet. Tier inconnu/absent → plancher Apprenti. Modèles épinglés : `claude-haiku-4-5` / `claude-sonnet-5`. Voir § Chaleur de la Forge.
   - **Quota atomique** — table `usage_counters` + deux fonctions SECURITY DEFINER (migration `20260720000001`, service_role only, aucune écriture client) : `consume_ai_quota(user, feature, limit)` réserve un slot en **une seule instruction** (`INSERT … ON CONFLICT DO UPDATE SET count=count+1 WHERE count < limit RETURNING count` + `pg_advisory_xact_lock` → aucune fenêtre TOCTOU ; renvoie `NULL` = plafond atteint, zéro écriture) ; `refund_ai_quota(user, feature)` rend le slot **uniquement si l'appel Anthropic échoue** (jamais de débit sur une panne serveur). Fenêtre = semaine calendaire **lundi 00:00 UTC** (`date_trunc('week', now() at time zone 'UTC')::date`). RLS SELECT self-only (affichage du compteur).
   - **Flow POST** : auth → lecture `tier`/`role` (`profiles`) → mapping → `consume_ai_quota` → `NULL` ⇒ **429** `{ over_quota:true, used, limit, remaining:0, resets_at }` (aucun appel payant) ; sinon appel Anthropic → échec ⇒ `refund_ai_quota` + **502** ; succès ⇒ `{ analysis, model, advanced, truncated, used, limit, remaining, resets_at }`. `truncated = (stop_reason === 'max_tokens')` — avertissement remonté explicitement, jamais de troncature muette.
   - **GET** : état du quota de la semaine (`{ used, limit, remaining, model, resets_at }`) **sans rien consommer** — alimente l'affichage « X/N ».

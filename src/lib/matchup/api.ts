@@ -21,15 +21,21 @@ import {
 } from './payload'
 import type { MatchUpScenario } from './types'
 
-export type { BuildNameContext, MatchUpAnalysisResult, QuotaState, ApiScenario } from './payload'
-export { buildScenarioPayload, formatResetFr } from './payload'
+export type { BuildNameContext, MatchUpAnalysisResult, QuotaState, AnalysisCosts, ApiScenario } from './payload'
+export { buildScenarioPayload, formatResetFr, canAfford } from './payload'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const FN = 'matchup-analyze'
 
 function fail(message: string): MatchUpAnalysisResult {
-  return { success: false, text: message, truncated: false, overQuota: false, used: 0, limit: 0, remaining: 0, model: '', resetsAt: null }
+  return {
+    success: false, text: message, truncated: false, overQuota: false,
+    used: 0, limit: 0, remaining: 0, model: '', resetsAt: null,
+    // Coûts à 0 : sur un échec, l'état de quota est inconnu. `canAfford` renvoie
+    // alors true et laisse l'utilisateur retenter — c'est le serveur qui tranche.
+    costs: { quick: 0, detailed: 0 },
+  }
 }
 
 async function accessToken(): Promise<string | null> {
@@ -67,7 +73,9 @@ export async function analyzeMatchup(
     case 401: return fail('Connecte-toi à ton compte Wyrm Forge pour utiliser l\'analyse IA.')
     case 429: {
       const q = readQuota(body)
-      return { ...q, success: false, truncated: false, overQuota: true, text: overQuotaMessage(q) }
+      // `advanced` transmis : le message distingue « plus de braises du tout »
+      // de « pas assez pour CETTE analyse » (pot fongible, coûts différenciés).
+      return { ...q, success: false, truncated: false, overQuota: true, text: overQuotaMessage(q, advanced) }
     }
     case 502: return fail('Le service d\'analyse est momentanément indisponible. Réessaie dans un instant.')
   }

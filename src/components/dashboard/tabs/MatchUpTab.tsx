@@ -12,7 +12,7 @@ import {
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
-import { analyzeMatchup, getQuota, formatResetFr, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
+import { analyzeMatchup, getQuota, formatResetFr, canAfford, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
 import BuildPicker, { type SavedBuildDisplay } from '@/components/dashboard/matchup/BuildPicker'
@@ -185,7 +185,10 @@ export default function MatchUpTab() {
     const res = await analyzeMatchup(scenario, advanced, nameCtx)
     setAnalysis(res)
     if (res.success || res.overQuota) {
-      setQuota({ used: res.used, limit: res.limit, remaining: res.remaining, model: res.model, resetsAt: res.resetsAt })
+      setQuota({
+        used: res.used, limit: res.limit, remaining: res.remaining,
+        model: res.model, resetsAt: res.resetsAt, costs: res.costs,
+      })
     }
     setAnalyzing(false)
   }
@@ -217,9 +220,16 @@ export default function MatchUpTab() {
   const hasEnemy = scenario.enemies.some(ch => ch.champ)
   const radar = computeRadar(scenario.allies, scenario.enemies, savedById, itemStatsIndex)
 
-  // Analyse IA : besoin d'un champion de chaque côté ; bloquée à 0 restant.
-  const quotaExhausted = quota != null && quota.remaining <= 0
-  const canAnalyze = hasAlly && hasEnemy && !analyzing && !quotaExhausted
+  // Analyse IA : besoin d'un champion de chaque côté, et de braises SUFFISANTES
+  // POUR L'ACTION VISÉE. Le booléen unique `remaining <= 0` de l'ancien modèle
+  // « N analyses » ne convient plus : avec un pot fongible et des coûts
+  // différenciés, il peut rester de quoi financer une rapide (17) sans pouvoir
+  // s'offrir une détaillée (33) — un seul drapeau désactiverait les deux boutons.
+  const ready       = hasAlly && hasEnemy && !analyzing
+  const canQuick    = ready && canAfford(quota, false)
+  const canDetailed = ready && canAfford(quota, true)
+  // « Épuisé » au sens strict : plus rien de finançable, même la moins chère.
+  const quotaExhausted = quota != null && !canAfford(quota, false)
 
   const columnProps = (side: Side, champions: MatchUpChampion[]) => ({
     side, champions, version: dd.version, c,
@@ -261,26 +271,29 @@ export default function MatchUpTab() {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Analyse IA</div>
           {quota && (
             <span style={{ fontSize: 12, color: quotaExhausted ? '#E5484D' : 'var(--text-muted)' }}>
-              {quota.remaining}/{quota.limit} cette semaine
+              Chaleur de la Forge — {quota.remaining} braise{quota.remaining > 1 ? 's' : ''} sur {quota.limit}
               {quota.resetsAt && quotaExhausted ? ` · réinit. ${formatResetFr(quota.resetsAt)}` : ''}
             </span>
           )}
         </div>
 
+        {/* Chaque bouton est gardé par SON coût — voir canQuick / canDetailed. */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             onClick={() => runAnalysis(false)}
-            disabled={!canAnalyze}
-            style={analyzeBtnStyle(c, analyzing === 'quick', !canAnalyze)}
+            disabled={!canQuick}
+            style={analyzeBtnStyle(c, analyzing === 'quick', !canQuick)}
           >
             {analyzing === 'quick' ? 'Analyse…' : 'Analyse rapide'}
+            {quota && quota.costs.quick > 0 ? ` · ${quota.costs.quick}` : ''}
           </button>
           <button
             onClick={() => runAnalysis(true)}
-            disabled={!canAnalyze}
-            style={analyzeBtnStyle(c, analyzing === 'detailed', !canAnalyze)}
+            disabled={!canDetailed}
+            style={analyzeBtnStyle(c, analyzing === 'detailed', !canDetailed)}
           >
             {analyzing === 'detailed' ? 'Analyse…' : 'Analyse détaillée'}
+            {quota && quota.costs.detailed > 0 ? ` · ${quota.costs.detailed}` : ''}
           </button>
         </div>
 
@@ -290,7 +303,14 @@ export default function MatchUpTab() {
           </p>
         ) : quotaExhausted ? (
           <p style={{ fontSize: 12, color: '#E5484D', marginTop: 8 }}>
-            Quota d&apos;analyses atteint pour cette semaine.
+            Chaleur de la Forge épuisée pour cette semaine.
+          </p>
+        ) : quota && !canDetailed ? (
+          // Cas propre au pot fongible : assez pour une rapide, pas pour une
+          // détaillée. Sans ce message, le bouton détaillée serait grisé sans
+          // aucune explication visible.
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+            Il te reste {quota.remaining} braises — il en faut {quota.costs.detailed} pour une analyse détaillée.
           </p>
         ) : null}
 

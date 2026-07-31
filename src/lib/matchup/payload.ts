@@ -35,13 +35,33 @@ export interface BuildNameContext {
   savedById: Record<string, { blocks: { items: { itemId: string; count: number }[] }[] }>
 }
 
-// État du quota hebdomadaire (GET, ou champs communs aux réponses 200/429).
+// Coût en crédits de chaque type d'analyse pour le tier courant. Calculé
+// SERVEUR (il dépend du modèle du tier) et renvoyé au client, qui ne peut donc
+// pas le deviner ni l'imposer.
+export interface AnalysisCosts {
+  quick: number
+  detailed: number
+}
+
+// Solde hebdomadaire du pot « Chaleur de la Forge » (GET, ou champs communs aux
+// réponses 200/429).
+// ⚠️ used/limit/remaining sont des CRÉDITS, plus un nombre d'analyses : ne
+// jamais les afficher comme « X analyses restantes ».
 export interface QuotaState {
   used: number
   limit: number
   remaining: number
   model: string
   resetsAt: string | null   // ISO
+  costs: AnalysisCosts
+}
+
+// Une action est finançable si le solde couvre SON coût. Remplace le test
+// `remaining <= 0` du modèle « N analyses » : avec un pot fongible, un solde
+// non nul ne garantit plus qu'on peut s'offrir l'analyse demandée.
+export function canAfford(q: QuotaState | null, advanced: boolean): boolean {
+  if (!q) return true                    // quota inconnu (non connecté) → on laisse tenter
+  return q.remaining >= (advanced ? q.costs.detailed : q.costs.quick)
 }
 
 // Résultat d'analyse — miroir de MatchUpAnalysisResult (C#).
@@ -100,12 +120,21 @@ export function buildScenarioPayload(scenario: MatchUpScenario, ctx: BuildNameCo
 // ── Mapping des réponses ──────────────────────────────────────────────────────
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function readQuota(body: any): QuotaState {
+  const c = body?.costs
   return {
     used:      Number.isFinite(body?.used)      ? body.used      : 0,
     limit:     Number.isFinite(body?.limit)     ? body.limit     : 0,
     remaining: Number.isFinite(body?.remaining) ? body.remaining : 0,
     model:     typeof body?.model === 'string'  ? body.model     : '',
     resetsAt:  typeof body?.resets_at === 'string' ? body.resets_at : null,
+    // Repli si `costs` manque (réponse d'une EF pré-crédits) : 0/0 rend tout
+    // finançable plutôt que de tout bloquer — un faux « solde épuisé » serait
+    // plus grave qu'un 429 propre côté serveur, qui reste de toute façon
+    // l'autorité finale.
+    costs: {
+      quick:    Number.isFinite(c?.quick)    ? c.quick    : 0,
+      detailed: Number.isFinite(c?.detailed) ? c.detailed : 0,
+    },
   }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -121,8 +150,16 @@ export function formatResetFr(iso: string | null): string {
   return `${date} à ${hh}h${mm}`
 }
 
-// Message FR du plafond hebdomadaire (429) — miroir de ClaudeService.
-export function overQuotaMessage(q: QuotaState): string {
+// Message FR du solde insuffisant (429) — miroir de ClaudeService.
+// Distingue « plus rien du tout » de « pas assez pour CETTE analyse », que le
+// pot fongible rend possible : il peut rester des braises suffisantes pour une
+// rapide mais pas pour une détaillée.
+export function overQuotaMessage(q: QuotaState, advanced?: boolean): string {
   const suffix = q.resetsAt ? ` Réinitialisation le ${formatResetFr(q.resetsAt)}.` : ''
-  return `Quota d'analyses atteint pour cette semaine (${q.used}/${q.limit}).${suffix}`
+  if (advanced !== undefined && q.remaining > 0) {
+    const need = advanced ? q.costs.detailed : q.costs.quick
+    const kind = advanced ? 'détaillée' : 'rapide'
+    return `Il te reste ${q.remaining} braises, il en faut ${need} pour une analyse ${kind}.${suffix}`
+  }
+  return `Chaleur de la Forge épuisée pour cette semaine (${q.used}/${q.limit} braises).${suffix}`
 }

@@ -17,61 +17,88 @@
 //               role?: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT' }
 //   `role` est OPTIONNEL : absent/inconnu → prompt identique à l'ancien format
 //   (rétrocompatible avec un client WPF/web pré-migration).
-//   Flow : auth → lecture tier (profiles) → mapping tier→{limite,modèle} →
-//          consume_ai_quota (réservation atomique) → appel Anthropic →
+//   Flow : auth → lecture tier (profiles) → mapping tier→{crédits,modèle} →
+//          consume_ai_credits (débit atomique du coût réel) → appel Anthropic →
 //          refund si échec Anthropic → réponse { analysis, used, limit, ... }.
-//   Le mapping tier→limite/modèle vit ICI (pas en DB). Modèle : Haiku pour
+//   Le mapping tier→crédits/modèle vit ICI (pas en DB). Modèle : Haiku pour
 //   Apprenti/Forgeron, Sonnet pour Maître et tiers supérieurs.
 //
+// ── Quota : pot de crédits « Chaleur de la Forge » ──────────────────────────
+//   `used`/`limit`/`remaining` sont des CRÉDITS (1 crédit = 0,001 $ estimé),
+//   PAS un nombre d'analyses. Le pot est unique par (utilisateur, semaine) et
+//   FONGIBLE entre toutes les features IA présentes et futures : la clé de
+//   compteur est 'ai_credits', jamais un nom de feature. Chaque appel débite
+//   son coût réel, calculé serveur d'après (modèle, advanced) — voir
+//   COST_CREDITS. Le client ne transmet jamais de coût.
+//
 // ── GET /functions/v1/matchup-analyze ───────────────────────────────────────
-//   Retourne l'état du quota de la semaine courante pour l'affichage « X/N ».
-//   { used, limit, remaining, model, resets_at }. Ne consomme rien.
+//   État du solde de la semaine, sans rien consommer :
+//   { used, limit, remaining, model, resets_at, costs: { quick, detailed } }.
+//   `costs` est nécessaire au client : un solde seul ne dit plus si l'action
+//   est finançable (20 crédits payent une rapide à 17, pas une détaillée à 33).
 //
 // Codes HTTP : 200 · 400 (payload) · 401 (JWT) · 405 (méthode) ·
-//              429 (quota hebdo atteint) · 502 (échec Anthropic) · 500.
+//              429 (crédits insuffisants) · 502 (échec Anthropic) · 500.
 // ════════════════════════════════════════════════════════════════════════════
 import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { getUser, requireSecret }   from '../_shared/auth.ts'
 
-const FEATURE = 'matchup_analyze'
+// Pot de crédits « Chaleur de la Forge » : UNE seule clé de compteur, partagée
+// par toutes les features IA (MatchUp, PostGame, …). Pot fongible, premier
+// arrivé premier servi. Ne JAMAIS réintroduire de clé par feature ici : ce
+// serait recloisonner le budget que ce chantier vient d'unifier.
+const CREDIT_FEATURE = 'ai_credits'
 const HAIKU   = 'claude-haiku-4-5'
 const SONNET  = 'claude-sonnet-5'
 
-// Mapping tier → { limite hebdo, modèle }. Les clés accentuées matchent la DB.
+// ── Coût d'un appel, en crédits (1 crédit = 0,001 $) ─────────────────────────
+// Tarif PIRE CAS (discipline actée au Lot 1) : input maximal mesuré sur un 5v5
+// complet + sortie au plafond max_tokens, arrondi au crédit supérieur.
+//   détaillée : 3699 tok in + 1400 tok out   ·   rapide : 3446 tok in + 400 out
 //
-// ⚠️⚠️ CE COMPTEUR EST PARTAGÉ ENTRE ANALYSE RAPIDE ET ANALYSE DÉTAILLÉE.
-// Il n'existe qu'une seule `feature` ('matchup_analyze') et `consume_ai_quota`
-// est appelée avec la même limite quel que soit `advanced`. Conséquence directe
-// du passage de Maître à 4 : un utilisateur Maître dispose de 4 analyses PAR
-// SEMAINE AU TOTAL, rapides et détaillées confondues — pas de 4 détaillées EN
-// PLUS des rapides. Quatre analyses rapides épuisent son quota détaillé.
-// C'est une limite d'ARCHITECTURE, pas un choix : exprimer « 4 détaillées + N
-// rapides » exige les deux compteurs séparés (`matchup_quick` /
-// `matchup_detailed`) décrits dans AGENTS.md § Quotas IA différenciés. Tant que
-// ce chantier n'est pas fait, 4 est un plafond global.
-//
-// Calibrage du 4 (Lot 1 chantier budget IA) : une analyse détaillée Sonnet 5v5
-// coûte 23,4 crédits mesurés, 32,1 au pire structurel (1400 tokens de sortie).
-// 4 × 32,1 = 128,4 sur un budget de 135 crédits/semaine, soit 95 %. Il n'y a
-// pas de place pour une 5ᵉ — ne pas remonter sans refaire la mesure.
-const TIER_CONFIG: Record<string, { limit: number; model: string }> = {
-  'apprenti':    { limit: 3,   model: HAIKU },
-  'forgeron':    { limit: 10,  model: HAIKU },
-  'maître':      { limit: 4,   model: SONNET },   // 100 → 4 (Lot 1 budget IA)
-  // ⚠️ Tiers supérieurs NON recalibrés : toujours 100/sem, soit ~2 340 crédits
-  // au coût mesuré. Si leur budget est du même ordre que les 135 de Maître, ils
-  // sont encore ~17× au-dessus. Hors périmètre du Lot 1 (qui ne cadrait que
-  // Maître) — à trancher avec le budget propre à chacun de ces tiers.
-  'légion':      { limit: 100, model: SONNET },
-  'architecte':  { limit: 100, model: SONNET },
-  'architecte+': { limit: 100, model: SONNET },
+// ⚠️ LE COÛT DÉPEND DU MODÈLE, pas seulement de `advanced`. Le cadrage ne citait
+// que 32,1 / 16,3 — ce sont les chiffres SONNET. Les appliquer aux tiers Haiku
+// (Apprenti, Forgeron) les surfacturerait d'un facteur 3 : Haiku est à 1 $/5 $
+// par MTok contre 3 $/15 $ pour Sonnet. D'où une entrée par modèle.
+// Le coût est TOUJOURS calculé ici, côté serveur, et jamais transmis par le
+// client (patron intent→grant).
+const COST_CREDITS: Record<string, { quick: number; detailed: number }> = {
+  [SONNET]: { quick: 17, detailed: 33 },   // 16,3 / 32,1 arrondis au supérieur
+  [HAIKU]:  { quick:  6, detailed: 11 },   //  5,4 / 10,7 arrondis au supérieur
+}
+function costOf(model: string, advanced: boolean): number {
+  const row = COST_CREDITS[model] ?? COST_CREDITS[SONNET]   // défaut = le plus cher
+  return advanced ? row.detailed : row.quick
+}
+
+// Mapping tier → { budget hebdo EN CRÉDITS, modèle }. Clés accentuées = valeurs DB.
+// Le budget n'est plus un nombre d'analyses : c'est un solde fongible que chaque
+// appel décrémente de son coût réel. Ce qu'un tier peut s'offrir en découle :
+//   Apprenti 15 cr  (Haiku)  → 1 détaillée (11) ou 2 rapides (6)
+//   Forgeron 65 cr  (Haiku)  → 5 détaillées ou 10 rapides
+//   Maître  135 cr  (Sonnet) → 4 détaillées (132) ou 7 rapides
+// Les 4 détaillées de Maître restent donc exactement le calibrage du Lot 1.
+const TIER_CONFIG: Record<string, { credits: number; model: string }> = {
+  'apprenti':    { credits: 15,  model: HAIKU },
+  'forgeron':    { credits: 65,  model: HAIKU },
+  'maître':      { credits: 135, model: SONNET },
+  // ⚠️ NON DÉFINIS par le cadrage « Chaleur de la Forge », qui n'a acté que
+  // Apprenti/Forgeron/Maître. Alignés sur Maître faute de valeur propre : c'est
+  // le choix conservateur côté budget, mais il ne différencie plus ces tiers
+  // payants supérieurs. À trancher avec leur budget réel.
+  'légion':      { credits: 135, model: SONNET },
+  'architecte':  { credits: 135, model: SONNET },
+  'architecte+': { credits: 135, model: SONNET },
 }
 // Défaut prudent si tier inconnu/absent : plancher gratuit (Apprenti).
 const DEFAULT_CONFIG = TIER_CONFIG['apprenti']
 
-function resolveConfig(tier: string | null, role: string | null): { limit: number; model: string } {
-  if (role === 'admin') return { limit: 100, model: SONNET }
+function resolveConfig(tier: string | null, role: string | null): { credits: number; model: string } {
+  // ⚠️ Budget admin NON défini par le cadrage non plus. 1000 crédits (~1 $/sem)
+  // = large de côté usage, mais BORNÉ : un pot infini rendrait toute fuite ou
+  // boucle de test invisible dans le budget.
+  if (role === 'admin') return { credits: 1000, model: SONNET }
   return (tier && TIER_CONFIG[tier]) || DEFAULT_CONFIG
 }
 
@@ -202,21 +229,26 @@ Deno.serve(async (req) => {
       .select('tier, role')
       .eq('id', user.id)
       .maybeSingle()
-    const { limit, model } = resolveConfig(profile?.tier ?? null, profile?.role ?? null)
+    const { credits: limit, model } = resolveConfig(profile?.tier ?? null, profile?.role ?? null)
+    // Grille de coûts du tier — renvoyée au client pour qu'il sache ce qu'il
+    // peut s'offrir. Un solde restant ne suffit plus à décider : 20 crédits
+    // financent une rapide (17) mais pas une détaillée (33). Le client a donc
+    // besoin des DEUX coûts, pas seulement du solde.
+    const costs = { quick: costOf(model, false), detailed: costOf(model, true) }
 
-    // ── GET : lecture pure du quota (affichage « X/N ») ───────────────────
+    // ── GET : lecture pure du solde (affichage « X braises ») ─────────────
     if (req.method === 'GET') {
       const { data: row } = await db
         .from('usage_counters')
         .select('count')
         .eq('user_id', user.id)
-        .eq('feature', FEATURE)
+        .eq('feature', CREDIT_FEATURE)
         .eq('period_start', weekStartUTC())
         .maybeSingle()
       const used = row?.count ?? 0
       return jsonResponse({
         used, limit, remaining: Math.max(limit - used, 0),
-        model, resets_at: nextWeekStartISO(),
+        model, resets_at: nextWeekStartISO(), costs,
       })
     }
 
@@ -235,19 +267,37 @@ Deno.serve(async (req) => {
 
     const prompt = buildPrompt(body.scenario as Scenario, advanced)
 
-    // ── Réservation atomique d'un slot de quota (avant tout appel payant) ──
-    const { data: used, error: quotaErr } = await db.rpc('consume_ai_quota', {
-      p_user_id: user.id, p_feature: FEATURE, p_limit: limit,
+    // ── Débit atomique du coût de l'appel (avant tout appel payant) ────────
+    // Le coût est calculé ICI à partir du modèle du tier — jamais transmis par
+    // le client (patron intent→grant) : un coût soumis par le client serait un
+    // moyen trivial de s'offrir des analyses à 1 crédit.
+    const cost = costOf(model, advanced)
+    const { data: used, error: quotaErr } = await db.rpc('consume_ai_credits', {
+      p_user_id: user.id, p_cost: cost, p_limit: limit,
     })
     if (quotaErr) {
-      console.error('matchup-analyze: consume_ai_quota error', quotaErr)
+      console.error('matchup-analyze: consume_ai_credits error', quotaErr)
       return jsonResponse({ error: 'Erreur serveur (quota).' }, 500)
     }
-    // NULL → plafond hebdomadaire atteint : aucun appel Anthropic.
+    // NULL → solde insuffisant : aucune écriture, donc aucun appel Anthropic.
+    // On renvoie le solde RÉEL (pas `used: limit`) : contrairement au modèle
+    // « N analyses », un refus ne signifie plus un solde à zéro — il peut rester
+    // 20 crédits, assez pour une rapide mais pas pour la détaillée demandée.
+    // Le client a besoin du vrai reste pour afficher le bon message.
     if (used === null || used === undefined) {
+      const { data: row } = await db
+        .from('usage_counters')
+        .select('count')
+        .eq('user_id', user.id)
+        .eq('feature', CREDIT_FEATURE)
+        .eq('period_start', weekStartUTC())
+        .maybeSingle()
+      const spent = row?.count ?? 0
       return jsonResponse(
-        { error: 'Quota d\'analyses atteint pour cette semaine.', over_quota: true,
-          used: limit, limit, remaining: 0, resets_at: nextWeekStartISO() },
+        { error: 'Crédits IA insuffisants pour cette analyse cette semaine.',
+          over_quota: true, used: spent, limit,
+          remaining: Math.max(limit - spent, 0),
+          cost, model, resets_at: nextWeekStartISO(), costs },
         429,
       )
     }
@@ -294,20 +344,22 @@ Deno.serve(async (req) => {
       console.error('matchup-analyze: Anthropic fetch failed', e instanceof Error ? e.message : String(e))
     }
 
-    // ── Échec Anthropic → refund du slot réservé + 502 ────────────────────
+    // ── Échec Anthropic → remboursement des crédits débités + 502 ─────────
+    // Même montant que le débit : une panne fournisseur ne coûte rien à l'user.
     if (!anthropicOk) {
-      const { error: refundErr } = await db.rpc('refund_ai_quota', {
-        p_user_id: user.id, p_feature: FEATURE,
+      const { error: refundErr } = await db.rpc('refund_ai_credits', {
+        p_user_id: user.id, p_cost: cost,
       })
-      if (refundErr) console.error('matchup-analyze: refund_ai_quota failed', refundErr)
+      if (refundErr) console.error('matchup-analyze: refund_ai_credits failed', refundErr)
       return jsonResponse({ error: 'Le service d\'analyse est momentanément indisponible.' }, 502)
     }
 
     // ── Succès ────────────────────────────────────────────────────────────
+    // used/limit/remaining sont désormais des CRÉDITS, plus un nombre d'analyses.
     return jsonResponse({
       analysis, model, advanced, truncated,
       used, limit, remaining: Math.max(limit - (used as number), 0),
-      resets_at: nextWeekStartISO(),
+      cost, costs, resets_at: nextWeekStartISO(),
     })
   } catch (e) {
     console.error('matchup-analyze: unhandled exception', e instanceof Error ? e.message : String(e))

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildScenarioPayload, buildItemNames, formatResetFr, overQuotaMessage, readQuota,
-  type BuildNameContext,
+  buildScenarioPayload, buildItemNames, formatResetFr, overQuotaMessage, readQuota, canAfford,
+  type BuildNameContext, type QuotaState,
 } from './payload'
 import { createScenario, setChampion, setLevel, setBuild, setRole, type BuildRef } from './types'
 
@@ -61,17 +61,60 @@ describe('buildScenarioPayload — miroir ChampPayload WPF', () => {
   })
 })
 
-describe('readQuota — lecture tolérante des champs de quota', () => {
-  it('lit used/limit/remaining/model/resets_at', () => {
-    expect(readQuota({ used: 2, limit: 3, remaining: 1, model: 'claude-haiku-4-5', resets_at: '2026-07-27T00:00:00Z' }))
-      .toEqual({ used: 2, limit: 3, remaining: 1, model: 'claude-haiku-4-5', resetsAt: '2026-07-27T00:00:00Z' })
+describe('readQuota — lecture tolérante du solde de crédits', () => {
+  it('lit used/limit/remaining/model/resets_at/costs', () => {
+    expect(readQuota({
+      used: 33, limit: 135, remaining: 102, model: 'claude-sonnet-5',
+      resets_at: '2026-07-27T00:00:00Z', costs: { quick: 17, detailed: 33 },
+    })).toEqual({
+      used: 33, limit: 135, remaining: 102, model: 'claude-sonnet-5',
+      resetsAt: '2026-07-27T00:00:00Z', costs: { quick: 17, detailed: 33 },
+    })
   })
   it('champs manquants → valeurs par défaut', () => {
-    expect(readQuota(null)).toEqual({ used: 0, limit: 0, remaining: 0, model: '', resetsAt: null })
+    expect(readQuota(null)).toEqual({
+      used: 0, limit: 0, remaining: 0, model: '', resetsAt: null,
+      costs: { quick: 0, detailed: 0 },
+    })
+  })
+  // Une EF pré-crédits ne renvoie pas `costs` : le repli à 0 doit rendre tout
+  // finançable, jamais bloquer l'utilisateur sur un faux « solde épuisé ».
+  it('réponse sans `costs` → coûts à 0, rien n\'est bloqué côté client', () => {
+    const q = readQuota({ used: 2, limit: 3, remaining: 1, model: 'x' })
+    expect(q.costs).toEqual({ quick: 0, detailed: 0 })
+    expect(canAfford(q, true)).toBe(true)
+  })
+})
+
+describe('canAfford — finançabilité par action (pot fongible)', () => {
+  const q = (remaining: number): QuotaState => ({
+    used: 135 - remaining, limit: 135, remaining, model: 'claude-sonnet-5',
+    resetsAt: null, costs: { quick: 17, detailed: 33 },
+  })
+  it('solde suffisant pour les deux', () => {
+    expect(canAfford(q(40), false)).toBe(true)
+    expect(canAfford(q(40), true)).toBe(true)
+  })
+  // Le cas que l'ancien booléen `remaining <= 0` ne savait pas exprimer.
+  it('solde intermédiaire → rapide OUI, détaillée NON', () => {
+    expect(canAfford(q(20), false)).toBe(true)
+    expect(canAfford(q(20), true)).toBe(false)
+  })
+  it('solde pile au coût → finançable (comparaison inclusive)', () => {
+    expect(canAfford(q(33), true)).toBe(true)
+    expect(canAfford(q(32), true)).toBe(false)
+  })
+  it('solde nul → rien de finançable', () => {
+    expect(canAfford(q(0), false)).toBe(false)
+    expect(canAfford(q(0), true)).toBe(false)
+  })
+  it('quota inconnu (null) → on laisse tenter, le serveur tranche', () => {
+    expect(canAfford(null, true)).toBe(true)
   })
 })
 
 describe('formatResetFr / overQuotaMessage', () => {
+  const base = { model: '', resetsAt: null, costs: { quick: 17, detailed: 33 } }
   it('null / date invalide → chaîne vide', () => {
     expect(formatResetFr(null)).toBe('')
     expect(formatResetFr('pas une date')).toBe('')
@@ -79,9 +122,14 @@ describe('formatResetFr / overQuotaMessage', () => {
   it('produit une date FR avec heure au format HHhMM', () => {
     expect(formatResetFr('2026-07-27T00:00:00.000Z')).toMatch(/ à \d{2}h\d{2}$/)
   })
-  it('message de plafond reprend used/limit', () => {
-    const msg = overQuotaMessage({ used: 3, limit: 3, remaining: 0, model: '', resetsAt: null })
-    expect(msg).toBe('Quota d\'analyses atteint pour cette semaine (3/3).')
+  it('solde à zéro → message « épuisée » avec used/limit', () => {
+    expect(overQuotaMessage({ ...base, used: 135, limit: 135, remaining: 0 }))
+      .toBe('Chaleur de la Forge épuisée pour cette semaine (135/135 braises).')
+  })
+  // Distinction impossible dans l'ancien modèle « N analyses ».
+  it('solde restant mais insuffisant → message ciblé sur l\'action', () => {
+    expect(overQuotaMessage({ ...base, used: 115, limit: 135, remaining: 20 }, true))
+      .toBe('Il te reste 20 braises, il en faut 33 pour une analyse détaillée.')
   })
 })
 
