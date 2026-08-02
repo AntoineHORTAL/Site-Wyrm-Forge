@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
 export default function AboutPage() {
   const router = useRouter()
@@ -54,7 +55,7 @@ export default function AboutPage() {
         </p>
         <a
           className="wf-btn-primary"
-          href="https://cuscgmgqakxnfwnsrhhv.supabase.co/storage/v1/object/public/downloads/WyrmForge.exe"
+          href={WINDOWS_DOWNLOAD_URL}
           download
         >
           Télécharger l&apos;application
