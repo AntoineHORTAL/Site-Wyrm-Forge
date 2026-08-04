@@ -60,10 +60,14 @@ export default function Home() {
     setBalanceLoading(false)
   }, [supabase])
 
+  // riot_puuid / riot_platform sont lus ici parce que PostGameTab en dépend pour
+  // savoir si un compte Riot est lié : sans eux, l'onglet renvoie tout le monde
+  // vers « Lie ton compte Riot » même quand la liaison existe en base.
+  // Lecture du propre profil — couverte par la policy self-read de `profiles`.
   async function fetchProfile(uid: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, tier, role, tier_expires_at, certified')
+      .select('id, username, tier, role, tier_expires_at, certified, riot_puuid, riot_platform')
       .eq('id', uid)
       .single()
     setProfile(data ?? null)

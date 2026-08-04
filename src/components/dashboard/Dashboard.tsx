@@ -90,8 +90,14 @@ export const tabGroups: TabGroup[] = [
   {
     label: 'Analyse IA',
     tabs: [
-      { id: 'matchup',  label: 'Match Up',   shortLabel: 'Match Up',  icon: <IconMatchUp />,  locked: true },
-      { id: 'postgame', label: 'Post Game',  shortLabel: 'Post Game', icon: <IconPostGame />, locked: true },
+      // Aucun `locked` sur les deux onglets IA : leur accès est piloté par le
+      // budget « Chaleur de la Forge », qui donne déjà un solde à chaque tier
+      // (Apprenti 15 crédits ; analyse rapide 6, bilan 6, détaillée 11 sur
+      // Haiku). Un badge « Pro » ici mentirait sur l'accès réel.
+      // `locked` alimente le badge des DEUX barres de navigation (SidebarBtn
+      // desktop + DrawerTabBtn mobile), le retirer ici suffit pour les deux.
+      { id: 'matchup',  label: 'Match Up',   shortLabel: 'Match Up',  icon: <IconMatchUp /> },
+      { id: 'postgame', label: 'Post Game',  shortLabel: 'Post Game', icon: <IconPostGame /> },
     ],
   },
   {
@@ -250,20 +256,17 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {/* Onglet tarifs (caché) — réutilise la section Pricing de la landing telle quelle */}
         {activeTab === 'tarifs' && <Pricing />}
 
-        {/* Match Up : éditeur réel (admin + tiers maître+) — sinon écran verrouillé */}
-        {activeTab === 'matchup' && (
-          (isAdmin || isProTier)
-            ? <MatchUpTab />
-            : <LockedScreen title={tabTitles.matchup.title} subtitle={tabTitles.matchup.subtitle} c={c} badge="Analyse IA" />
-        )}
-
-        {/* Post Game : première brique réelle (admin + maître+) — une seule des
-            9 combinaisons prévues, profondeur « simple » × mode « perso ». */}
-        {activeTab === 'postgame' && (
-          (isAdmin || isProTier)
-            ? <PostGameTab profile={profile} />
-            : <LockedScreen title={tabTitles.postgame.title} subtitle={tabTitles.postgame.subtitle} c={c} badge="Analyse IA" />
-        )}
+        {/* Onglets IA — ouverts à TOUS les tiers, aucun gating d'affichage.
+            Le tier est déjà pris en compte deux fois côté serveur par « Chaleur
+            de la Forge » (budget hebdo ET modèle : Apprenti/Forgeron 15/65
+            crédits sur Haiku, Maître+ 135 sur Sonnet). Doubler ça d'un verrou
+            d'affichage rendait les features invisibles aux tiers qui ont
+            pourtant les crédits pour s'en servir. Le vrai garde est
+            `canAfford` / `canAffordPostGame`, qui compare le solde au coût de
+            l'action demandée — un solde non nul ne finance pas tout. */}
+        {activeTab === 'matchup'  && <MatchUpTab />}
+        {/* Post Game : une seule des 9 combinaisons prévues (simple × perso). */}
+        {activeTab === 'postgame' && <PostGameTab profile={profile} />}
 
         {/* Soon: Tournois */}
         {activeTab === 'tournois' && (
