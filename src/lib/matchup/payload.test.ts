@@ -113,6 +113,46 @@ describe('canAfford — finançabilité par action (pot fongible)', () => {
   })
 })
 
+// Depuis le dégating de l'onglet (2026-08-01), Match Up est ouvert à TOUS les
+// tiers : ce sont ces tiers-là qui tapent le barème Haiku, jusqu'ici non couvert.
+// Le tarif dépend du MODÈLE, pas seulement de `advanced` — appliquer les coûts
+// Sonnet à un Apprenti le surfacturerait d'un facteur ~3.
+describe('canAfford — barème Haiku (Apprenti / Forgeron)', () => {
+  const haiku = (remaining: number, limit: number): QuotaState => ({
+    used: limit - remaining, limit, remaining, model: 'claude-haiku-4-5',
+    resetsAt: null, costs: { quick: 6, detailed: 11 },
+  })
+
+  it('Apprenti à plein (15 cr) finance une détaillée à 11 ou une rapide à 6', () => {
+    expect(canAfford(haiku(15, 15), false)).toBe(true)
+    expect(canAfford(haiku(15, 15), true)).toBe(true)
+  })
+
+  it('Apprenti après une détaillée (4 cr restants) ne finance plus rien', () => {
+    expect(canAfford(haiku(4, 15), false)).toBe(false)
+    expect(canAfford(haiku(4, 15), true)).toBe(false)
+  })
+
+  it('Apprenti après une rapide (9 cr) : rapide OUI, détaillée NON', () => {
+    // Le cas exact qui justifie `canAfford` plutôt qu'un `remaining <= 0` :
+    // le solde est non nul mais ne couvre plus l'action la plus chère.
+    expect(canAfford(haiku(9, 15), false)).toBe(true)
+    expect(canAfford(haiku(9, 15), true)).toBe(false)
+  })
+
+  it('bornes inclusives au coût exact', () => {
+    expect(canAfford(haiku(11, 65), true)).toBe(true)
+    expect(canAfford(haiku(10, 65), true)).toBe(false)
+    expect(canAfford(haiku(6, 65), false)).toBe(true)
+    expect(canAfford(haiku(5, 65), false)).toBe(false)
+  })
+
+  it('Forgeron à plein (65 cr) finance les deux', () => {
+    expect(canAfford(haiku(65, 65), false)).toBe(true)
+    expect(canAfford(haiku(65, 65), true)).toBe(true)
+  })
+})
+
 describe('formatResetFr / overQuotaMessage', () => {
   const base = { model: '', resetsAt: null, costs: { quick: 17, detailed: 33 } }
   it('null / date invalide → chaîne vide', () => {

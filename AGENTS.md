@@ -704,8 +704,8 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |
 | Patch Notes | Fonctionnel — onglet dashboard + page publique `/patch-notes` (SSR) |
-| Match Up | Fonctionnel — éditeur complet (admin + tiers maître+) : mode, champions, niveaux, builds, radar, analyse IA. Voir §MatchUp Web |
-| Post Game | Verrouillé — dev preview admin |
+| Match Up | Fonctionnel — **ouvert à tous les tiers** (aucun gating d'affichage ; l'accès réel est le solde « Chaleur de la Forge ») : mode, champions, niveaux, builds, radar, analyse IA. Voir §MatchUp Web |
+| Post Game | Fonctionnel — **ouvert à tous les tiers** (aucun gating d'affichage ; l'accès réel est le solde « Chaleur de la Forge ») |
 | Tournois | Soon screen |
 | Admin | Fonctionnel (gestion users, tiers, certification) |
 
@@ -754,7 +754,18 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 
 ## 🟡 MatchUp Web — éditeur d'analyse (chantier clos, 2026-07-22)
 
-Portage web complet du builder MatchUp WPF, onglet dashboard **Match Up** (`src/components/dashboard/tabs/MatchUpTab.tsx`, déverrouillé admin + tiers maître+). Persistance **localStorage** (parité `matchups.json` WPF, pas de table Supabase). Livré en 3 lots.
+Portage web complet du builder MatchUp WPF, onglet dashboard **Match Up** (`src/components/dashboard/tabs/MatchUpTab.tsx`, **ouvert à tous les tiers** depuis le 2026-08-01 — voir § Dégating ci-dessous). Persistance **localStorage** (parité `matchups.json` WPF, pas de table Supabase). Livré en 3 lots.
+
+### Dégating par tier (2026-08-01) — Match Up est ouvert à TOUS les tiers
+Mêmes deux verrous que Post Game, retirés dans la foulée : `locked: true` sur la `TabDef` (badge « Pro » sidebar desktop **et** drawer mobile) + le ternaire `(isAdmin || isProTier) ? <MatchUpTab/> : <LockedScreen badge="Analyse IA"/>` dans `Dashboard.tsx`. Il ne reste **aucun gating par tier** sur les deux onglets « Analyse IA ».
+
+Le tier est déjà pris en compte **deux fois côté serveur** (budget hebdo **et** modèle) : Apprenti 15 cr / Forgeron 65 cr sur **Haiku** (rapide **6**, détaillée **11**), Maître+ 135 cr sur **Sonnet** (rapide **17**, détaillée **33**). Un Apprenti finance donc 2 rapides ou 1 détaillée par semaine — peu, mais réel : le verrou d'affichage masquait une feature déjà budgétée pour lui.
+
+> ⚠️ **`canAfford` est le vrai garde, pas le tier.** Avec un pot fongible, un solde non nul ne finance pas forcément l'action demandée (9 crédits Haiku payent une rapide à 6, pas une détaillée à 11). Ne jamais remplacer ce test par `remaining <= 0` — c'est précisément le défaut corrigé au chantier « Chaleur de la Forge ».
+
+> **Scénarios reste le seul onglet `locked`** du dashboard, et volontairement : contrairement aux onglets IA, il n'a aucun budget serveur qui arbitrerait son accès à la place du tier. Le dégater demanderait de décider d'un modèle d'accès, pas seulement de retirer un drapeau.
+
+Tests : `src/components/dashboard/tabs.test.ts` (10 tests, `describe.each` sur les deux onglets IA) verrouille l'absence de `locked` et assert que `scenarios` est le seul verrouillé restant. `src/lib/matchup/payload.test.ts` couvre le barème **Haiku** de `canAfford` (Apprenti/Forgeron), jusque-là non testé — seuls les coûts Sonnet l'étaient, or ce sont les tiers Haiku que ce dégating fait entrer dans la feature.
 
 ### Modèle & persistance (Lot 1)
 - `src/lib/matchup/types.ts` — `MatchUpScenario { mode, allies[], enemies[] }`, `MatchUpChampion { champ, level, build, baseStats, role? }`, `BuildRef = none | saved(buildId) | temp(blocks)`. Réducteurs **purs** (immuables, garde d'index) : `resizeToMode`, `setChampion`, `setLevel`/`clampLevel` (1 → cap du rôle), `setRole`, `setBuild`.
@@ -854,9 +865,54 @@ Mesurer à 3000 n'aurait pas testé la configuration de prod — c'est précisé
 
 ---
 
-## 🟡 PostGame — première brique (EF `postgame-analyze`, 2026-07-31)
+## 🟡 PostGame — les 9 combinaisons (EF `postgame-analyze`, généralisé le 2026-08-01)
 
-**UNE seule des 9 combinaisons prévues** (3 profondeurs × 3 modes) : profondeur **`simple`** × mode **`perso`**. Le but est de valider le patron EF/prompt/coût avant de généraliser — les 8 autres réutiliseront cette structure. `depth`/`mode` sont **déjà dans le contrat** et bornés à leur unique valeur admise (400 sinon) : ouvrir les autres combinaisons ne cassera aucun client.
+**3 profondeurs** (`simple`/`medium`/`advanced`) **× 3 modes** (`perso`/`adversaire`/`les_deux`). La première brique (2026-07-31) n'ouvrait que `simple × perso` pour valider le patron EF/prompt/coût ; `depth`/`mode` étaient déjà dans le contrat, donc la généralisation **n'a cassé aucun client** — les défauts restent `simple`/`perso`.
+
+### 🔑 Aucun enrichissement de `riot-match-detail` n'a été nécessaire
+C'était le risque majeur du chantier, et il ne s'est pas matérialisé : **tout ce dont les 9 combinaisons ont besoin est déjà dans le cache v3** — `teamPosition` (adversaire), `timeline[].playerGold/playerXp/playerCs` (courbes), `perks` (runes), `summoner1Id/2Id`, `skillEvents`, `events[]` (BUILDING_KILL / ELITE_MONSTER_KILL), `teams[].objectives`, `teams[].bans`, multikills, `totalHeal`, `timeCcOthers`, `longestLife`. **Pas de bump de clé de cache**, donc aucun match déjà consulté ne re-paie les 2 appels Riot. Vérifier cet inventaire AVANT d'envisager un v4 : la contrainte du cache permanent (expiration 2099) rend tout enrichissement coûteux.
+
+### Prompt — module partagé `_shared/postgame-prompt.ts`
+Module **PUR** (aucun import, aucune API Deno), importé par l'EF **et** par le script de mesure `scripts/postgame-measure.ts` (lancé sous Node/tsx). C'est ce qui garantit que **le prompt mesuré est byte-identique au prompt servi** — la première brique mesurait depuis une copie dans le scratchpad, qui pouvait dériver en silence.
+
+- **`les_deux` est une EXTENSION de `perso`**, pas un gabarit séparé : mêmes sections + une section « Face à face ». Idem pour la profondeur, qui **ajoute** des sections sans jamais en retirer (4 → 5 → 6). Un test vérifie que `les_deux` a exactement une section de plus que `perso` à profondeur égale. Objectif : éviter 9 templates indépendants à maintenir.
+- **⚠️ INVARIANT — `simple × perso` est verrouillé BYTE-À-BYTE** (`src/lib/postgame/prompt.test.ts`) contre le littéral d'avant refonte. Ce prompt est **déjà tarifé en production** (6 crédits Haiku / 17 Sonnet) : le modifier rendrait un prix déjà facturé faux. La mesure post-refonte est retombée exactement sur 17/6, ce qui valide l'invariant de bout en bout.
+- Discipline du Lot 1 appliquée à **chaque** palier : budget de mots explicite (300 → 750 selon la combinaison), sections numérotées avec plafond par section, interdiction de recopier les chiffres.
+
+### Mode `adversaire` — repli quand il n'y a pas de duel de voie
+Adversaire = même `teamPosition`, équipe opposée. `teamPosition` est **vide sur les modes sans voies** (ARAM, Arena) et parfois sur la Faille quand Riot n'infère pas les rôles. **C'est un état NOMINAL de la donnée, pas une panne** :
+- **Serveur** : la résolution se fait **AVANT `consume_ai_credits`** → `400 { code: 'opponent_unavailable' }`, **zéro crédit débité, zéro appel Anthropic**.
+- **Client** : grise les modes adverses sur les files sans voies (`hasLaneOpponent`, liste `LANELESS_QUEUES`) **avant** tout appel, et le mode effectif est **dérivé** (`laneOk ? modeChoice : 'perso'`) plutôt que synchronisé par un `setState` dans un effet — le choix de l'utilisateur est conservé et redevient actif dès qu'il resélectionne une partie de Faille.
+- Le serveur reste l'**autorité** : la liste de files du client ne peut pas couvrir le cas « Faille sans rôles détectés ».
+
+### Grille de coûts — 9 combinaisons × 2 modèles, MESURÉE
+54 appels Anthropic **réels, non mockés** (9 × 2 modèles × 3 runs : 2 au pire cas pour la variance + 1 typique), le 2026-08-01. **0 troncature, 0 échec.** Aucune valeur extrapolée : chaque combinaison est chiffrée à part, conformément à la leçon du Lot 1 (le template pilote le coût, un ratio ne se transpose pas).
+
+| Combinaison | Haiku 4.5 | Sonnet 5 |
+|---|---|---|
+| `simple_perso` | **6** | **17** |
+| `simple_adversaire` | 6 | 17 |
+| `simple_les_deux` | 7 | 20 |
+| `medium_perso` | 7 | 22 |
+| `medium_adversaire` | 7 | 22 |
+| `medium_les_deux` | 8 | 25 |
+| `advanced_perso` | 9 | 27 |
+| `advanced_adversaire` | 9 | 27 |
+| `advanced_les_deux` | **10** | **31** |
+
+Plafonds de sortie (`MAX_TOKENS`, **source unique dans le module partagé**) : `simple` 900, `medium` 1100, `advanced` 1300 → marges de 32 % / 29 % / 33 %. **Le tarif pire cas est DIRECTEMENT proportionnel à ce plafond** — le surdimensionner fait payer une sortie jamais atteinte, le réduire fait tronquer. Les deux bougent ensemble ou pas du tout.
+
+- 🪤 **Piège de méthode rencontré** : un premier passage à **1 run** par combinaison donnait des sorties max nettement plus basses (404 au lieu de 614 sur `simple_adversaire`). Calibrer les plafonds sur un échantillon unique aurait produit des troncatures en production. **Toujours au moins 2 runs sur le pire cas.**
+- **Cas dégénéré vérifié en priorité** (`advanced × les_deux`, le pire cas de la matrice, mesuré **en premier** par construction du script) : entrée max 3 543 tok, sortie max 868 / 1300, **0 troncature sur 6 runs**.
+
+#### Cohérence budgétaire — le pot est PARTAGÉ avec MatchUp
+- **Aucune combinaison PostGame ne dépasse une analyse détaillée MatchUp** (31 < 33 Sonnet). Ordre de grandeur cohérent, comme demandé au cadrage.
+- **Un Apprenti (15 cr, Haiku) peut s'offrir CHAQUE combinaison au moins une fois** — la plus chère est à 10. Propriété importante : le tier gratuit n'est exclu d'aucune combinaison, sinon le dégating de l'onglet n'aurait servi à rien.
+- Un Maître (135 cr, Sonnet) finance 4 `advanced_les_deux` (124 cr) — soit exactement le calibrage « 4 analyses détaillées » déjà réservé de facto par l'usage MatchUp.
+- Ces trois propriétés sont **testées** (`src/lib/postgame/api.test.ts` § Budget par tier), pas seulement documentées.
+
+#### Garde anti-dérive
+`prompt.test.ts` **lit le fichier de l'EF** et compare les 18 valeurs de `COST_CREDITS` à la grille mesurée, vérifie qu'aucune n'est à 0, et que `MAX_TOKENS` n'a pas bougé. Une valeur modifiée sans re-mesure fait échouer la suite.
 
 ### Patron réutilisé sans modification
 Proxy Anthropic serveur + `verify_jwt = true` + **`consume_ai_credits` sur le pot « Chaleur de la Forge »** — le même solde que MatchUp, pas un compteur PostGame. C'est la 2ᵉ preuve que le patron est réutilisable tel quel : aucune migration, aucune fonction SQL nouvelle.
@@ -866,26 +922,41 @@ Appel **interne** à `riot-match-detail` (`fetch` vers `${SUPABASE_URL}/function
 
 - `platform` déduite du préfixe du matchId (`EUW1_…` → `euw1`) si absente, puis validée contre la liste `ROUTING`.
 - `participantId` Riot = index dans `participants` + 1 (convention de `riot-match-detail`) — c'est ce qui relie le joueur à ses `itemEvents` et à ses morts dans `kills[]`.
-- **Noms d'objets** : DDragon `item.json` mémoïsé au **niveau module** (instances Deno chaudes → un fetch par instance). Pas de cache DB : `riot_cache.function_name` porte un CHECK qu'il faudrait étendre par migration pour un simple libellé. Échec DDragon → dégradation silencieuse en « objet {id} ».
+- **Dictionnaires DDragon** mémoïsés au **niveau module** (instances Deno chaudes → un fetch par instance), chargés **à la demande selon la profondeur** : `item.json` toujours ; `summoner.json` + `runesReforged.json` dès `medium` ; `champion.json` (noms des bans) seulement en `advanced`. Pas de cache DB : `riot_cache.function_name` porte un CHECK qu'il faudrait étendre par migration pour un simple libellé. Échec DDragon → dégradation silencieuse (« objet {id} », « inconnues »), jamais d'erreur remontée pour un libellé cosmétique.
+  - ⚠️ **`champion.json` et `summoner.json` sont indexés par CLÉ (« Ahri »), pas par id numérique** — c'est `data[x].key` qui porte l'id renvoyé par l'API match. `item.json`, lui, est bien indexé par id. Deux extracteurs distincts (`byId` / `byNumericKey`), ne pas les confondre.
+  - Les fragments de stats (`statPerks`) sont **absents de `runesReforged.json`** → table `STAT_SHARDS` en dur.
 
-### Coût mesuré POUR CETTE combinaison
-26 appels réels (4 cas × 2 modèles : partie courte / moyenne / longue / pire cas aux plafonds de l'EF).
-
-| Modèle | Entrée max | Sortie max / `MAX_TOKENS` | Troncatures | **Coût pire cas** |
-|---|---|---|---|---|
-| Haiku 4.5 | 974 | 317 / 900 | 0/13 | **6 crédits** |
-| Sonnet 5 | 1 140 | 543 / 900 | 0/13 | **17 crédits** |
-
-**Chiffré séparément de MatchUp, et c'est nécessaire** : le contenu diffère (un seul joueur, mais un historique d'achats et de morts). Le résultat tombe au même niveau que l'analyse **rapide** de MatchUp (6/17), pas la détaillée (11/33) — cohérence à ne pas confondre avec une reprise de constantes.
-
-La sortie est **quasi constante** quelle que soit la taille de l'entrée (~290 Haiku, ~400 Sonnet) : c'est le template de réponse qui pilote le coût, pas le volume de données. Confirmation directe de la leçon du Lot 1. **Ne pas rallonger les consignes du prompt sans re-mesurer.**
-
-Prompt **condensé dès le départ** (4 sections, budget de 300 mots, interdiction de recopier les chiffres) — l'erreur du prompt V1 de MatchUp, corrigée après coup, n'a pas été reproduite.
+#### Plafonds structurels — ce qui borne le coût d'entrée
+`CAP_PURCHASES` 25 · `CAP_DEATHS` 15 · `CAP_SKILLS` 18 · `CAP_CURVE` 8 · `CAP_OBJECTIVES` 25. Ce sont **ces plafonds qui définissent le « pire cas »** mesuré : les relever invaliderait la grille de coûts. Les courbes sont échantillonnées **toutes les 5 minutes** (pas une ligne par frame) — une partie de 35 min produirait sinon 35 lignes × 3 valeurs pour une information que le modèle n'exploite pas plus finement.
 
 ### Client (site uniquement — WPF hors périmètre à ce stade)
-`src/lib/postgame/api.ts` + `src/components/dashboard/tabs/PostGameTab.tsx`, branché sur l'onglet `postgame` (admin + tiers maître+, remplace le `DevPreviewScreen`). Sélecteur des 10 derniers matchs via `riot-matches`, un seul bouton, solde décrémenté à l'écran. `canAffordPostGame(quota)` garde le bouton — **même raison que côté MatchUp** : un solde non nul ne garantit pas qu'on peut s'offrir l'action.
+`src/lib/postgame/api.ts` + `src/components/dashboard/tabs/PostGameTab.tsx`, branché sur l'onglet `postgame` (remplace le `DevPreviewScreen`). Sélecteur des 10 derniers matchs via `riot-matches`, **deux rangées de pills** (profondeur × sujet) affichant chacune le coût en crédits de l'option, solde décrémenté à l'écran.
 
-> **Statut : non déployé.** L'EF existe dans le dépôt et `config.toml` porte `verify_jwt = true`, mais rien n'est poussé ni testé en conditions réelles. Aucune migration requise.
+- **`costs` porte les 9 clés** `${depth}_${mode}` — indispensable : le coût varie de 6 à 31 crédits, donc le prix affiché change quand on bascule de profondeur **ou** de mode.
+- **`canAffordPostGame(quota, depth, mode)` prend la combinaison en paramètre.** Un booléen global de finançabilité serait ici encore plus faux que dans le cas MatchUp : à 7 braises, un Apprenti peut s'offrir `simple_les_deux` (7) mais pas `medium_les_deux` (8). Défauts `simple`/`perso` → les appels existants restent valides.
+- Quand la combinaison choisie n'est pas finançable, le message **propose la combinaison de repli** (`Simple · moi`) si elle l'est — plutôt que de laisser l'utilisateur devant un bouton grisé sans issue.
+- Repli `opponent_unavailable` : le composant rebascule sur « Moi » et affiche l'explication (ARAM/Arena/rôles non détectés), **jamais une erreur rouge**.
+
+#### Dégating par tier (2026-08-01) — Post Game est ouvert à TOUS les tiers
+L'onglet était doublement verrouillé : `locked: true` sur sa `TabDef` (badge « Pro » dans la sidebar desktop **et** dans le drawer mobile) + un ternaire `(isAdmin || isProTier) ? <PostGameTab/> : <LockedScreen badge="Analyse IA"/>` dans `Dashboard.tsx`. Un compte Apprenti ne voyait donc **rien**, alors qu'il dispose de 15 crédits/semaine pour un bilan à 6. **Les deux verrous ont été retirés** ; il ne reste aucun gating par tier sur Post Game.
+
+Le tier est déjà pris en compte **deux fois côté serveur** par « Chaleur de la Forge » — budget hebdo **et** modèle : Apprenti 15 cr / Forgeron 65 cr sur **Haiku** (bilan à **6**), Maître+ 135 cr sur **Sonnet** (bilan à **17**). Un Apprenti finance donc 2 bilans par semaine, un Maître 7. Le verrou d'affichage ne faisait que masquer une feature déjà budgétée, sans rien protéger.
+
+> ⚠️ **`locked` est la SEULE source du badge « Pro »**, lu par `SidebarBtn` (`Dashboard.tsx`) *et* `DrawerTabBtn` (`src/components/nav/Nav.tsx`) depuis la même `TabDef` — le retirer une fois suffit pour les deux navigations. Ne pas chercher un second endroit à modifier.
+
+> ℹ️ **Match Up a été dégaté juste après**, par le même patron (voir § Dégating dans MatchUp Web) — les deux onglets IA sont désormais cohérents, seul le budget de crédits arbitre l'accès. Note historique utile : contrairement à ce qui a été affirmé au lancement de ces chantiers, **aucun retrait de badge « Pro » n'avait jamais eu lieu sur MatchUp avant le 2026-08-01** ; l'historique git montre l'inverse (`40a0be3 feat: unlock matchup/postgame pour tiers maître+` a *élargi* l'accès de admin-only à maître+). Post Game a donc été le premier dégaté, pas le second.
+
+Tests : `src/components/dashboard/tabs.test.ts` (6 tests) verrouille l'absence de `locked` sur `postgame` et documente le contraste avec `matchup`/`scenarios`. Le fichier **stubbe `@/lib/supabase/client`** (`vi.mock`) : importer `Dashboard` tire `ScenariosTab`, qui appelle `createClient()` au niveau module et lève sans variables d'env.
+
+> **Statut : version `simple × perso` DÉPLOYÉE** (vérifié le 2026-08-01 — un GET non authentifié renvoie `401 UNAUTHORIZED_NO_AUTH_HEADER` du gateway, et non un 404 « function not found »). Aucune migration requise.
+>
+> ⛔ **La généralisation aux 9 combinaisons n'est PAS déployée.** Le code est complet et la grille de coûts est mesurée (54 appels réels, 0 troncature), mais **rien n'a tourné de bout en bout contre l'EF réelle** : la mesure appelle Anthropic en direct avec le prompt de production, elle ne passe pas par `postgame-analyze` ni par `riot-match-detail`. **Restent à valider en conditions réelles, avant ou juste après déploiement** : (1) l'extraction des faits sur un vrai corps de match (les `playerFacts` medium/advanced n'ont jamais vu de données Riot authentiques — seulement des fixtures) ; (2) la résolution d'adversaire sur une vraie partie de Faille ; (3) le repli `opponent_unavailable` sur un vrai ARAM. Ces trois points touchent du code de **mapping**, là où les fixtures mentent le plus facilement.
+>
+> ⚠️ **Bloqueur d'intégration corrigé le 2026-08-01** : `PostGameTab` décide de l'existence d'une liaison Riot sur `profile.riot_puuid`, mais `fetchProfile` (`src/app/page.tsx`) ne sélectionnait que `id, username, tier, role, tier_expires_at, certified` → `riot_puuid` toujours `undefined` → **l'onglet renvoyait vers « Lie ton compte Riot » même avec une liaison bien présente en base**, et le sélecteur de matchs était donc inatteignable. `riot_puuid, riot_platform` ajoutés au `select`. Les autres champs déclarés dans `UserProfile` (`riot_gamename`/`riot_tagline`/`riot_rank`) restent **non sélectionnés** : l'interface les déclare optionnels, aucun consommateur du dashboard ne les lit. Règle : tout nouvel onglet qui lit un champ de `UserProfile` doit vérifier que `fetchProfile` le ramène — le type ne le garantit pas, tous les champs Riot y sont optionnels.
+>
+> **Cas « solde insuffisant » verrouillé par des tests** (`src/lib/postgame/api.test.ts`, 8 tests) : 3 braises restantes / bilan à 6 ⇒ `canAffordPostGame` false ⇒ bouton `disabled` **et** garde en tête du callback `run` (le « aucun appel réseau voué au 429 » ne doit pas dépendre du seul attribut HTML). Coût inconnu (`costs` absent, EF pré-crédits) ⇒ finançable, le serveur reste l'autorité.
+>
+> **Reste à observer** : le chemin nominal *solde suffisant → analyse rendue* n'a jamais tourné dans l'UI (solde de test à 3 braises). À faire au reset du pot (lundi 2026-08-03) ou sur un compte mieux doté.
 
 ---
 
@@ -1219,6 +1290,13 @@ Texte FR normatif — les deux fronts affichent EXACTEMENT ces messages (à l'in
 Stats et Champions sont **toujours illimités** : ces écrans sont l'argument
 principal pour amener l'utilisateur sur le site (SEO + valeur de découverte),
 les paywaller cassera plus de chose que ça ne rapportera.
+
+> ⚠️ **Les deux lignes IA de ce tableau (Match Up, Post Game) sont PÉRIMÉES en tant que
+> barème.** Ces features ne comptent plus des analyses par semaine mais débitent un solde
+> de crédits fongible (§ Chaleur de la Forge) : Post Game « simple + perso » coûte 6 crédits
+> sur Haiku (Apprenti/Forgeron) et 17 sur Sonnet (Maître+), donc ~2 bilans/semaine pour un
+> Apprenti et 7 pour un Maître. Le reste du tableau (listes, workshop, cosmétiques) reste la
+> cible à implémenter. **Ne pas réintroduire de compteur par feature pour l'IA.**
 
 ### Enforcement (à coder le moment venu)
 

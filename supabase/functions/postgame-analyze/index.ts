@@ -1,11 +1,21 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Edge Function : postgame-analyze — bilan IA d'une partie terminée
 // ════════════════════════════════════════════════════════════════════════════
-// PREMIÈRE BRIQUE du chantier PostGame : une seule combinaison sur les 9 prévues
-// (3 profondeurs × 3 modes) — profondeur « Simple », mode « bilan perso ».
-// L'objectif est de valider le patron EF/prompt/coût avant de généraliser ;
-// `depth` et `mode` sont donc acceptés mais bornés à leur unique valeur admise,
-// pour que l'ouverture aux autres combinaisons ne change pas le contrat client.
+// LES 9 COMBINAISONS : 3 profondeurs (simple/medium/advanced) × 3 modes
+// (perso/adversaire/les_deux). La première brique n'en ouvrait qu'une
+// (simple × perso) pour valider le patron EF/prompt/coût ; le contrat portait
+// déjà `depth`/`mode`, donc cette généralisation ne casse aucun client — les
+// défauts restent `simple`/`perso`.
+//
+// ⚠️ Le prompt vit dans `_shared/postgame-prompt.ts` (module PUR) pour que le
+// script de mesure `scripts/postgame-measure.ts` importe le prompt EXACT de
+// production. `simple × perso` y est verrouillé byte-à-byte par un test : ce
+// prompt est déjà tarifé en prod, le modifier rendrait son prix faux.
+//
+// ⚠️ Aucun enrichissement de `riot-match-detail` n'a été nécessaire : runes,
+// sorts, ordre des compétences, courbes, objectifs, bans et faits d'armes sont
+// TOUS déjà dans le cache v3. Pas de bump de clé de cache, donc pas de
+// re-paiement d'appels Riot sur les matchs déjà consultés.
 //
 // Reprend intégralement le patron matchup-analyze : proxy Anthropic SERVEUR
 // (ANTHROPIC_API_KEY jamais exposée), JWT obligatoire, débit du pot de crédits
@@ -30,6 +40,10 @@
 import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { getUser, requireSecret }   from '../_shared/auth.ts'
+import {
+  buildPostGamePrompt, comboKey, DEPTHS, MODES, MAX_TOKENS,
+  type PostGameDepth, type PostGameMode, type PlayerFacts, type MatchFacts,
+} from '../_shared/postgame-prompt.ts'
 
 const CREDIT_FEATURE = 'ai_credits'   // pot partagé — jamais une clé par feature
 const HAIKU  = 'claude-haiku-4-5'
@@ -53,27 +67,50 @@ function resolveConfig(tier: string | null, role: string | null) {
   return (tier && TIER_CONFIG[tier]) || DEFAULT_CONFIG
 }
 
-// ── Coût de la combinaison « simple + perso », en crédits ───────────────────
-// MESURÉ pour CETTE combinaison (26 appels réels, 4 cas × 2 modèles : partie
-// courte/moyenne/longue + pire cas aux plafonds de l'EF). PAS repris de MatchUp :
-// le contenu diffère, il fallait le chiffrer à part.
-//   entrée max mesurée : 974 tok (Haiku) / 1140 (Sonnet), aux plafonds
-//   structurels (25 achats + 15 morts) avec de vrais noms d'objets FR
-//   sortie max observée : 317 (Haiku) / 543 (Sonnet) sur 900 → 40 % de marge
-//   0 troncature sur les 26 runs
-// Tarif pire cas = entrée max × sortie au plafond MAX_TOKENS, arrondi au crédit
-// supérieur (discipline du Lot 1).
+// ── Grille de coûts : 9 combinaisons × 2 modèles, en crédits ────────────────
+// ⚠️ CHAQUE VALEUR EST MESURÉE, aucune n'est extrapolée depuis une autre — la
+// mesure du Lot 1 a montré que le template pilote le coût, donc un ratio
+// observé sur une combinaison ne se transpose pas à une autre.
+// Protocole (identique à celui de `simple_perso`) : cas synthétiques aux
+// PLAFONDS STRUCTURELS de l'EF (25 achats, 15 morts, 18 skills, 8 points de
+// courbe, 25 objectifs, 2 joueurs complets en mode `les_deux`), appels réels
+// non mockés, `usage.input_tokens`/`output_tokens` de la réponse Anthropic.
+// Tarif pire cas = entrée max mesurée × prix in + MAX_TOKENS × prix out,
+// arrondi au crédit supérieur. Script rejouable : `scripts/postgame-measure.ts`.
 //
-// La sortie est quasi constante quelle que soit la taille de l'entrée (~290
-// Haiku, ~400 Sonnet) : c'est le template de réponse qui pilote le coût, pas le
-// volume de données. Ne pas rallonger les consignes sans re-mesurer.
-const MAX_TOKENS = 900
-const COST_CREDITS: Record<string, { simple_perso: number }> = {
-  [SONNET]: { simple_perso: 17 },   // 1140×3 + 900×15 = 0,01692 $ → 16,92 cr
-  [HAIKU]:  { simple_perso: 6 },    //  974×1 + 900×5  = 0,00547 $ →  5,47 cr
+// 1 crédit = 0,001 $. Sonnet 5 : 3 $/15 $ par MTok — Haiku 4.5 : 1 $/5 $.
+// ⚠️ Sonnet est en tarif d'introduction jusqu'au 31/08/2026 : ces chiffres sont
+// au tarif STANDARD, donc déjà valables après la hausse.
+//
+// ✅ MESURÉ le 2026-08-01 — 54 appels réels (9 combinaisons × 2 modèles ×
+// 3 runs : 2 au pire cas pour la variance + 1 typique). **0 troncature.**
+// Marge de sortie : simple 32 %, medium 29 %, advanced 33 %.
+//
+// Contrôle de non-régression : `simple_perso` est retombé sur 17/6, soit
+// exactement le tarif déjà en production — l'invariant byte-à-byte du prompt
+// tient, et le protocole de mesure est reproductible.
+//
+// 🪤 Piège de méthode : un premier passage à 1 run par combinaison donnait des
+// sorties max bien plus basses (404 au lieu de 614 sur `simple_adversaire`).
+// Calibrer les plafonds sur un échantillon unique aurait mené à des
+// troncatures en production. Toujours au moins 2 runs sur le pire cas.
+type CostTable = Record<string, number>
+const COST_CREDITS: Record<string, CostTable> = {
+  [SONNET]: {
+    simple_perso:   17, simple_adversaire:   17, simple_les_deux:   20,
+    medium_perso:   22, medium_adversaire:   22, medium_les_deux:   25,
+    advanced_perso: 27, advanced_adversaire: 27, advanced_les_deux: 31,
+  },
+  [HAIKU]: {
+    simple_perso:    6, simple_adversaire:    6, simple_les_deux:    7,
+    medium_perso:    7, medium_adversaire:    7, medium_les_deux:    8,
+    advanced_perso:  9, advanced_adversaire:  9, advanced_les_deux: 10,
+  },
 }
-const costOf = (model: string) =>
-  (COST_CREDITS[model] ?? COST_CREDITS[SONNET]).simple_perso
+
+const costsFor = (model: string): CostTable => COST_CREDITS[model] ?? COST_CREDITS[SONNET]
+const costOf = (model: string, depth: PostGameDepth, mode: PostGameMode): number =>
+  costsFor(model)[comboKey(depth, mode)] ?? costsFor(SONNET)[comboKey(depth, mode)] ?? 0
 
 // ── Fenêtre semaine (miroir du date_trunc('week') SQL) ──────────────────────
 function weekStartUTC(d = new Date()): string {
@@ -101,22 +138,86 @@ const PUUID_RE = /^[A-Za-z0-9_-]{70,128}$/
 // une contrainte CHECK qu'il faudrait étendre par migration pour rien.
 // Échec DDragon → on dégrade proprement (l'item devient « objet inconnu »),
 // jamais d'erreur remontée à l'utilisateur pour un libellé cosmétique.
-let _items: Record<string, string> | null = null
-async function itemNames(): Promise<Record<string, string>> {
-  if (_items) return _items
+// Un seul fetch de version pour les 4 dictionnaires, mémoïsé comme eux.
+let _version: string | null = null
+async function ddragonVersion(): Promise<string> {
+  if (_version) return _version
+  const versions = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json()
+  _version = versions[0] as string
+  return _version
+}
+
+/** Charge un dictionnaire DDragon `id → nom`, mémoïsé. `{}` si indisponible. */
+async function ddragonNames(
+  file: string,
+  pick: (data: Record<string, unknown>) => Record<string, string>,
+  cache: { v: Record<string, string> | null },
+): Promise<Record<string, string>> {
+  if (cache.v) return cache.v
   try {
-    const versions = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json()
-    const data = await (await fetch(
-      `https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/fr_FR/item.json`)).json()
-    const out: Record<string, string> = {}
-    for (const [id, it] of Object.entries(data.data as Record<string, { name: string }>)) {
-      out[id] = it.name
-    }
-    _items = out
+    const v = await ddragonVersion()
+    const doc = await (await fetch(
+      `https://ddragon.leagueoflegends.com/cdn/${v}/data/fr_FR/${file}`)).json()
+    cache.v = pick(doc)
   } catch {
-    _items = {}
+    cache.v = {}
   }
-  return _items
+  return cache.v
+}
+
+const _items    = { v: null as Record<string, string> | null }
+const _champs   = { v: null as Record<string, string> | null }
+const _spells   = { v: null as Record<string, string> | null }
+const _runes    = { v: null as Record<string, string> | null }
+
+// deno-lint-ignore no-explicit-any
+const byId = (d: any): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const [id, it] of Object.entries(d.data as Record<string, { name: string }>)) out[id] = it.name
+  return out
+}
+// champion.json / summoner.json sont indexés par CLÉ (« Ahri »), pas par id
+// numérique — c'est `data[x].key` qui porte l'id que renvoie l'API match.
+// deno-lint-ignore no-explicit-any
+const byNumericKey = (d: any): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const it of Object.values(d.data as Record<string, { key: string; name: string }>)) {
+    out[String(it.key)] = it.name
+  }
+  return out
+}
+
+const itemNames  = () => ddragonNames('item.json',     byId,          _items)
+const champNames = () => ddragonNames('champion.json', byNumericKey,  _champs)
+const spellNames = () => ddragonNames('summoner.json', byNumericKey,  _spells)
+
+// runesReforged.json a une forme propre : arbres → slots → runes.
+async function runeNames(): Promise<Record<string, string>> {
+  if (_runes.v) return _runes.v
+  try {
+    const v = await ddragonVersion()
+    // deno-lint-ignore no-explicit-any
+    const trees: any[] = await (await fetch(
+      `https://ddragon.leagueoflegends.com/cdn/${v}/data/fr_FR/runesReforged.json`)).json()
+    const out: Record<string, string> = {}
+    for (const tree of trees) {
+      out[String(tree.id)] = tree.name
+      for (const slot of tree.slots ?? []) {
+        for (const r of slot.runes ?? []) out[String(r.id)] = r.name
+      }
+    }
+    _runes.v = out
+  } catch {
+    _runes.v = {}
+  }
+  return _runes.v
+}
+
+// Fragments de stats (statPerks) : absents de runesReforged.json, libellés en dur.
+const STAT_SHARDS: Record<number, string> = {
+  5001: 'PV', 5002: 'Armure', 5003: 'Résistance magique',
+  5005: 'Vitesse d\'attaque', 5007: 'Hâte de compétences',
+  5008: 'Force adaptative', 5011: 'PV', 5013: 'Célérité',
 }
 
 // ── Zone approximative d'une mort ───────────────────────────────────────────
@@ -138,43 +239,171 @@ const mmss = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-// ── Construction du prompt ──────────────────────────────────────────────────
-// Condensé DÈS LE DÉPART (leçon du Lot 1 : le coût est piloté par le template
-// de réponse, pas par le volume d'entrée). Budget global explicite en mots,
-// sections numérotées avec plafond par section, interdiction de recopier les
-// chiffres fournis. Ne pas « enrichir » ce bloc sans re-mesurer le coût.
-interface PlayerFacts {
-  champion: string; position: string; win: boolean; durationS: number
-  kills: number; deaths: number; assists: number
-  cs: number; csPerMin: string
-  damageDealt: number; damageTaken: number
-  visionScore: number; wardsPlaced: number; wardsKilled: number; controlWards: number
-  build: string[]; trinket: string
-  purchases: string[]     // « 8:14 Écho de Luden »
-  deathList: string[]     // « 12:03 — voie du bas, moitié adverse »
+// ── Extraction des faits depuis la réponse riot-match-detail ────────────────
+// Le prompt lui-même vit dans `_shared/postgame-prompt.ts` (module pur, importé
+// aussi par le script de mesure). Ici on ne fait que TRADUIRE la réponse Riot
+// en `PlayerFacts`/`MatchFacts`, en respectant des plafonds structurels : ces
+// plafonds sont ce qui borne le coût d'entrée « pire cas » de chaque palier.
+const CAP_PURCHASES = 25   // ordre d'achat
+const CAP_DEATHS    = 15   // morts listées
+const CAP_SKILLS    = 18   // montées de compétences
+const CAP_CURVE     = 8    // points de courbe (1 tous les 5 min)
+const CAP_OBJECTIVES = 25  // événements d'objectifs
+
+const SKILL_LETTER = ['', 'Q', 'W', 'E', 'R']
+
+/** Un point de courbe toutes les 5 minutes — pas une ligne par frame. */
+// deno-lint-ignore no-explicit-any
+function buildCurve(frames: any[], idx: number): string[] {
+  const out: string[] = []
+  for (const f of frames) {
+    const min = Math.round((f.ts ?? 0) / 60000)
+    if (min === 0 || min % 5 !== 0) continue
+    const gold = f.playerGold?.[idx] ?? 0
+    const xp   = f.playerXp?.[idx]   ?? 0
+    const cs   = f.playerCs?.[idx]   ?? 0
+    out.push(`${min}min ${(gold / 1000).toFixed(1)}k or / ${(xp / 1000).toFixed(1)}k XP / ${cs} CS`)
+    if (out.length >= CAP_CURVE) break
+  }
+  return out
 }
 
-function buildPrompt(f: PlayerFacts): string {
-  const res = f.win ? 'Victoire' : 'Défaite'
-  const dur = mmss(f.durationS * 1000)
-  return `Tu es un coach League of Legends. Fais le bilan de la partie d'un joueur.
+interface NameDicts {
+  items: Record<string, string>; champs: Record<string, string>
+  spells: Record<string, string>; runes: Record<string, string>
+}
 
-${f.champion}${f.position ? ` (${f.position})` : ''} — ${res} en ${dur}
-KDA ${f.kills}/${f.deaths}/${f.assists} · ${f.cs} CS (${f.csPerMin}/min)
-Dégâts infligés aux champions ${f.damageDealt} · dégâts subis ${f.damageTaken}
-Vision ${f.visionScore} · ${f.wardsPlaced} balises posées, ${f.wardsKilled} détruites, ${f.controlWards} balises de contrôle
-Build final : ${f.build.join(', ') || 'aucun objet'}${f.trinket ? ` · ${f.trinket}` : ''}
-Ordre d'achat : ${f.purchases.join(' → ') || 'aucun achat enregistré'}
-Morts : ${f.deathList.length ? f.deathList.join(' · ') : 'aucune'}
+// deno-lint-ignore no-explicit-any
+function playerFacts(
+  p: any, pid: number, durationS: number, depth: string,
+  // deno-lint-ignore no-explicit-any
+  body: any, dicts: NameDicts,
+): PlayerFacts {
+  const nameOf = (id: number) => (id ? (dicts.items[String(id)] ?? `objet ${id}`) : null)
+  // deno-lint-ignore no-explicit-any
+  const deaths: any[] = (body?.kills ?? []).filter((k: any) => k.victimId === pid)
 
-Réponds en 300 mots maximum, en français, avec exactement ces 4 sections :
+  const facts: PlayerFacts = {
+    champion: String(p.championName ?? ''),
+    position: String(p.teamPosition ?? ''),
+    win: p.win === true,
+    durationS,
+    kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0,
+    cs: p.cs ?? 0,
+    csPerMin: ((p.cs ?? 0) / (durationS / 60)).toFixed(1),
+    damageDealt: p.damageDealt ?? 0, damageTaken: p.damageTaken ?? 0,
+    visionScore: p.visionScore ?? 0, wardsPlaced: p.wardsPlaced ?? 0,
+    wardsKilled: p.wardsKilled ?? 0, controlWards: p.controlWards ?? 0,
+    build: (p.items ?? []).map(nameOf).filter(Boolean) as string[],
+    trinket: nameOf(p.trinket) ?? '',
+    // Achats seulement (ni ventes ni annulations) : le fil chronologique de
+    // construction, sans le bruit des allers-retours en boutique.
+    // deno-lint-ignore no-explicit-any
+    purchases: (p.itemEvents ?? [])
+      .filter((e: any) => e.type === 'PURCHASED')
+      .map((e: any) => ({ ts: e.ts, name: nameOf(e.itemId) }))
+      .filter((e: { name: string | null }) => e.name)
+      .slice(0, CAP_PURCHASES)
+      .map((e: { ts: number; name: string }) => `${mmss(e.ts)} ${e.name}`),
+    // deno-lint-ignore no-explicit-any
+    deathList: deaths.slice(0, CAP_DEATHS).map((k: any) =>
+      `${mmss(k.ts)} — ${deathZone(k.position?.x ?? 0, k.position?.y ?? 0, p.teamId ?? 100)}`),
+  }
 
-1. Ce qui a marché — 2 puces maximum, 15 mots par puce.
-2. Ce qui a coûté la partie — 2 puces maximum, 15 mots par puce. Appuie-toi sur le timing des morts et sur l'ordre d'achat.
-3. La priorité pour la prochaine partie — une seule action concrète, 2 phrases maximum.
-4. Note de performance — /10 suivi d'une seule phrase de justification.
+  if (depth !== 'simple') {
+    facts.level = p.level ?? 1
+    facts.summoners = [p.summoner1Id, p.summoner2Id]
+      .map((id: number) => dicts.spells[String(id)])
+      .filter(Boolean) as string[]
+    const sel: number[] = p.perks?.selected ?? []
+    const shards = p.perks?.statPerks ?? {}
+    facts.runes = [
+      ...sel.map((id) => dicts.runes[String(id)]).filter(Boolean),
+      ...[shards.offense, shards.flex, shards.defense]
+        .map((id: number) => STAT_SHARDS[id]).filter(Boolean),
+    ] as string[]
+    // deno-lint-ignore no-explicit-any
+    facts.skillOrder = (p.skillEvents ?? [])
+      .slice(0, CAP_SKILLS)
+      .map((e: any) => SKILL_LETTER[e.slot] ?? '')
+      .filter(Boolean)
+    facts.curve = buildCurve(body?.timeline ?? [], pid - 1)
+  }
 
-Va droit au but : aucune introduction, aucune conclusion. Les chiffres ci-dessus te servent à juger, ne les recopie pas dans ta réponse.`
+  if (depth === 'advanced') {
+    const mk: string[] = []
+    if (p.pentaKills)  mk.push(`${p.pentaKills} penta`)
+    if (p.quadraKills) mk.push(`${p.quadraKills} quadra`)
+    if (p.tripleKills) mk.push(`${p.tripleKills} triple`)
+    if (p.doubleKills) mk.push(`${p.doubleKills} double`)
+    facts.multikills = mk.join(', ')
+    facts.totalHeal = p.totalHeal ?? 0
+    facts.healOnTeammates = p.healOnTeammates ?? 0
+    facts.timeCcOthers = p.timeCcOthers ?? 0
+    facts.longestLife = p.longestLife ?? 0
+    facts.goldEarned = p.goldEarned ?? 0
+  }
+
+  return facts
+}
+
+const TEAM_FR = (id: number) => (id === 100 ? 'bleue' : 'rouge')
+
+// deno-lint-ignore no-explicit-any
+function matchFacts(body: any, champs: Record<string, string>): MatchFacts {
+  // deno-lint-ignore no-explicit-any
+  const evs: any[] = body?.events ?? []
+  const objectiveLog: string[] = []
+  for (const e of evs) {
+    if (objectiveLog.length >= CAP_OBJECTIVES) break
+    const team = TEAM_FR(e.teamId ?? 0)
+    if (e.type === 'BUILDING_KILL') {
+      const what = e.buildingType === 'INHIBITOR_BUILDING'
+        ? 'Inhibiteur'
+        : `Tour ${String(e.towerType ?? '').replace('_TURRET', '').toLowerCase() || ''}`.trim()
+      const lane = String(e.laneType ?? '').replace('_LANE', '').toLowerCase()
+      objectiveLog.push(`${mmss(e.ts)} ${what}${lane ? ` ${lane}` : ''} (${team})`)
+    } else if (e.type === 'ELITE_MONSTER_KILL') {
+      const kind = e.monsterType === 'DRAGON'
+        ? `Drake ${String(e.monsterSubType ?? '').replace('_DRAGON', '').toLowerCase()}`.trim()
+        : e.monsterType === 'RIFTHERALD' ? 'Héraut'
+        : e.monsterType === 'BARON_NASHOR' ? 'Baron'
+        : e.monsterType === 'HORDE' ? 'Larve du Néant'
+        : String(e.monsterType ?? 'Monstre')
+      objectiveLog.push(`${mmss(e.ts)} ${kind} (${team})`)
+    }
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const teamObjectives = (body?.teams ?? []).map((t: any) => {
+    const o = t.objectives ?? {}
+    return `${TEAM_FR(t.teamId)} : ${o.tower ?? 0} tours, ${o.dragon ?? 0} drakes, ${o.baron ?? 0} baron, ${o.herald ?? 0} héraut`
+  })
+
+  // deno-lint-ignore no-explicit-any
+  const bans = (body?.teams ?? []).flatMap((t: any) => t.bans ?? [])
+    .filter((id: number) => id > 0)
+    .map((id: number) => champs[String(id)] ?? `champion ${id}`)
+
+  return { objectiveLog, teamObjectives, bans }
+}
+
+/**
+ * Adversaire de voie : même `teamPosition`, équipe opposée.
+ *
+ * ⚠️ `teamPosition` est VIDE sur les modes sans voies (ARAM, Arena) et,
+ * occasionnellement, sur la Faille quand Riot n'a pas pu inférer le rôle. Ce
+ * n'est PAS une erreur : c'est un état nominal de la donnée. On renvoie alors
+ * `null`, et l'appelant refuse la combinaison AVANT tout débit de crédits —
+ * le client affiche un message clair, jamais une erreur rouge.
+ */
+// deno-lint-ignore no-explicit-any
+function findOpponent(parts: any[], self: any): { p: any; idx: number } | null {
+  const pos = String(self?.teamPosition ?? '')
+  if (!pos) return null
+  const idx = parts.findIndex((p) =>
+    p.teamId !== self.teamId && String(p.teamPosition ?? '') === pos)
+  return idx < 0 ? null : { p: parts[idx], idx }
 }
 
 // ── Appel interne à riot-match-detail ───────────────────────────────────────
@@ -207,7 +436,10 @@ Deno.serve(async (req) => {
     const { data: profile } = await db
       .from('profiles').select('tier, role').eq('id', user.id).maybeSingle()
     const { credits: limit, model } = resolveConfig(profile?.tier ?? null, profile?.role ?? null)
-    const costs = { simple_perso: costOf(model) }
+    // Les 9 coûts, pas seulement celui de l'action en cours : le client en a
+    // besoin pour griser les combinaisons qu'il ne peut PAS s'offrir, et pour
+    // afficher le prix qui change quand on bascule de profondeur ou de mode.
+    const costs = costsFor(model)
 
     // ── GET : lecture pure du solde ───────────────────────────────────────
     if (req.method === 'GET') {
@@ -231,13 +463,13 @@ Deno.serve(async (req) => {
 
     const matchId = String(body.matchId ?? '').trim()
     const puuid   = String(body.puuid ?? '').trim()
-    // Bornées à leur unique valeur admise tant que les 8 autres combinaisons
-    // n'existent pas : mieux vaut un 400 explicite qu'une analyse « simple »
-    // silencieusement rendue pour une profondeur que le client croyait obtenir.
-    const depth = String(body.depth ?? 'simple')
-    const mode  = String(body.mode  ?? 'perso')
-    if (depth !== 'simple' || mode !== 'perso') {
-      return jsonResponse({ error: 'Seule la combinaison depth=simple, mode=perso est disponible.' }, 400)
+    // Les 9 combinaisons sont désormais ouvertes. Défauts inchangés
+    // (`simple`/`perso`) : un client pré-généralisation qui n'envoie pas ces
+    // champs obtient exactement le même résultat qu'avant.
+    const depth = String(body.depth ?? 'simple') as PostGameDepth
+    const mode  = String(body.mode  ?? 'perso')  as PostGameMode
+    if (!DEPTHS.includes(depth) || !MODES.includes(mode)) {
+      return jsonResponse({ error: 'Combinaison profondeur/mode inconnue.' }, 400)
     }
     if (!MATCH_ID_RE.test(matchId)) return jsonResponse({ error: 'Format matchId invalide.' }, 400)
     if (!PUUID_RE.test(puuid))      return jsonResponse({ error: 'Format PUUID invalide.' }, 400)
@@ -262,44 +494,41 @@ Deno.serve(async (req) => {
     const p   = parts[idx]
     const pid = idx + 1   // participantId Riot = index + 1 (convention de riot-match-detail)
 
-    const names = await itemNames()
-    const nameOf = (id: number) => (id ? (names[String(id)] ?? `objet ${id}`) : null)
-
-    const durationS = Number(match.body?.gameDuration ?? 0) || 1
-    // deno-lint-ignore no-explicit-any
-    const deaths: any[] = (match.body?.kills ?? []).filter((k: any) => k.victimId === pid)
-
-    const facts: PlayerFacts = {
-      champion: String(p.championName ?? ''),
-      position: String(p.teamPosition ?? ''),
-      win: p.win === true,
-      durationS,
-      kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0,
-      cs: p.cs ?? 0,
-      csPerMin: ((p.cs ?? 0) / (durationS / 60)).toFixed(1),
-      damageDealt: p.damageDealt ?? 0, damageTaken: p.damageTaken ?? 0,
-      visionScore: p.visionScore ?? 0, wardsPlaced: p.wardsPlaced ?? 0,
-      wardsKilled: p.wardsKilled ?? 0, controlWards: p.controlWards ?? 0,
-      build: (p.items ?? []).map(nameOf).filter(Boolean) as string[],
-      trinket: nameOf(p.trinket) ?? '',
-      // Achats seulement (ni ventes ni annulations) : le fil chronologique de
-      // construction, sans le bruit des allers-retours en boutique.
-      // deno-lint-ignore no-explicit-any
-      purchases: (p.itemEvents ?? [])
-        .filter((e: any) => e.type === 'PURCHASED')
-        .map((e: any) => ({ ts: e.ts, name: nameOf(e.itemId) }))
-        .filter((e: { name: string | null }) => e.name)
-        .slice(0, 25)
-        .map((e: { ts: number; name: string }) => `${mmss(e.ts)} ${e.name}`),
-      // deno-lint-ignore no-explicit-any
-      deathList: deaths.slice(0, 15).map((k: any) =>
-        `${mmss(k.ts)} — ${deathZone(k.position?.x ?? 0, k.position?.y ?? 0, p.teamId ?? 100)}`),
+    // ── Adversaire de voie — AVANT tout débit de crédits ──────────────────
+    // Un mode « adversaire »/« les_deux » sur une partie sans voies (ARAM,
+    // Arena, ou Faille où Riot n'a pas inféré le rôle) est un état NOMINAL de
+    // la donnée, pas une panne : on refuse la combinaison proprement, avec un
+    // code que le client traduit en message clair. Zéro crédit débité, zéro
+    // appel Anthropic. Le contrôle est ici et pas seulement côté client, parce
+    // que `teamPosition` n'est connu qu'après avoir chargé le détail du match.
+    const needsOpponent = mode !== 'perso'
+    const opp = needsOpponent ? findOpponent(parts, p) : null
+    if (needsOpponent && !opp) {
+      return jsonResponse({
+        error: 'Cette partie ne permet pas d\'identifier un adversaire de voie.',
+        code: 'opponent_unavailable',
+      }, 400)
     }
 
-    const prompt = buildPrompt(facts)
+    const dicts: NameDicts = {
+      items:  await itemNames(),
+      champs: depth === 'advanced' ? await champNames() : {},
+      spells: depth !== 'simple'   ? await spellNames() : {},
+      runes:  depth !== 'simple'   ? await runeNames()  : {},
+    }
+
+    const durationS = Number(match.body?.gameDuration ?? 0) || 1
+    const selfFacts = playerFacts(p, pid, durationS, depth, match.body, dicts)
+    const oppFacts  = opp ? playerFacts(opp.p, opp.idx + 1, durationS, depth, match.body, dicts) : null
+    const mFacts: MatchFacts | null =
+      depth === 'advanced' ? matchFacts(match.body, dicts.champs) : null
+
+    const prompt = buildPostGamePrompt({
+      self: selfFacts, opponent: oppFacts, match: mFacts, depth, mode,
+    })
 
     // ── Débit du pot de crédits (avant tout appel payant) ─────────────────
-    const cost = costOf(model)
+    const cost = costOf(model, depth, mode)
     const { data: used, error: quotaErr } = await db.rpc('consume_ai_credits', {
       p_user_id: user.id, p_cost: cost, p_limit: limit,
     })
@@ -324,7 +553,7 @@ Deno.serve(async (req) => {
 
     // ── Appel Anthropic ───────────────────────────────────────────────────
     const payload: Record<string, unknown> = {
-      model, max_tokens: MAX_TOKENS,
+      model, max_tokens: MAX_TOKENS[depth],
       messages: [{ role: 'user', content: prompt }],
     }
     if (model.startsWith('claude-sonnet')) payload.thinking = { type: 'disabled' }
@@ -362,7 +591,10 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       analysis, model, depth, mode, truncated,
-      champion: facts.champion, win: facts.win,
+      champion: selfFacts.champion, win: selfFacts.win,
+      // Champion adverse quand la combinaison en implique un — le client
+      // l'affiche en en-tête (« Ahri vs Zed ») sans avoir à le redemander.
+      opponent: oppFacts?.champion ?? null,
       used, limit, remaining: Math.max(limit - (used as number), 0),
       cost, costs, resets_at: nextWeekStartISO(),
     })
