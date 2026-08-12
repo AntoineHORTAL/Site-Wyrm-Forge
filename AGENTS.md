@@ -21,6 +21,42 @@ Application : assistant League of Legends (Next.js 16.2.4 + Supabase + Vercel). 
 
 ---
 
+## 🔴 Quelle base Supabase le site interroge-t-il ? — bandeau « BASE DE TEST »
+
+Pendant web du mécanisme de l'app WPF (`Services/AppConfig.cs` + bandeau `TestDbBanner`, documenté dans l'`AGENTS.md` du repo `Logiciel-Assistant-LOL`, § Pièges connus n°7). Même principe, **implémentation différente** — les différences ci-dessous sont délibérées, ne pas « aligner » les deux par réflexe.
+
+- **Bascule** : par `.env.local` uniquement (`NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Pas d'équivalent du canal Vélopack — le site n'a **pas** d'environnement de déploiement de test (décision HORTAL, 2026-08-12) : aucune config Vercel n'est impliquée.
+- **Détection** : `src/lib/supabase/environment.ts` (module **pur**, testé — `environment.test.ts`, 16 tests). `isTestDatabase(url)` compare l'URL effective à `PROD_SUPABASE_URL`, casse et slash final normalisés.
+- **Affichage** : `src/components/dev/TestDbBanner.tsx`, monté dans `src/app/layout.tsx` → visible sur **toutes** les pages. **Server Component** (pas de `'use client'`) : deux variables lues, du HTML statique rendu — aucun JS envoyé au navigateur pour ça.
+
+### ⚠️ Dériver de l'URL, jamais d'un drapeau séparé
+`isTestDatabase` se déduit de l'**URL effective**, pas d'un `NEXT_PUBLIC_IS_TEST` ni du canal de déploiement. Un drapeau séparé peut diverger de l'URL qu'il prétend décrire et afficherait « BASE DE TEST » à quelqu'un branché sur la PROD — le contresens exact que ce bandeau existe pour éviter. Même règle et même justification que côté WPF.
+
+### ⚠️ Le durcissement ne peut PAS être copié du WPF — deux formats de clé
+Le WPF détecte une config incohérente en comparant le couple (URL, clé) à des **couples connus codés en dur**. **Transposer ça ici serait faux** : pour le **même** projet de production, le site utilise une clé anon au **format hérité** (`eyJ…`, un JWT) là où le WPF utilise le **nouveau format** (`sb_publishable_…`). Les deux sont valides pour le même projet — une comparaison contre les clés du WPF déclencherait donc une fausse alerte sur la prod du site, et casserait à la première rotation de clé.
+
+Détection retenue à la place, **structurelle et sans aucune clé en dur** (`inspectSupabaseEnv`) : les clés héritées sont des JWT dont le payload porte `{ ref: "<projet>" }` ; on compare ce `ref` au sous-domaine de l'URL. Fonctionne pour n'importe quel projet, y compris un futur troisième, et ne périme jamais.
+
+**Conservateur par construction** — tout ce qui n'est pas vérifiable est déclaré valide, jamais suspect :
+
+| Config | Verdict |
+|---|---|
+| URL prod + clé (JWT) du projet test | **incohérent** — le bug du 2026-08-12 |
+| URL test + clé (JWT) de prod | **incohérent** |
+| URL quelconque + clé `sb_publishable_…` | **ok** — format opaque, aucun `ref` à lire |
+| URL hors `*.supabase.co` (proxy local, domaine perso) | **ok** |
+
+### ⚠️ L'écran bloquant est BRIDÉ AU DÉVELOPPEMENT (`NODE_ENV !== 'production'`)
+Sur config incohérente ou variables manquantes, un écran rouge plein écran remplace le site et nomme le fichier à corriger — pendant de la boîte de dialogue + `Environment.Exit` du WPF. **Il ne sort jamais en production** : la faute visée n'existe que sur un poste de dev (`.env.local` édité à la main), alors qu'un faux positif en prod mettrait de vrais visiteurs devant un mur. En production, le cas est signalé par `console.error` côté serveur et rien de plus.
+
+### 🔍 Piège Next.js — `process.env.NEXT_PUBLIC_*` doit être écrit LITTÉRALEMENT
+Next remplace ces expressions par leur valeur **à la compilation**, et uniquement sous leur forme littérale. Un accès dynamique (`process.env[nom]`) n'est pas remplacé et vaut `undefined` dans le navigateur. D'où la lecture centralisée dans `readSupabaseEnv()`. Corollaire : **modifier `.env.local` n'a aucun effet sans redémarrer `npm run dev`**.
+
+### Vérifié au rendu réel (2026-08-12), pas seulement en test unitaire
+Trois `next dev` avec variables surchargées par le shell : URL test + clé test → bandeau + infobulle portant l'URL ; URL prod + clé test → écran bloquant nommant les deux projets, aucun bandeau ; `.env.local` réel (prod + prod) → ni l'un ni l'autre, page normale.
+
+---
+
 ## 🟠 Architecture
 
 ### State & props
