@@ -5,10 +5,6 @@ import { ThemeProvider } from '@/components/providers/ThemeProvider'
 export const metadata: Metadata = {
   title: 'Wyrm Forge — L\'assistant LoL le plus customisable',
   description: 'Overlay 100% personnalisable, builds et jungle paths partagés par la communauté, analyses IA. Wyrm Forge s\'adapte à toi — pas l\'inverse.',
-  icons: {
-    icon: '/wyrm-logo.ico',
-    shortcut: '/wyrm-logo.ico',
-  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
