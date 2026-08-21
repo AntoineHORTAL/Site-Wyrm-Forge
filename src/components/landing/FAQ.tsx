@@ -2,38 +2,14 @@
 
 import { useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 
-const faqs = [
-  {
-    // Réponse reprise de l'ancien FAQ.tsx (question « autorisé par Riot »)
-    q: 'Est-ce légal et sans risque de ban ?',
-    a: "Wyrm Forge utilise uniquement l'API officielle Riot Games et ne modifie pas les fichiers du jeu. Il est conforme aux règles d'utilisation des APIs Riot et ne risque pas de ban. Wyrm Forge n'est pas affilié à Riot Games.",
-  },
-  {
-    // Réponse reprise de l'ancien FAQ.tsx
-    q: "Comment fonctionne l'overlay ?",
-    a: "L'overlay se superpose à League of Legends en mode fenêtré ou fenêtré sans bordures. Tu peux le configurer pour qu'il se masque automatiquement en jeu ou reste toujours visible selon tes préférences.",
-  },
-  {
-    // Réponse reprise de l'ancien FAQ.tsx (question « combien ça coûte »)
-    q: 'Est-ce vraiment 100% gratuit ?',
-    a: "Oui. Wyrm Forge est entièrement gratuit pour la communauté. Le projet n'est pas commercial — il est développé par passion et toutes les fonctionnalités sont accessibles sans paiement.",
-  },
-  {
-    // Rédigée (aucune réponse existante pour cette question) — à relire
-    q: 'Sur quelles plateformes ça marche ?',
-    a: "Wyrm Forge est une application Windows (10 et 11). Une version macOS n'est pas prévue pour le moment. Le site web, lui, reste accessible depuis n'importe quel navigateur.",
-  },
-  {
-    // Rédigée (aucune réponse existante pour cette question) — à relire
-    q: 'Comment fonctionnent les analyses IA ?',
-    a: "Une IA analyse ton historique de parties récupéré via l'API officielle Riot pour repérer tes erreurs récurrentes — positionnement, timings, gestion de vague — et te proposer des conseils ciblés pour progresser. Aucune donnée autre que ton Riot ID n'est partagée.",
-  },
-]
 
 export default function FAQ() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const { t } = useLanguage()
+  const f = t.faq
   const [open, setOpen] = useState<number | null>(0)
 
   return (
@@ -46,17 +22,17 @@ export default function FAQ() {
       }}
     >
       <div style={{ textAlign: 'center', marginBottom: 44 }}>
-        <span className="land-eyebrow">Questions fréquentes</span>
+        <span className="land-eyebrow">{f.eyebrow}</span>
         <h2
           className="font-mythic"
           style={{ fontSize: c ? 'clamp(28px, 4.5vw, 42px)' : 'clamp(24px, 4vw, 36px)', fontWeight: 600, margin: 0, color: '#F5F2FA', letterSpacing: c ? undefined : '-0.5px' }}
         >
-          On répond à <span className="accent-text">tout</span>.
+          {f.titleBefore}<span className="accent-text">{f.titleAccent}</span>{f.titleAfter}
         </h2>
       </div>
 
       <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {faqs.map((faq, i) => {
+        {f.items.map((faq, i) => {
           const isOpen = open === i
           return (
             <div

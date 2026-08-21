@@ -1,6 +1,7 @@
 'use client'
 
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
@@ -15,6 +16,8 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 export default function FinalCTA() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const { t } = useLanguage()
+  const f = t.finalCta
 
   return (
     <section id="telecharger" style={{ padding: '64px 32px', background: c ? '#0A0612' : '#0F0F11' }}>
@@ -56,30 +59,29 @@ export default function FinalCTA() {
         />
 
         <div style={{ position: 'relative', zIndex: 1, padding: 'clamp(40px, 6vw, 64px) 32px', textAlign: 'center' }}>
-          <span className="land-eyebrow">La forge t&apos;attend</span>
+          <span className="land-eyebrow">{f.eyebrow}</span>
 
           <h2
             className="font-mythic"
             style={{ fontSize: c ? 'clamp(30px, 5vw, 48px)' : 'clamp(26px, 4.5vw, 38px)', fontWeight: 600, margin: '0 0 16px', color: '#F5F2FA', letterSpacing: c ? undefined : '-0.5px' }}
           >
-            Prêt à <span className="accent-text">grimper</span> ?
+            {f.titleBefore}<span className="accent-text">{f.titleAccent}</span>{f.titleAfter}
           </h2>
 
           <p style={{ color: 'var(--text-muted)', fontSize: 16, maxWidth: 520, margin: '0 auto 32px', lineHeight: 1.6 }}>
-            Télécharge l&apos;assistant, configure ton overlay en deux minutes, et forge ton
-            ascension dès ta prochaine partie.
+            {f.subtitle}
           </p>
 
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
             <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold">
               <WindowsIcon />
-              Télécharger pour Windows
+              {f.ctaDownload}
             </a>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-dim)' }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
-              Windows 10 / 11 · 100% Gratuit
+              {f.note}
             </span>
           </div>
         </div>

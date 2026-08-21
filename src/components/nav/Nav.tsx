@@ -4,6 +4,8 @@ import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
+import LanguageSwitch from '@/components/landing/LanguageSwitch'
 import { tabGroups } from '@/components/dashboard/Dashboard'
 import type { DashTab } from '@/app/page'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
@@ -55,9 +57,17 @@ interface NavProps {
 
 const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
 
+/* Sections de la vitrine visées par les liens centrés + le scroll-spy. Les id sont
+   structurels (ils doivent matcher les `id` des <section>) — seuls les libellés sont
+   traduits, via `nav.links` dans src/locales/landing.ts, dans CE MÊME ORDRE. */
+const NAV_SECTION_IDS = ['accueil', 'features', 'communaute', 'tarifs', 'telecharger', 'faq'] as const
+
 export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, ecaillesEnabled, onNavigateToForge }: NavProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  // Vitrine uniquement : seuls les libellés du mode visiteur sont traduits, le
+  // dashboard connecté reste en français.
+  const { t } = useLanguage()
   const isProTier = TIER_ORDER.indexOf(tier ?? 'apprenti') >= TIER_ORDER.indexOf('maître')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -71,14 +81,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   const pathname = usePathname()
 
   // Liens centrés de la vitrine. Scroll-spy actif uniquement là où les sections existent.
-  const navLinks = [
-    { id: 'accueil', label: 'Accueil' },
-    { id: 'features', label: 'Fonctionnalités' },
-    { id: 'communaute', label: 'Communauté' },
-    { id: 'tarifs', label: 'Tarifs' },
-    { id: 'telecharger', label: 'Télécharger' },
-    { id: 'faq', label: 'FAQ' },
-  ]
+  const navLinks = NAV_SECTION_IDS.map((id, i) => ({ id, label: t.nav.links[i] }))
   const spyEnabled = mode === 'visitor' && pathname === '/'
 
   // Scroll doux sur la home, ancre cross-page (/#features) ailleurs
@@ -203,13 +206,15 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
         <div className="nav-desktop" style={{ gap: 20, alignItems: 'center', fontSize: 14 }}>
           {mode === 'visitor' ? (
             <>
-              <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>Connexion</a>
+              {/* Bascule FR / EN — vitrine uniquement (le dashboard reste en français) */}
+              <LanguageSwitch />
+              <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>{t.nav.login}</a>
               <a
                 href={WINDOWS_DOWNLOAD_URL}
                 download
                 className="wf-btn-gold"
                 style={{ padding: '8px 18px', fontSize: 14, fontWeight: 500 }}
-              >Télécharger</a>
+              >{t.nav.download}</a>
             </>
           ) : (
             <>
@@ -431,13 +436,14 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
             {/* ── VISITOR NAVIGATION ── */}
             {mode === 'visitor' && (
               <div style={{ flex: 1, padding: '12px 0' }}>
-                <DrawerLink label="Accueil" onClick={() => goToSection('accueil')} c={c} />
-                <DrawerLink label="Fonctionnalités" onClick={() => goToSection('features')} c={c} />
-                <DrawerLink label="Communauté" onClick={() => goToSection('communaute')} c={c} />
-                <DrawerLink label="Tarifs" onClick={() => goToSection('tarifs')} c={c} />
-                <DrawerLink label="FAQ" onClick={() => goToSection('faq')} c={c} />
+                {/* « Télécharger » (index 4) est déjà servi par le bouton du bas du drawer */}
+                {navLinks
+                  .filter(l => l.id !== 'telecharger')
+                  .map(l => (
+                    <DrawerLink key={l.id} label={l.label} onClick={() => goToSection(l.id)} c={c} />
+                  ))}
                 <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
-                <DrawerLink label="Connexion" onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
+                <DrawerLink label={t.nav.login} onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
               </div>
             )}
 
@@ -445,20 +451,22 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
             <div style={{ flexShrink: 0, borderTop: `1px solid ${c ? 'rgba(186,117,23,0.15)' : '#27272A'}` }}>
               {mode === 'visitor' && (
                 <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* Bascule FR / EN — pleine largeur, le drawer n'a pas de barre latérale */}
+                  <LanguageSwitch full />
                   <a
                     href={WINDOWS_DOWNLOAD_URL}
                     download
                     onClick={() => setDrawerOpen(false)}
                     className="wf-btn-gold"
                     style={{ width: '100%', padding: '13px', fontSize: 14, fontWeight: 600, justifyContent: 'center' }}
-                  >Télécharger</a>
+                  >{t.nav.download}</a>
                   <button onClick={() => { setDrawerOpen(false); onLogin?.() }} style={{
                     width: '100%', padding: '11px',
                     background: 'transparent',
                     color: 'var(--text-muted)',
                     border: `1px solid ${c ? 'rgba(186,117,23,0.3)' : '#3F3F46'}`, borderRadius: 8,
                     fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                  }}>Connexion / Inscription</button>
+                  }}>{t.nav.loginSignup}</button>
                 </div>
               )}
 

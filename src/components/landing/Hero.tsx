@@ -1,7 +1,9 @@
 'use client'
 
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
 /* Icône Windows stylisée (4 carreaux) — réutilisée sur les CTA de la home */
@@ -16,13 +18,15 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 
 /* Carte « overlay live » — données illustratives (exemple visuel, pas de vraie partie) */
 function OverlayMock({ c }: { c: boolean }) {
+  const { t } = useLanguage()
+  const o = t.hero.overlay
   const stats: { label: string; value: string; color?: string }[] = [
-    { label: 'CS/min', value: '8.4' },
-    { label: 'Vision', value: '1.2' },
-    { label: 'KDA', value: '6.2' },
-    { label: 'Dragon', value: '02:14', color: c ? '#EF9F27' : '#FAC775' },
-    { label: 'Baron', value: '05:00', color: '#7F77DD' },
-    { label: 'Rang', value: 'Or II' },
+    { label: o.stats[0], value: '8.4' },
+    { label: o.stats[1], value: '1.2' },
+    { label: o.stats[2], value: '6.2' },
+    { label: o.stats[3], value: '02:14', color: c ? '#EF9F27' : '#FAC775' },
+    { label: o.stats[4], value: '05:00', color: '#7F77DD' },
+    { label: o.stats[5], value: o.rankValue },
   ]
   // Hauteurs statiques du mini bar-chart (% de la zone) — purement décoratif
   const bars = [42, 55, 38, 62, 48, 70, 52, 64, 46, 74, 58, 50]
@@ -43,8 +47,8 @@ function OverlayMock({ c }: { c: boolean }) {
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-          <span style={{ fontWeight: 700, color: c ? '#FAC775' : '#A1A1AA' }}>Overlay</span>
-          <span style={{ color: '#5DCAA5', fontWeight: 600 }}>● Live</span>
+          <span style={{ fontWeight: 700, color: c ? '#FAC775' : '#A1A1AA' }}>{o.title}</span>
+          <span style={{ color: '#5DCAA5', fontWeight: 600 }}>{o.live}</span>
           <span>02:14</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -109,6 +113,8 @@ function OverlayMock({ c }: { c: boolean }) {
 export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const { t } = useLanguage()
+  const h = t.hero
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 
@@ -172,7 +178,7 @@ export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
       <div className="land-hero-grid" style={{ position: 'relative', zIndex: 2 }}>
         {/* ── Colonne contenu ── */}
         <div className="land-reveal">
-          <span className="land-eyebrow">Wyrm Forge · Windows</span>
+          <span className="land-eyebrow">{h.eyebrow}</span>
 
           <h1
             className="font-mythic"
@@ -185,34 +191,34 @@ export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
               letterSpacing: c ? '-1px' : '-1.5px',
             }}
           >
-            Forge ton<br />
-            <span className="accent-text">ascension.</span>
+            {h.titleBefore}<br />
+            <span className="accent-text">{h.titleAccent}</span>
           </h1>
 
           <p style={{ fontSize: 'clamp(15px, 2.2vw, 18px)', color: 'var(--text-muted)', maxWidth: 480, margin: '0 0 32px' }}>
-            Overlay 100% personnalisable, builds et jungle paths partagés par la communauté,
-            analyses IA. Tout ce qu&apos;il faut pour grimper.
+            {h.subtitle}
           </p>
 
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 26 }}>
             <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold">
               <WindowsIcon />
-              Télécharger pour Windows
+              {h.ctaDownload}
             </a>
             <Link href="/matches" className="wf-btn-secondary">
-              Rechercher un joueur
+              {h.ctaSearch}
             </Link>
             <button className="wf-btn-secondary" onClick={() => scrollTo('features')}>
-              Fonctionnalités
+              {h.ctaFeatures}
             </button>
           </div>
 
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-            <span>100% Gratuit</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>API officielle Riot</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>Sans ban</span>
+            {h.badges.map((b, i) => (
+              <Fragment key={b}>
+                {i > 0 && <span style={{ opacity: 0.5 }}>·</span>}
+                <span>{b}</span>
+              </Fragment>
+            ))}
           </div>
         </div>
 

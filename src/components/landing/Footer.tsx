@@ -3,48 +3,29 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+
+/* Destinations seules — les libellés vivent dans src/locales/landing.ts
+   (`footer.legalLinks` et `footer.columns`, même ordre). */
 
 /* Liens légaux de la barre basse — routes réelles (src/app/{cgu,confidentialite,
    mentions-legales}/page.tsx), contrairement aux colonnes ci-dessous encore en '#'. */
-const legalLinks = [
-  { label: 'Conditions',      href: '/cgu' },
-  { label: 'Confidentialité', href: '/confidentialite' },
-  { label: 'Mentions légales', href: '/mentions-legales' },
-]
+const legalHrefs = ['/cgu', '/confidentialite', '/mentions-legales']
 
-/* Colonnes de liens du footer (les liens légaux vivent dans `legalLinks` ci-dessus).
+/* Colonnes de liens du footer (les liens légaux vivent dans `legalHrefs` ci-dessus).
    - Routes inexistantes pour l'instant → '#' (placeholder, à brancher plus tard)
    - Liens fonctionnels : ancres de la home (#features, #communaute) + téléchargement
    - Réseaux sociaux : '#' tant que les URLs ne sont pas fournies */
-const columns: { title: string; links: { label: string; href: string; download?: boolean }[] }[] = [
-  {
-    title: 'Produit',
-    links: [
-      { label: 'Fonctionnalités', href: '/#features' },
-      { label: 'Télécharger', href: WINDOWS_DOWNLOAD_URL, download: true },
-      { label: 'Communauté', href: '/#communaute' },
-      { label: 'Changelog', href: '#' },
-    ],
-  },
-  {
-    title: 'Ressources',
-    links: [
-      { label: 'Guides', href: '#' },
-      { label: 'Builds', href: '#' },
-      { label: 'Jungle paths', href: '#' },
-      { label: 'API Riot', href: '#' },
-    ],
-  },
-  {
-    title: 'Communauté',
-    links: [
-      { label: 'Discord', href: '#' },
-      { label: 'Twitter / X', href: '#' },
-      { label: 'Reddit', href: '#' },
-      { label: 'YouTube', href: '#' },
-    ],
-  },
+const columnHrefs: { href: string; download?: boolean }[][] = [
+  [
+    { href: '/#features' },
+    { href: WINDOWS_DOWNLOAD_URL, download: true },
+    { href: '/#communaute' },
+    { href: '#' },
+  ],
+  [{ href: '#' }, { href: '#' }, { href: '#' }, { href: '#' }],
+  [{ href: '#' }, { href: '#' }, { href: '#' }, { href: '#' }],
 ]
 
 function FooterLink({ label, href, download, c }: { label: string; href: string; download?: boolean; c: boolean }) {
@@ -69,6 +50,8 @@ function FooterLink({ label, href, download, c }: { label: string; href: string;
 export default function Footer() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const { t } = useLanguage()
+  const f = t.footer
 
   return (
     <footer
@@ -90,12 +73,12 @@ export default function Footer() {
             </span>
           </div>
           <p style={{ color: c ? '#888780' : '#71717A', fontSize: 14, lineHeight: 1.6, maxWidth: 260, margin: 0 }}>
-            L&apos;assistant ultime pour grimper sur League of Legends. Forge ton ascension.
+            {f.tagline}
           </p>
         </div>
 
         {/* Colonnes de liens */}
-        {columns.map((col) => (
+        {f.columns.map((col, ci) => (
           <div key={col.title}>
             <h3 style={{
               fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -103,8 +86,14 @@ export default function Footer() {
             }}>
               {col.title}
             </h3>
-            {col.links.map((l) => (
-              <FooterLink key={l.label} label={l.label} href={l.href} download={l.download} c={c} />
+            {col.links.map((label, li) => (
+              <FooterLink
+                key={label}
+                label={label}
+                href={columnHrefs[ci][li].href}
+                download={columnHrefs[ci][li].download}
+                c={c}
+              />
             ))}
           </div>
         ))}
@@ -117,13 +106,13 @@ export default function Footer() {
         display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16,
       }}>
         <span style={{ color: c ? '#5F5E5A' : '#52525B', fontSize: 12 }}>
-          © 2026 Wyrm Forge. Non affilié à Riot Games.
+          {f.copyright}
         </span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
-          {legalLinks.map((l) => (
-            <Link key={l.href} href={l.href}
+          {f.legalLinks.map((label, i) => (
+            <Link key={legalHrefs[i]} href={legalHrefs[i]}
               style={{ color: c ? '#888780' : '#71717A', textDecoration: 'none', fontSize: 12 }}>
-              {l.label}
+              {label}
             </Link>
           ))}
         </div>
@@ -134,11 +123,9 @@ export default function Footer() {
         maxWidth: 760, margin: '20px auto 0', textAlign: 'center',
         color: c ? '#5F5E5A' : '#52525B', fontSize: 11, lineHeight: 1.6,
       }}>
-        Wyrm Forge n&apos;est pas affilié, sponsorisé ni endossé par Riot Games, Inc. ou
-        l&apos;une de ses filiales. League of Legends et Riot Games sont des marques ou
-        marques déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.
+        {f.riotDisclaimer}
         <br />
-        <span style={{ color: c ? '#888780' : '#71717A' }}>Powered by the Riot Games API.</span>
+        <span style={{ color: c ? '#888780' : '#71717A' }}>{f.poweredBy}</span>
       </div>
     </footer>
   )
