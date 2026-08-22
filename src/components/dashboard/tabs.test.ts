@@ -39,8 +39,11 @@ describe.each(['postgame', 'matchup'])('Onglet IA « %s » — ouvert à tous le
   })
 
   it('reste dans le groupe « Analyse IA »', () => {
+    // Depuis le Lot 1 du chantier i18n, un groupe porte un `id` structurel et son
+    // intitulé vit dans le dico (`nav.groups.ia`) : c'est l'`id` qu'on vérifie ici,
+    // le libellé affiché n'étant plus une propriété de la structure.
     const group = tabGroups.find(g => g.tabs.some(t => t.id === id))
-    expect(group?.label).toBe('Analyse IA')
+    expect(group?.id).toBe('ia')
   })
 })
 

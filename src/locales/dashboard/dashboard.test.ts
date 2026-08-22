@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { dashboardFr, dashboardEn, dashboardDicts } from './index'
+import { NAV_TAB_IDS, subscriptionTierLabel } from './nav'
+
+// Importer Dashboard tire toute l'arborescence des onglets, dont `ScenariosTab` qui
+// appelle `createClient()` AU NIVEAU MODULE — sans variables d'env, @supabase/ssr lève
+// à l'import. Même neutralisation que dans `src/components/dashboard/tabs.test.ts`.
+vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({}) }))
+
+import { tabGroups, dashTabs } from '@/components/dashboard/Dashboard'
 
 /**
  * Mêmes invariants que `landing.test.ts`, mais écrits de façon GÉNÉRIQUE : la suite
@@ -24,7 +32,15 @@ import { dashboardFr, dashboardEn, dashboardDicts } from './index'
  * À alimenter au fil des lots, avec la valeur exacte : c'est une liste d'exceptions
  * justifiées, pas un tapis sous lequel glisser les traductions oubliées.
  */
-const INVARIANTS = new Set<string>([])
+const INVARIANTS = new Set<string>([
+  // Termes identiques en anglais — noms de produit, anglicismes déjà anglais côté FR,
+  // ou mots dont l'orthographe ne change pas.
+  'Administration', 'Admin', 'Navigation', 'Workshop', 'Pro',
+  'To-Do Lists', 'To-Do', 'Stats', 'Patch Notes', 'Champions',
+  'Jungle Path', 'Jungle', 'Builder',
+  'Workshop Builds', 'W. Builds', 'Workshop Jungle', 'W. Jungle',
+  'Match Up', 'Post Game',
+])
 
 interface Anomalies {
   vides: string[]
@@ -99,5 +115,76 @@ describe('dico dashboard — parité FR / EN', () => {
 
   it('ne laisse aucune chaîne identique entre FR et EN (hors invariants)', () => {
     expect(anomalies.identiques).toEqual([])
+  })
+})
+
+/**
+ * Lot 1 — appariement STRUCTURE ↔ LIBELLÉS.
+ *
+ * `tabGroups` (Dashboard.tsx) ne porte plus que du technique ; les libellés sont dans
+ * `nav.tabs`, retrouvés par `id`. Le risque introduit par ce découpage est qu'un onglet
+ * existe sans libellé (ligne vide dans les deux barres) ou qu'un libellé survive à un
+ * onglet supprimé (clé morte). `id: NavTabId` empêche déjà le premier cas À LA
+ * COMPILATION ; ces tests vérifient l'appariement RÉEL avec la structure rendue.
+ */
+describe('dico dashboard — libellés d\'onglets appariés à la structure', () => {
+  /* 'admin' n'est pas dans `tabGroups` : il est rendu à part, en tête des deux barres,
+     et seulement pour les admins. Il a donc un libellé sans être dans la liste plate. */
+  const idsStructure = [...new Set(['admin', ...dashTabs.map(t => t.id)])].sort()
+
+  it('chaque onglet rendu a un libellé, et aucun libellé n\'est orphelin', () => {
+    expect(Object.keys(dashboardFr.nav.tabs).sort()).toEqual(idsStructure)
+    expect([...NAV_TAB_IDS].sort()).toEqual(idsStructure)
+  })
+
+  it('chaque libellé d\'onglet est non vide dans les deux langues', () => {
+    // Doublon volontaire du parcours générique : ici l'échec NOMME l'onglet fautif,
+    // ce qui est l'information utile quand une barre affiche une ligne vide.
+    idsStructure.forEach(id => {
+      const key = id as keyof typeof dashboardFr.nav.tabs
+      expect(dashboardFr.nav.tabs[key].label.trim(), `libellé FR vide pour « ${id} »`).not.toBe('')
+      expect(dashboardEn.nav.tabs[key].label.trim(), `libellé EN vide pour « ${id} »`).not.toBe('')
+    })
+  })
+
+  it('chaque groupe de la structure a un intitulé dans le dico', () => {
+    tabGroups
+      .map(g => g.id)
+      .filter((id): id is NonNullable<typeof id> => Boolean(id))
+      .forEach(id => {
+        expect(dashboardFr.nav.groups[id], `groupe « ${id} » sans intitulé FR`).toBeTruthy()
+        expect(dashboardEn.nav.groups[id], `groupe « ${id} » sans intitulé EN`).toBeTruthy()
+      })
+  })
+
+  it('n\'a pas d\'intitulé de groupe orphelin', () => {
+    const idsGroupes = tabGroups.map(g => g.id).filter(Boolean).sort()
+    expect(Object.keys(dashboardFr.nav.groups).sort()).toEqual(idsGroupes)
+  })
+})
+
+/**
+ * `subscriptionTierLabel` traduit un tier d'ABONNEMENT pour l'affichage. La valeur
+ * reçue est celle de `profiles.tier` — partagée avec l'app WPF, jamais modifiée ici.
+ */
+describe('libellé de tier d\'abonnement', () => {
+  it('traduit les valeurs connues de profiles.tier', () => {
+    expect(subscriptionTierLabel(dashboardFr.nav, 'apprenti')).toBe('Apprenti')
+    expect(subscriptionTierLabel(dashboardEn.nav, 'apprenti')).toBe('Apprentice')
+    expect(subscriptionTierLabel(dashboardEn.nav, 'architecte+')).toBe('Architect+')
+  })
+
+  it('normalise la casse — `page.tsx` peut passer la valeur de repli « Apprenti »', () => {
+    expect(subscriptionTierLabel(dashboardEn.nav, 'Apprenti')).toBe('Apprentice')
+  })
+
+  it('renvoie une valeur inconnue TELLE QUELLE plutôt qu\'un vide', () => {
+    // Un tier ajouté en base avant d'être déclaré ici doit rester lisible.
+    expect(subscriptionTierLabel(dashboardEn.nav, 'demiurge')).toBe('demiurge')
+  })
+
+  it('retombe sur le tier de base si la valeur est absente', () => {
+    expect(subscriptionTierLabel(dashboardFr.nav, undefined)).toBe('Apprenti')
+    expect(subscriptionTierLabel(dashboardEn.nav, null)).toBe('Apprentice')
   })
 })

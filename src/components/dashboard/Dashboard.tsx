@@ -18,6 +18,8 @@ import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
 import Pricing from '@/components/landing/Pricing'
+import { useDashboard } from '@/locales/dashboard'
+import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
 import type { DashTab, UserProfile } from '@/app/page'
 
 /* ── Icons ── */
@@ -40,9 +42,12 @@ const IconPatchNotes = () => <svg width="17" height="17" viewBox="0 0 24 24" fil
 const IconEcailles = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6c-2 3-3 5-1 8"/><path d="M12 6c2 3 3 5 1 8"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
 
 export type TabDef = {
-  id: DashTab | string // tabs externes (href) ont un id libre
-  label: string
-  shortLabel: string
+  /**
+   * Identifiant TECHNIQUE de l'onglet — jamais traduit. Il pilote l'état
+   * (`activeTab`), le deep-link `?tab=` et sert de clé de libellé dans le dico.
+   * Typé `NavTabId` : ajouter un onglet ici sans son libellé ne compile pas.
+   */
+  id: NavTabId
   icon: React.ReactNode
   locked?: boolean
   soon?: boolean
@@ -52,59 +57,57 @@ export type TabDef = {
 }
 
 type TabGroup = {
-  label?: string
+  /** Clé du libellé de groupe dans le dico — absente = groupe sans intitulé. */
+  id?: NavGroupId
   tabs: TabDef[]
 }
 
 /**
- * ⚠️ STRUCTURE vs LIBELLÉ — à lire avant de toucher à ce tableau (chantier i18n).
+ * ⚠️ STRUCTURE SEULEMENT — les libellés vivent dans `src/locales/dashboard/nav.ts`.
  *
- * Deux natures de données cohabitent ici et ne suivent PAS les mêmes règles :
- *  - la STRUCTURE — `id`, `icon`, `locked`, `soon`, `href` — est technique.
- *    `id` est une valeur de l'union `DashTab` : elle pilote l'état, le deep-link
- *    `?tab=` et le routage. Elle ne se traduit JAMAIS.
- *  - les LIBELLÉS — `label`, `shortLabel`, et le `label` de groupe — sont du texte
- *    affiché, à déplacer dans `src/locales/dashboard/nav.ts` et à retrouver par `id`.
+ * Ce tableau ne porte plus que du technique : `id`, `icon`, `locked`, `soon`, `href`.
+ * C'est ce qui lui permet de rester un `const` de niveau module (donc figé au
+ * chargement, donc partageable entre les DEUX barres qui le consomment : la sidebar
+ * plus bas et le drawer mobile de `Nav.tsx`, via l'export `dashTabs`) tout en
+ * affichant des libellés qui, eux, suivent la langue.
  *
- * Le refactor est le Lot 1, pas celui-ci. Il ne se réduit pas à un remplacement de
- * chaînes : `tabGroups` est un `const` de niveau module, donc figé au chargement, et
- * il est consommé par DEUX barres (la sidebar plus bas, et le drawer mobile de
- * `Nav.tsx` via l'export `dashTabs`). Il devra devenir une valeur dérivée de la
- * langue courante, sans dupliquer les libellés entre les deux barres.
+ * Le libellé d'un onglet se lit `dico.nav.tabs[tab.id].label` — même `id` des deux
+ * côtés, aucune duplication entre les deux barres. Un onglet ajouté ici sans entrée
+ * de dico ne compile pas (`id: NavTabId`).
  */
 export const tabGroups: TabGroup[] = [
   {
     tabs: [
-      { id: 'accueil', label: 'Accueil', shortLabel: 'Accueil', icon: <IconHome /> },
+      { id: 'accueil', icon: <IconHome /> },
     ],
   },
   {
-    label: 'Navigation',
+    id: 'navigation',
     tabs: [
-      { id: 'todo',       label: 'To-Do Lists',  shortLabel: 'To-Do',     icon: <IconTodo /> },
-      { id: 'stats',      label: 'Stats',         shortLabel: 'Stats',     icon: <IconStats /> },
-      { id: 'patchnotes', label: 'Patch Notes',   shortLabel: 'Patchs',    icon: <IconPatchNotes /> },
-      { id: 'ecailles',   label: 'La Forge',      shortLabel: 'La Forge',  icon: <IconEcailles /> },
-      { id: 'champions',  label: 'Champions',     shortLabel: 'Champions', icon: <IconChamps />, href: '/champions' },
+      { id: 'todo',       icon: <IconTodo /> },
+      { id: 'stats',      icon: <IconStats /> },
+      { id: 'patchnotes', icon: <IconPatchNotes /> },
+      { id: 'ecailles',   icon: <IconEcailles /> },
+      { id: 'champions',  icon: <IconChamps />, href: '/champions' },
     ],
   },
   {
-    label: 'Personnalisation',
+    id: 'perso',
     tabs: [
-      { id: 'jungle',    label: 'Jungle Path', shortLabel: 'Jungle',   icon: <IconJungle /> },
-      { id: 'builds',    label: 'Builder',     shortLabel: 'Builder',  icon: <IconBuilds /> },
-      { id: 'scenarios', label: 'Scénarios',   shortLabel: 'Scénarios',icon: <IconScenarios />, locked: true },
+      { id: 'jungle',    icon: <IconJungle /> },
+      { id: 'builds',    icon: <IconBuilds /> },
+      { id: 'scenarios', icon: <IconScenarios />, locked: true },
     ],
   },
   {
-    label: 'Workshop',
+    id: 'workshop',
     tabs: [
-      { id: 'workshop-builds', label: 'Workshop Builds', shortLabel: 'W. Builds', icon: <IconWBuild /> },
-      { id: 'workshop-jungle', label: 'Workshop Jungle', shortLabel: 'W. Jungle', icon: <IconWJungle /> },
+      { id: 'workshop-builds', icon: <IconWBuild /> },
+      { id: 'workshop-jungle', icon: <IconWJungle /> },
     ],
   },
   {
-    label: 'Analyse IA',
+    id: 'ia',
     tabs: [
       // Aucun `locked` sur les deux onglets IA : leur accès est piloté par le
       // budget « Chaleur de la Forge », qui donne déjà un solde à chaque tier
@@ -112,14 +115,14 @@ export const tabGroups: TabGroup[] = [
       // Haiku). Un badge « Pro » ici mentirait sur l'accès réel.
       // `locked` alimente le badge des DEUX barres de navigation (SidebarBtn
       // desktop + DrawerTabBtn mobile), le retirer ici suffit pour les deux.
-      { id: 'matchup',  label: 'Match Up',   shortLabel: 'Match Up',  icon: <IconMatchUp /> },
-      { id: 'postgame', label: 'Post Game',  shortLabel: 'Post Game', icon: <IconPostGame /> },
+      { id: 'matchup',  icon: <IconMatchUp /> },
+      { id: 'postgame', icon: <IconPostGame /> },
     ],
   },
   {
-    label: 'Bientôt',
+    id: 'soon',
     tabs: [
-      { id: 'tournois', label: 'Tournois', shortLabel: 'Tournois', icon: <IconTournois />, soon: true },
+      { id: 'tournois', icon: <IconTournois />, soon: true },
     ],
   },
 ]
@@ -165,6 +168,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const router = useRouter()
+  const d = useDashboard()
 
   // Clic sur un onglet : si href, navigation externe — sinon changement d'activeTab
   const handleTabClick = (tab: TabDef) => {
@@ -190,7 +194,9 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {isAdmin && (
           <div style={{ marginBottom: 6 }}>
             <SidebarBtn
-              tab={{ id: 'admin', label: 'Administration', shortLabel: 'Admin', icon: <IconAdmin /> }}
+              tab={{ id: 'admin', icon: <IconAdmin /> }}
+              label={d.nav.tabs.admin.label}
+              badges={d.nav.badges}
               active={activeTab === 'admin'} c={c}
               onClick={() => onTabChange('admin')}
               admin
@@ -201,17 +207,19 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
 
         {tabGroups.map((group, gi) => (
           <div key={gi} style={{ marginBottom: 6 }}>
-            {group.label && (
+            {group.id && (
               <div style={{
                 fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5,
                 color: '#71717A', padding: '10px 16px 4px 28px', fontWeight: 600,
-              }}>{group.label}</div>
+              }}>{d.nav.groups[group.id]}</div>
             )}
             {group.tabs
               .filter(tab => tab.id !== 'ecailles' || ecaillesEnabled || isAdmin)
               .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
+                label={d.nav.tabs[tab.id].label}
+                badges={d.nav.badges}
                 active={activeTab === tab.id} c={c}
                 onClick={() => handleTabClick(tab)}
                 unlocked={isAdmin || isProTier}
@@ -294,14 +302,16 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
 }
 
 /* ── Sidebar button ── */
-function SidebarBtn({ tab, active, c, onClick, unlocked, admin }: {
-  tab: TabDef | { id: DashTab; label: string; shortLabel: string; icon: React.ReactNode }
+function SidebarBtn({ tab, label, badges, active, c, onClick, unlocked, admin }: {
+  tab: TabDef
+  /** Libellé déjà résolu par l'appelant (dico ↔ `tab.id`) — jamais lu depuis `tab`. */
+  label: string
+  badges: { pro: string; soon: string }
   active: boolean; c: boolean; onClick: () => void
   unlocked?: boolean; admin?: boolean
 }) {
-  const t = tab as TabDef
-  const isLocked = !unlocked && t.locked
-  const isSoon   = t.soon
+  const isLocked = !unlocked && tab.locked
+  const isSoon   = tab.soon
 
   return (
     <button onClick={onClick} style={{
@@ -324,15 +334,15 @@ function SidebarBtn({ tab, active, c, onClick, unlocked, admin }: {
       opacity: isSoon ? 0.5 : 1,
     }}>
       <span style={{ width: 17, height: 17, flexShrink: 0 }}>{tab.icon}</span>
-      <span style={{ flex: 1 }}>{tab.label}</span>
+      <span style={{ flex: 1 }}>{label}</span>
       {isLocked && (
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: c ? '#BA7517' : '#7F77DD', marginLeft: 4 }}>
-          Pro
+          {badges.pro}
         </span>
       )}
       {isSoon && (
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-dim)', marginLeft: 4 }}>
-          Bientôt
+          {badges.soon}
         </span>
       )}
     </button>

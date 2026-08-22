@@ -6,7 +6,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import LanguageSwitch from '@/components/landing/LanguageSwitch'
-import { tabGroups } from '@/components/dashboard/Dashboard'
+import { tabGroups, type TabDef } from '@/components/dashboard/Dashboard'
+import { useDashboard } from '@/locales/dashboard'
+import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import type { DashTab } from '@/app/page'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
@@ -32,8 +34,8 @@ function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   )
 }
 
-const CertifiedBadge = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label="Compte certifié" style={{ flexShrink: 0, display: 'block' }}>
+const CertifiedBadge = ({ size = 14, label }: { size?: number; label: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label={label} style={{ flexShrink: 0, display: 'block' }}>
     <circle cx="12" cy="12" r="10" fill="#3B82F6"/>
     <path d="M8 12.5l2.5 2.5 5.5-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
@@ -65,9 +67,10 @@ const NAV_SECTION_IDS = ['accueil', 'features', 'communaute', 'tarifs', 'telecha
 export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, ecaillesEnabled, onNavigateToForge }: NavProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
-  // Vitrine uniquement : seuls les libellés du mode visiteur sont traduits, le
-  // dashboard connecté reste en français.
+  // Deux dicos, un seul état de langue (provider unique du layout racine) :
+  // `t` pour la vitrine (mode visiteur), `d.nav` pour la zone connectée.
   const { t } = useLanguage()
+  const d = useDashboard()
   const isProTier = TIER_ORDER.indexOf(tier ?? 'apprenti') >= TIER_ORDER.indexOf('maître')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -229,11 +232,11 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                     fontSize: 13, fontWeight: 600, color: c ? '#EF9F27' : '#7F77DD',
                     whiteSpace: 'nowrap',
                   }}>
-                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt="Écailles" width={16} height={16} />
+                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt={d.nav.user.scalesAlt} width={16} height={16} />
                   </div>
                   <button
                     onClick={onNavigateToForge}
-                    title="Gagner des Écailles — La Forge"
+                    title={d.nav.user.scalesTitle}
                     style={{
                       width: 28, height: 28, borderRadius: 7, border: 'none',
                       background: c ? 'rgba(186,117,23,0.15)' : 'rgba(127,119,221,0.12)',
@@ -262,10 +265,10 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                 <div>
                   <div style={{ fontSize: 13, color: '#FAFAFA', display: 'flex', alignItems: 'center', gap: 5 }}>
                     {username || 'SkyKnight'}
-                    {certified && <CertifiedBadge size={13} />}
+                    {certified && <CertifiedBadge size={13} label={d.nav.user.certified} />}
                   </div>
                   <div style={{ fontSize: 10, color: c ? '#BA7517' : '#7F77DD', textTransform: 'uppercase', letterSpacing: 1 }}>
-                    {tier || 'Apprenti'}
+                    {subscriptionTierLabel(d.nav, tier)}
                   </div>
                 </div>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -281,11 +284,11 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                   borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                   overflow: 'hidden', zIndex: 60, animation: 'fadeIn 0.12s ease',
                 }}>
-                  <DropdownItem label="Profil"
+                  <DropdownItem label={d.nav.user.profile}
                     icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
                     onClick={() => { setDropdownOpen(false); window.location.assign('/profil') }}
                     hoverBg={c ? 'rgba(255,255,255,0.05)' : '#27272A'} />
-                  <DropdownItem label="Déconnexion"
+                  <DropdownItem label={d.nav.user.logout}
                     icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
                     onClick={() => { setDropdownOpen(false); onLogout?.() }}
                     danger hoverBg={c ? 'rgba(255,255,255,0.05)' : '#27272A'} />
@@ -374,9 +377,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                 <div>
                   <div style={{ fontSize: 14, color: '#FAFAFA', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                     {username || 'SkyKnight'}
-                    {certified && <CertifiedBadge size={14} />}
+                    {certified && <CertifiedBadge size={14} label={d.nav.user.certified} />}
                   </div>
-                  <div style={{ fontSize: 11, color: c ? '#BA7517' : '#7F77DD', textTransform: 'uppercase', letterSpacing: 1 }}>{tier || 'Apprenti'}</div>
+                  <div style={{ fontSize: 11, color: c ? '#BA7517' : '#7F77DD', textTransform: 'uppercase', letterSpacing: 1 }}>{subscriptionTierLabel(d.nav, tier)}</div>
                 </div>
                 {(ecaillesEnabled || isAdmin) && (
                   <button
@@ -388,7 +391,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                     }}
                   >
-                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt="Écailles" width={15} height={15} />
+                    {balanceLoading ? '…' : (balance ?? 0).toLocaleString('fr-FR')}<img src="/icons/ecaille.png" alt={d.nav.user.scalesAlt} width={15} height={15} />
                     <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
                   </button>
                 )}
@@ -402,7 +405,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                 {isAdmin && (
                   <>
                     <DrawerTabBtn
-                      tab={{ id: 'admin', label: 'Administration', shortLabel: 'Admin', icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }}
+                      tab={{ id: 'admin', icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }}
+                      label={d.nav.tabs.admin.label}
+                      badges={d.nav.badges}
                       active={activeTab === 'admin'} c={c}
                       onClick={() => { onTabChange('admin'); setDrawerOpen(false) }}
                       admin
@@ -413,9 +418,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 
                 {tabGroups.map((group, gi) => (
                   <div key={gi}>
-                    {group.label && (
+                    {group.id && (
                       <div style={{ fontSize: 11, color: '#71717A', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 600, padding: '8px 20px 6px' }}>
-                        {group.label}
+                        {d.nav.groups[group.id]}
                       </div>
                     )}
                     {group.tabs
@@ -423,6 +428,8 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       .map(tab => (
                       <DrawerTabBtn
                         key={tab.id} tab={tab}
+                        label={d.nav.tabs[tab.id].label}
+                        badges={d.nav.badges}
                         active={activeTab === tab.id} c={c}
                         onClick={() => {
                           if (tab.soon) return
@@ -496,7 +503,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       <polyline points="16 17 21 12 16 7"/>
                       <line x1="21" y1="12" x2="9" y2="12"/>
                     </svg>
-                    Déconnexion
+                    {d.nav.user.logout}
                   </button>
                 </div>
               )}
@@ -509,8 +516,11 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 }
 
 /* ── Drawer tab button ── */
-function DrawerTabBtn({ tab, active, c, onClick, locked, admin, soon }: {
-  tab: { id: DashTab | string; label: string; shortLabel: string; icon: React.ReactNode }
+function DrawerTabBtn({ tab, label, badges, active, c, onClick, locked, admin, soon }: {
+  tab: TabDef
+  /** Libellé déjà résolu par l'appelant (dico ↔ `tab.id`) — jamais lu depuis `tab`. */
+  label: string
+  badges: { pro: string; soon: string }
   active: boolean; c: boolean; onClick: () => void; locked?: boolean; admin?: boolean; soon?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
@@ -538,15 +548,15 @@ function DrawerTabBtn({ tab, active, c, onClick, locked, admin, soon }: {
         opacity: soon ? 0.5 : 1,
       }}>
       <span style={{ width: 18, height: 18, flexShrink: 0 }}>{tab.icon}</span>
-      {tab.label}
+      {label}
       {locked && !soon && (
         <span style={{ marginLeft: 'auto', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: c ? '#BA7517' : '#7F77DD' }}>
-          Pro
+          {badges.pro}
         </span>
       )}
       {soon && (
         <span style={{ marginLeft: 'auto', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-dim)' }}>
-          Bientôt
+          {badges.soon}
         </span>
       )}
     </button>
