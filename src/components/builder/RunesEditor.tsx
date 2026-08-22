@@ -16,6 +16,8 @@
  * Les stat shards sont hardcodés (Riot ne les expose pas en API).
  */
 import { useEffect, useRef, useState } from 'react'
+import { useDashboard } from '@/locales/dashboard'
+import type { ShardId } from '@/locales/dashboard/builds'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
 
@@ -57,23 +59,25 @@ interface Props {
 // IMPORTANT : un même shard peut apparaître sur plusieurs lignes (ex: Force
 // adaptative dans Offense ET Flex, PV selon niveau dans Flex ET Defense). Les
 // IDs sont les mêmes mais le contexte row diffère.
-interface ShardDef { id: number; name: string; desc: string; iconKey: string }
+// STRUCTURE seulement : `id` est l'id Riot (stocké dans la page de runes) et
+// `iconKey` l'asset. Nom et description vivent dans le dico, indexés par `id`.
+interface ShardDef { id: ShardId; iconKey: string }
 const SHARDS: { rows: ShardDef[][] } = {
   rows: [
     [
-      { id: 5008, name: 'Force adaptative',  desc: '+9 Force adaptative',           iconKey: 'AdaptiveForce' },
-      { id: 5005, name: 'Vitesse d\'attaque', desc: '+10 % vitesse d\'attaque',     iconKey: 'AttackSpeed' },
-      { id: 5007, name: 'Hâte de comp.',     desc: '+8 hâte de compétence',         iconKey: 'CDRScaling' },
+      { id: 5008, iconKey: 'AdaptiveForce' },
+      { id: 5005, iconKey: 'AttackSpeed' },
+      { id: 5007, iconKey: 'CDRScaling' },
     ],
     [
-      { id: 5008, name: 'Force adaptative',  desc: '+9 Force adaptative',           iconKey: 'AdaptiveForce' },
-      { id: 5010, name: 'Vit. de déplacement', desc: '+2 % vitesse de déplacement', iconKey: 'MovementSpeed' },
-      { id: 5001, name: 'PV (selon niveau)', desc: '+10-180 PV (selon niveau)',     iconKey: 'HealthScaling' },
+      { id: 5008, iconKey: 'AdaptiveForce' },
+      { id: 5010, iconKey: 'MovementSpeed' },
+      { id: 5001, iconKey: 'HealthScaling' },
     ],
     [
-      { id: 5011, name: 'PV',                desc: '+65 PV',                        iconKey: 'HealthPlus' },
-      { id: 5013, name: 'Tén. & Rés. ralent.', desc: '+10 % tén. et rés. aux ralent.', iconKey: 'Tenacity' },
-      { id: 5001, name: 'PV (selon niveau)', desc: '+10-180 PV (selon niveau)',     iconKey: 'HealthScaling' },
+      { id: 5011, iconKey: 'HealthPlus' },
+      { id: 5013, iconKey: 'Tenacity' },
+      { id: 5001, iconKey: 'HealthScaling' },
     ],
   ],
 }
@@ -98,6 +102,8 @@ function shardIconUrl(iconKey: string): string {
 export default function RunesEditor({ value, onChange }: Props) {
   const [trees, setTrees] = useState<RuneTree[]>([])
   const [version, setVersion] = useState('')
+  const R = useDashboard().builds.runes
+  const shardText = useDashboard().builds.shards
 
   // Charge runesReforged.json depuis DDragon
   useEffect(() => {
@@ -195,7 +201,7 @@ export default function RunesEditor({ value, onChange }: Props) {
   if (trees.length === 0) {
     return (
       <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>
-        Chargement des runes…
+        {R.loading}
       </div>
     )
   }
@@ -212,14 +218,14 @@ export default function RunesEditor({ value, onChange }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>
-          Runes
+          {R.title}
         </div>
         <button onClick={clearAll} style={{
           padding: '4px 10px', fontSize: 11, cursor: 'pointer',
           background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.25)',
           color: '#E24B4A', borderRadius: 4,
         }}>
-          Tout effacer
+          {R.clearAll}
         </button>
       </div>
 
@@ -231,7 +237,7 @@ export default function RunesEditor({ value, onChange }: Props) {
           padding: 12, borderRadius: 8,
           background: 'rgba(0,0,0,0.25)',
         }}>
-          <SectionTitle>Arbre primaire</SectionTitle>
+          <SectionTitle>{R.primaryTree}</SectionTitle>
           {/* Sélection de l'arbre */}
           <TreePicker trees={trees}
             selectedId={value.primary?.tree}
@@ -240,7 +246,7 @@ export default function RunesEditor({ value, onChange }: Props) {
           {primaryTree && (
             <>
               {/* Keystone (slot 0) */}
-              <SlotSection label="Keystone">
+              <SlotSection label={R.keystone}>
                 <RuneRow runes={primaryTree.slots[0].runes}
                   selectedId={value.primary?.keystone}
                   onSelect={selectKeystone}
@@ -249,7 +255,7 @@ export default function RunesEditor({ value, onChange }: Props) {
 
               {/* 3 slots de runes mineures (slots 1, 2, 3) */}
               {[1, 2, 3].map(slotIdx => (
-                <SlotSection key={slotIdx} label={`Slot ${slotIdx}`}>
+                <SlotSection key={slotIdx} label={R.slot.replace('{n}', String(slotIdx))}>
                   <RuneRow runes={primaryTree.slots[slotIdx].runes}
                     selectedId={value.primary?.perks[slotIdx - 1]}
                     onSelect={id => selectPrimaryPerk(slotIdx - 1, id)}
@@ -265,7 +271,7 @@ export default function RunesEditor({ value, onChange }: Props) {
           padding: 12, borderRadius: 8,
           background: 'rgba(0,0,0,0.25)',
         }}>
-          <SectionTitle>Arbre secondaire</SectionTitle>
+          <SectionTitle>{R.secondaryTree}</SectionTitle>
           {/* Sélection de l'arbre (exclure le primaire) */}
           <TreePicker trees={trees.filter(t => t.id !== value.primary?.tree)}
             selectedId={value.secondary?.tree}
@@ -275,7 +281,7 @@ export default function RunesEditor({ value, onChange }: Props) {
             <>
               {/* 3 slots — on choisit 2 runes en tout, max 1 par slot */}
               {[1, 2, 3].map(slotIdx => (
-                <SlotSection key={slotIdx} label={`Slot ${slotIdx}`}>
+                <SlotSection key={slotIdx} label={R.slot.replace('{n}', String(slotIdx))}>
                   <RuneRow runes={secondaryTree.slots[slotIdx].runes}
                     selectedId={value.secondary?.perks.find(id => secondaryTree.slots[slotIdx].runes.some(r => r.id === id))}
                     onSelect={id => toggleSecondaryPerk(id, slotIdx - 1)}
@@ -286,23 +292,24 @@ export default function RunesEditor({ value, onChange }: Props) {
               ))}
 
               <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 6 }}>
-                Choisis 2 runes parmi les 3 slots (max 1 par slot). Actuellement : {value.secondary?.perks.length ?? 0}/2.
+                {R.secondaryHint.replace('{count}', String(value.secondary?.perks.length ?? 0))}
               </div>
             </>
           )}
 
           {/* ── Stat shards ── */}
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <SectionTitle>Stat shards</SectionTitle>
-            {(['Offense', 'Flex', 'Defense'] as const).map((rowLabel, rowIdx) => (
-              <SlotSection key={rowLabel} label={rowLabel}>
+            <SectionTitle>{R.shardsTitle}</SectionTitle>
+            {[R.shardRowOffense, R.shardRowFlex, R.shardRowDefense].map((rowLabel, rowIdx) => (
+              <SlotSection key={rowIdx} label={rowLabel}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {SHARDS.rows[rowIdx].map(shard => {
                     const selected = value.shards?.[rowIdx] === shard.id
+                    const txt = shardText[shard.id]
                     return (
                       <button key={`${shard.iconKey}-${rowIdx}`}
                         onClick={() => selectShard(rowIdx as 0|1|2, shard.id)}
-                        title={`${shard.name} — ${shard.desc}`}
+                        title={`${txt.name} — ${txt.desc}`}
                         style={{
                           width: 30, height: 30, borderRadius: '50%',
                           background: selected ? 'rgba(239,159,39,0.18)' : 'rgba(255,255,255,0.04)',
@@ -310,7 +317,7 @@ export default function RunesEditor({ value, onChange }: Props) {
                           cursor: 'pointer', padding: 0,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                        <img src={shardIconUrl(shard.iconKey)} alt={shard.name}
+                        <img src={shardIconUrl(shard.iconKey)} alt={txt.name}
                           style={{ width: 22, height: 22 }}
                           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                       </button>

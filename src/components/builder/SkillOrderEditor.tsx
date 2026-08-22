@@ -19,6 +19,8 @@
  *   }
  */
 import { useMemo } from 'react'
+import { useDashboard } from '@/locales/dashboard'
+import type { BuildsDict } from '@/locales/dashboard/builds'
 
 export interface SkillOrder {
   levels: Slot[]      // 18 entrées (Q/W/E/R), tableau peut être plus court si pas encore complet
@@ -45,6 +47,7 @@ interface Props {
 
 export default function SkillOrderEditor({ value, onChange }: Props) {
   const TOTAL_LEVELS = 18
+  const sk = useDashboard().builds.skills
 
   // Compteurs de points par sort (pour valider les contraintes)
   const counts = useMemo(() => {
@@ -114,14 +117,14 @@ export default function SkillOrderEditor({ value, onChange }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>
-          Ordre des sorts
+          {sk.title}
         </div>
         <button onClick={clearAll} style={{
           padding: '4px 10px', fontSize: 11, cursor: 'pointer',
           background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.25)',
           color: '#E24B4A', borderRadius: 4,
         }}>
-          Tout effacer
+          {sk.clearAll}
         </button>
       </div>
 
@@ -149,7 +152,7 @@ export default function SkillOrderEditor({ value, onChange }: Props) {
           {/* Lignes Q W E R */}
           {SLOTS.map(slot => (
             <Row key={slot} slot={slot} levels={value.levels}
-              counts={counts} maxPoints={maxPoints} onSet={setLevel} />
+              counts={counts} maxPoints={maxPoints} onSet={setLevel} sk={sk} />
           ))}
         </div>
       </div>
@@ -172,7 +175,7 @@ export default function SkillOrderEditor({ value, onChange }: Props) {
       {/* Priorité de max */}
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ fontSize: 11, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' }}>
-          Priorité de max (max 3, clique dans l'ordre)
+          {sk.priorityLabel}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {(['Q', 'W', 'E'] as Slot[]).map(s => {
@@ -216,12 +219,13 @@ export default function SkillOrderEditor({ value, onChange }: Props) {
 }
 
 // ── Ligne d'un sort dans la grille ──
-function Row({ slot, levels, counts, maxPoints, onSet }: {
+function Row({ slot, levels, counts, maxPoints, onSet, sk }: {
   slot: Slot
   levels: Slot[]
   counts: Record<Slot, number>
   maxPoints: Record<Slot, number>
   onSet: (level: number, slot: Slot) => void
+  sk: BuildsDict['skills']
 }) {
   const TOTAL_LEVELS = 18
   const isFull = counts[slot] >= maxPoints[slot]
@@ -258,7 +262,7 @@ function Row({ slot, levels, counts, maxPoints, onSet }: {
               opacity: disabled ? 0.3 : (cantPick ? 0.4 : 1),
               padding: 0,
             }}
-            title={disabled ? (slot === 'R' ? `R disponible niveaux 6/11/16` : `Niveau réservé à R`) : ''}
+            title={disabled ? (slot === 'R' ? sk.ultOnlyLevels : sk.levelReservedForUlt) : ''}
           >
             {isPicked && counts[slot]}
           </button>

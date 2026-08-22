@@ -44,6 +44,14 @@ const INVARIANTS = new Set<string>([
   'Description', 'Champion', 'KDA', 'CS/min', 'CS / min', 'Image (PNG)', 'PDF',
   // La Forge — raretés et types de cosmétiques dont l'orthographe ne change pas.
   'Rare', 'Badge', 'Badges', 'Avatar', 'Avatars',
+  // Lot 3 — vocabulaire de build : sigles LoL et termes anglais déjà employés tels
+  // quels en français (« Keystone », « Stat shards », les 3 lignes de shards Riot).
+  'AD', 'AP', 'Crit', 'Omnivamp', 'Mana',
+  'Items', 'Runes', 'Skills',
+  'Keystone', 'Stat shards', 'Offense', 'Flex', 'Defense', 'Slot {n}',
+  'Champion ▾', '✕ Reset',
+  // « items » est employé tel quel en français dans tout le Builder.
+  '{count} items',
 ])
 
 interface Anomalies {
@@ -196,6 +204,65 @@ describe('dico dashboard — libellés d\'onglets appariés à la structure', ()
         expect(titre.title.trim()).not.toBe('')
         expect(titre.subtitle.trim()).not.toBe('')
       })
+  })
+})
+
+/**
+ * Lot 3 — le Builder indexe ses libellés par des clés STABLES, jamais par le texte
+ * affiché : clé de filtre interne, clé de stat DDragon, id de shard Riot. Ces tests
+ * verrouillent l'appariement avec les tables de structure de `BuildsTab` et
+ * `RunesEditor`, qui vivent dans les composants et ne peuvent pas être typées depuis
+ * le dico sans créer un cycle d'import.
+ */
+describe('dico builder — libellés appariés aux tables de structure', () => {
+  /* Recopié depuis `FILTERS` (BuildsTab.tsx) — même ordre, mêmes clés. */
+  const CLÉS_FILTRES = [
+    'ad', 'ap', 'armor', 'magicResist', 'health', 'lethality', 'magicPen',
+    'attackSpeed', 'crit', 'lifeSteal', 'omnivamp', 'moveSpeed', 'mana',
+    'healthRegen', 'manaRegen', 'heal', 'tenacity', 'adaptive',
+  ]
+
+  /* Recopié depuis `STATS` (BuildsTab.tsx) — ce sont les clés DDragon. */
+  const CLÉS_STATS = [
+    'FlatPhysicalDamageMod', 'FlatMagicDamageMod', 'FlatCritChanceMod',
+    'PercentAttackSpeedMod', 'PercentLifeStealMod', 'FlatArmorPenetrationMod',
+    'FlatMagicPenetrationMod', 'FlatHPPoolMod', 'FlatArmorMod', 'FlatSpellBlockMod',
+    'FlatHPRegenMod', 'FlatMPPoolMod', 'FlatMovementSpeedMod', 'PercentMovementSpeedMod',
+  ]
+
+  /* Ids de shards Riot présents dans les 3 lignes de `SHARDS` (RunesEditor.tsx),
+     dédupliqués : un même shard apparaît sur deux lignes. */
+  const IDS_SHARDS = ['5001', '5005', '5007', '5008', '5010', '5011', '5013']
+
+  it('a un libellé pour chaque filtre, et aucun libellé orphelin', () => {
+    expect(Object.keys(dashboardFr.builds.filters).sort()).toEqual([...CLÉS_FILTRES].sort())
+  })
+
+  it('a un libellé pour chaque stat DDragon affichée', () => {
+    expect(Object.keys(dashboardFr.builds.stats).sort()).toEqual([...CLÉS_STATS].sort())
+  })
+
+  it('a un nom et une description pour chaque shard', () => {
+    expect(Object.keys(dashboardFr.builds.shards).sort()).toEqual(IDS_SHARDS)
+    IDS_SHARDS.forEach(id => {
+      const key = Number(id) as keyof typeof dashboardFr.builds.shards
+      expect(dashboardFr.builds.shards[key].name.trim(), `nom FR vide pour le shard ${id}`).not.toBe('')
+      expect(dashboardEn.builds.shards[key].desc.trim(), `desc EN vide pour le shard ${id}`).not.toBe('')
+    })
+  })
+
+  /**
+   * `defaults` est le seul endroit du dico dont la valeur atterrit en base (noms de
+   * blocs, nom de build, pseudo de publication). Ce test ne verrouille pas leur
+   * contenu — il documente qu'ils existent dans les deux langues et ne sont jamais
+   * vides : un défaut vide créerait un bloc sans nom en base.
+   */
+  it('a des valeurs par défaut non vides dans les deux langues', () => {
+    Object.entries(dashboardFr.builds.defaults).forEach(([clé, valeur]) => {
+      expect(valeur.trim(), `défaut FR vide : ${clé}`).not.toBe('')
+      const en = dashboardEn.builds.defaults[clé as keyof typeof dashboardEn.builds.defaults]
+      expect(en.trim(), `défaut EN vide : ${clé}`).not.toBe('')
+    })
   })
 })
 

@@ -10,6 +10,8 @@ import {
   publishWorkshopBuild, removeWorkshopBuild,
   type WorkshopBlock,
 } from '@/lib/workshop-builds'
+import { useDashboard } from '@/locales/dashboard'
+import type { BuildFilterKey, BuildStatKey } from '@/locales/dashboard/builds'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface DDItem {
@@ -44,8 +46,8 @@ interface BuildBlock {
 }
 
 interface StatConfig {
-  key: string
-  label: string
+  /** Clé DDragon — sert aussi de clé de libellé dans le dico. */
+  key: BuildStatKey
   suffix: string
   icon: string
   mult?: number
@@ -70,43 +72,48 @@ interface SavedBuild {
 export type BuilderComponent = 'items' | 'runes' | 'skills'
 
 // ─── Filter categories ─────────────────────────────────────────────────────────
-const FILTERS = [
-  { icon: '/icons/Stats/Attack_damage.png',          label: 'AD',           tags: ['Damage'] },
-  { icon: '/icons/Stats/Ability_power.png',          label: 'AP',           tags: ['SpellDamage'] },
-  { icon: '/icons/Stats/Armor.png',                  label: 'Armure',       tags: ['Armor'] },
-  { icon: '/icons/Stats/Magic_resistance.png',       label: 'Rés. mag.',    tags: ['SpellBlock'] },
-  { icon: '/icons/Stats/Health.png',                 label: 'Vie',          tags: ['Health'] },
-  { icon: '/icons/Stats/Armor_penetration.png',      label: 'Létalité',     tags: ['ArmorPenetration'] },
-  { icon: '/icons/Stats/Magic_penetration.png',      label: 'Pén. mag.',    tags: ['MagicPenetration'] },
-  { icon: '/icons/Stats/Attack_speed.png',           label: 'Vit. attq.',   tags: ['AttackSpeed'], scale: 1.5 },
-  { icon: '/icons/Stats/Critical_strike_chance.png', label: 'Crit',         tags: ['CriticalStrike'] },
-  { icon: '/icons/Stats/Life_steal.png',             label: 'Vol de vie',   tags: ['LifeSteal'] },
-  { icon: '/icons/Stats/Omnivamp.png',               label: 'Omnivamp',     tags: ['SpellVamp'] },
-  { icon: '/icons/Stats/Movement_speed.png',         label: 'Vit. dép.',    tags: ['NonbootsMovement'] },
-  { icon: '/icons/Stats/Mana.png',                   label: 'Mana',         tags: ['Mana'] },
-  { icon: '/icons/Stats/Health_regeneration.png',    label: 'Régén. PV',    tags: ['HealthRegen'] },
-  { icon: '/icons/Stats/Mana_regeneration.png',      label: 'Régén. mana',  tags: ['ManaRegen'] },
-  { icon: '/icons/Stats/Heal_and_shield_power.png',  label: 'Soins',        tags: ['Aura'] },
-  { icon: '/icons/Stats/Tenacity.png',               label: 'Ténacité',     tags: ['Tenacity'] },
-  { icon: '/icons/Stats/Adaptive_Force.png',         label: 'Adapt.',       tags: ['Damage', 'SpellDamage'] },
+// STRUCTURE seulement : `key` est un identifiant interne (état des filtres actifs),
+// `tags` le contrat DDragon. Le libellé vit dans le dico, retrouvé par `key`.
+// ⚠️ Avant le chantier i18n, l'état `activeFilters` stockait le LIBELLÉ français —
+// un changement de langue en cours de session aurait orphelin les filtres actifs.
+const FILTERS: { key: BuildFilterKey; icon: string; tags: string[]; scale?: number }[] = [
+  { key: 'ad',           icon: '/icons/Stats/Attack_damage.png',          tags: ['Damage'] },
+  { key: 'ap',           icon: '/icons/Stats/Ability_power.png',          tags: ['SpellDamage'] },
+  { key: 'armor',        icon: '/icons/Stats/Armor.png',                  tags: ['Armor'] },
+  { key: 'magicResist',  icon: '/icons/Stats/Magic_resistance.png',       tags: ['SpellBlock'] },
+  { key: 'health',       icon: '/icons/Stats/Health.png',                 tags: ['Health'] },
+  { key: 'lethality',    icon: '/icons/Stats/Armor_penetration.png',      tags: ['ArmorPenetration'] },
+  { key: 'magicPen',     icon: '/icons/Stats/Magic_penetration.png',      tags: ['MagicPenetration'] },
+  { key: 'attackSpeed',  icon: '/icons/Stats/Attack_speed.png',           tags: ['AttackSpeed'], scale: 1.5 },
+  { key: 'crit',         icon: '/icons/Stats/Critical_strike_chance.png', tags: ['CriticalStrike'] },
+  { key: 'lifeSteal',    icon: '/icons/Stats/Life_steal.png',             tags: ['LifeSteal'] },
+  { key: 'omnivamp',     icon: '/icons/Stats/Omnivamp.png',               tags: ['SpellVamp'] },
+  { key: 'moveSpeed',    icon: '/icons/Stats/Movement_speed.png',         tags: ['NonbootsMovement'] },
+  { key: 'mana',         icon: '/icons/Stats/Mana.png',                   tags: ['Mana'] },
+  { key: 'healthRegen',  icon: '/icons/Stats/Health_regeneration.png',    tags: ['HealthRegen'] },
+  { key: 'manaRegen',    icon: '/icons/Stats/Mana_regeneration.png',      tags: ['ManaRegen'] },
+  { key: 'heal',         icon: '/icons/Stats/Heal_and_shield_power.png',  tags: ['Aura'] },
+  { key: 'tenacity',     icon: '/icons/Stats/Tenacity.png',               tags: ['Tenacity'] },
+  { key: 'adaptive',     icon: '/icons/Stats/Adaptive_Force.png',         tags: ['Damage', 'SpellDamage'] },
 ]
 
 // ─── Stat display ──────────────────────────────────────────────────────────────
+// `key` est la clé DDragon ET la clé de libellé dans le dico (`builds.stats`).
 const STATS: StatConfig[] = [
-  { key: 'FlatPhysicalDamageMod',   label: 'Dégâts physiques',  suffix: '',  icon: '/icons/Stats/Attack_damage.png',         category: 'off' },
-  { key: 'FlatMagicDamageMod',      label: 'Puissance (AP)',     suffix: '',  icon: '/icons/Stats/Ability_power.png',          category: 'off' },
-  { key: 'FlatCritChanceMod',       label: 'Coup critique',      suffix: '%', mult: 100, icon: '/icons/Stats/Critical_strike_chance.png', category: 'off' },
-  { key: 'PercentAttackSpeedMod',   label: "Vitesse d'attaque",  suffix: '%', mult: 100, icon: '/icons/Stats/Attack_speed.png', scale: 1.5, category: 'off' },
-  { key: 'PercentLifeStealMod',     label: 'Vol de vie',         suffix: '%', mult: 100, icon: '/icons/Stats/Life_steal.png',             category: 'off' },
-  { key: 'FlatArmorPenetrationMod', label: 'Létalité',           suffix: '',  icon: '/icons/Stats/Armor_penetration.png',      category: 'off' },
-  { key: 'FlatMagicPenetrationMod', label: 'Pén. magique',       suffix: '',  icon: '/icons/Stats/Magic_penetration.png',      category: 'off' },
-  { key: 'FlatHPPoolMod',           label: 'Points de vie',      suffix: '',  icon: '/icons/Stats/Health.png',                 category: 'def' },
-  { key: 'FlatArmorMod',            label: 'Armure',             suffix: '',  icon: '/icons/Stats/Armor.png',                  category: 'def' },
-  { key: 'FlatSpellBlockMod',       label: 'Résistance mag.',    suffix: '',  icon: '/icons/Stats/Magic_resistance.png',       category: 'def' },
-  { key: 'FlatHPRegenMod',          label: 'Régén. PV',          suffix: '',  icon: '/icons/Stats/Health_regeneration.png',    category: 'def' },
-  { key: 'FlatMPPoolMod',           label: 'Mana',               suffix: '',  icon: '/icons/Stats/Mana.png',                   category: 'util' },
-  { key: 'FlatMovementSpeedMod',    label: 'Vitesse dép.',       suffix: '',  icon: '/icons/Stats/Movement_speed.png',         category: 'util' },
-  { key: 'PercentMovementSpeedMod', label: 'Vitesse dép. %',     suffix: '%', mult: 100, icon: '/icons/Stats/Movement_speed.png', category: 'util' },
+  { key: 'FlatPhysicalDamageMod',   suffix: '',  icon: '/icons/Stats/Attack_damage.png',         category: 'off' },
+  { key: 'FlatMagicDamageMod',      suffix: '',  icon: '/icons/Stats/Ability_power.png',          category: 'off' },
+  { key: 'FlatCritChanceMod',       suffix: '%', mult: 100, icon: '/icons/Stats/Critical_strike_chance.png', category: 'off' },
+  { key: 'PercentAttackSpeedMod',   suffix: '%', mult: 100, icon: '/icons/Stats/Attack_speed.png', scale: 1.5, category: 'off' },
+  { key: 'PercentLifeStealMod',     suffix: '%', mult: 100, icon: '/icons/Stats/Life_steal.png',             category: 'off' },
+  { key: 'FlatArmorPenetrationMod', suffix: '',  icon: '/icons/Stats/Armor_penetration.png',      category: 'off' },
+  { key: 'FlatMagicPenetrationMod', suffix: '',  icon: '/icons/Stats/Magic_penetration.png',      category: 'off' },
+  { key: 'FlatHPPoolMod',           suffix: '',  icon: '/icons/Stats/Health.png',                 category: 'def' },
+  { key: 'FlatArmorMod',            suffix: '',  icon: '/icons/Stats/Armor.png',                  category: 'def' },
+  { key: 'FlatSpellBlockMod',       suffix: '',  icon: '/icons/Stats/Magic_resistance.png',       category: 'def' },
+  { key: 'FlatHPRegenMod',          suffix: '',  icon: '/icons/Stats/Health_regeneration.png',    category: 'def' },
+  { key: 'FlatMPPoolMod',           suffix: '',  icon: '/icons/Stats/Mana.png',                   category: 'util' },
+  { key: 'FlatMovementSpeedMod',    suffix: '',  icon: '/icons/Stats/Movement_speed.png',         category: 'util' },
+  { key: 'PercentMovementSpeedMod', suffix: '%', mult: 100, icon: '/icons/Stats/Movement_speed.png', category: 'util' },
 ]
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,6 +136,8 @@ export default function BuildsTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const dico = useDashboard()
+  const B = dico.builds
 
   // Navigation
   const [view, setView]               = useState<'list' | 'editor'>('list')
@@ -153,12 +162,15 @@ export default function BuildsTab() {
   const [allChamps, setAllChamps]   = useState<DDChamp[]>([])
   const [itemsById, setItemsById]   = useState<Record<string, DDItem>>({})
   const [loading, setLoading]       = useState(true)
-  const [apiError, setApiError]     = useState('')
+  // Drapeau, pas message : l'effet de chargement ne tourne qu'une fois, un texte
+  // capturé là resterait figé dans la langue du montage (même motif qu'AccueilTab).
+  const [apiFailed, setApiFailed]   = useState(false)
   const [selectedItem, setSelectedItem] = useState<DDItem | null>(null)
 
   // UI
   const [search, setSearch]           = useState('')
-  const [activeFilters, setActiveFilters] = useState<string[]>([])
+  // Clés de filtre, pas libellés : l'état survit à un changement de langue.
+  const [activeFilters, setActiveFilters] = useState<BuildFilterKey[]>([])
   const [buildName, setBuildName]     = useState('')
   const [selectedChamp, setSelectedChamp] = useState<DDChamp | null>(null)
   const [champSearch, setChampSearch] = useState('')
@@ -169,9 +181,11 @@ export default function BuildsTab() {
   const [targetBlockId, setTargetBlockId]   = useState<string>('')
 
   // Blocks
+  // ⚠️ Les noms de blocs par défaut sont des données d'utilisateur (éditables, et
+  // sauvegardées telles quelles) : ils prennent la langue courante à la création.
   const [blocks, setBlocks] = useState<BuildBlock[]>([
-    { id: uid(), name: 'Items de départ', items: [] },
-    { id: uid(), name: 'Items cœur',      items: [] },
+    { id: uid(), name: B.defaults.blockStart, items: [] },
+    { id: uid(), name: B.defaults.blockCore,  items: [] },
   ])
 
   // Composants actifs du build en cours d'édition + leurs données
@@ -278,7 +292,7 @@ export default function BuildsTab() {
           components: (row.components as BuilderComponent[]) ?? ['items'],
           blocks: (row.blocks ?? []).map((sb: any) => ({
             id:   sb.id ?? uid(),
-            name: sb.name ?? 'Bloc',
+            name: sb.name ?? B.defaults.blockFallback,
             items: (sb.items ?? []).map((si: any) => {
               const full = byId[si.itemId]
               return {
@@ -310,7 +324,7 @@ export default function BuildsTab() {
           setPublishedMap(map)
         }
       } catch {
-        setApiError('Erreur lors du chargement des données Riot.')
+        setApiFailed(true)
       } finally {
         setLoading(false)
         setBuildsLoading(false)
@@ -349,10 +363,9 @@ export default function BuildsTab() {
     .filter(item => {
       if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false
       if (activeFilters.length === 0) return true
-      return activeFilters.some(label => {
-        const f = FILTERS.find(x => x.label === label)
+      return activeFilters.some(key => {
+        const f = FILTERS.find(x => x.key === key)
         if (!f) return false
-        if (label === 'Légendaire') return (item.depth ?? 1) >= 2 && item.gold.total >= 2500
         return f.tags.some(t => item.tags.includes(t))
       })
     })
@@ -393,7 +406,10 @@ export default function BuildsTab() {
   }
 
   function addBlock() {
-    setBlocks(prev => [...prev, { id: uid(), name: `Bloc ${prev.length + 1}`, items: [] }])
+    setBlocks(prev => [
+      ...prev,
+      { id: uid(), name: B.defaults.blockNumbered.replace('{n}', String(prev.length + 1)), items: [] },
+    ])
   }
 
   function removeBlock(id: string) {
@@ -405,18 +421,13 @@ export default function BuildsTab() {
   }
 
   // ── Gestion des builds sauvegardés ───────────────────────────────────────
-  const DEFAULT_BLOCKS: BuildBlock[] = [
-    { id: uid(), name: 'Items de départ', items: [] },
-    { id: uid(), name: 'Items cœur',      items: [] },
-  ]
-
   function openNewBuild() {
     setBuildName('')
     setSelectedChamp(null)
     setEditingBuildId(null)
     setBlocks([
-      { id: uid(), name: 'Items de départ', items: [] },
-      { id: uid(), name: 'Items cœur',      items: [] },
+      { id: uid(), name: B.defaults.blockStart, items: [] },
+      { id: uid(), name: B.defaults.blockCore,  items: [] },
     ])
     setActiveComponents(['items'])
     setRunes({ primary: null, secondary: null, shards: null })
@@ -457,7 +468,7 @@ export default function BuildsTab() {
     }))
 
     const payload = {
-      name:       buildName.trim() || 'Build sans nom',
+      name:       buildName.trim() || B.defaults.buildName,
       champ:      selectedChamp
         ? { id: selectedChamp.id, name: selectedChamp.name, image: selectedChamp.image }
         : null,
@@ -548,7 +559,7 @@ export default function BuildsTab() {
     const res = await publishWorkshopBuild(supabase, {
       sourceBuildId: build.id,
       creatorId:     userId,
-      creatorName:   creatorName || 'Anonyme',
+      creatorName:   creatorName || B.defaults.anonymousCreator,
       titre:         build.name,
       champion:      build.champ?.id ?? '',
       patch:         version,
@@ -560,7 +571,7 @@ export default function BuildsTab() {
       // Remontée UI (pas seulement console) : une publication échouée ne doit jamais
       // ressembler à un no-op silencieux.
       console.error('[Builds] publication échouée', res.error)
-      setPublishError({ id: build.id, message: 'Publication impossible. Réessaie dans un instant.' })
+      setPublishError({ id: build.id, message: B.list.publishError })
     }
     setPublishing(null)
   }
@@ -569,7 +580,7 @@ export default function BuildsTab() {
     if (publishing) return
     const wbId = publishedMap[build.id]
     if (!wbId) return
-    if (!confirm(`Retirer « ${build.name} » du Workshop ?\n\nLe build ne sera plus visible par la communauté et ses ♥ et ↓ seront perdus. Ta copie personnelle n'est pas affectée.`)) return
+    if (!confirm(B.list.unpublishConfirm.replace('{name}', build.name))) return
 
     setPublishing(build.id)
     setPublishError(null)
@@ -579,7 +590,7 @@ export default function BuildsTab() {
       setPublishedMap(prev => { const n = { ...prev }; delete n[build.id]; return n })
     } else {
       console.error('[Builds] dépublication refusée ou sans effet', error ?? '0 ligne supprimée')
-      setPublishError({ id: build.id, message: 'Retrait impossible. Réessaie dans un instant.' })
+      setPublishError({ id: build.id, message: B.list.unpublishError })
     }
     setPublishing(null)
   }
@@ -621,9 +632,10 @@ export default function BuildsTab() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#F5F2FA' }}>Mes builds</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#F5F2FA' }}>{B.list.title}</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            {savedBuilds.length} build{savedBuilds.length !== 1 ? 's' : ''} sauvegardé{savedBuilds.length !== 1 ? 's' : ''}
+            {(savedBuilds.length === 1 ? B.list.countOne : B.list.countOther)
+              .replace('{count}', String(savedBuilds.length))}
           </div>
         </div>
         <button onClick={openNewBuild} style={{
@@ -633,14 +645,14 @@ export default function BuildsTab() {
           border: 'none', color: 'white', fontSize: 13, fontWeight: 600,
           cursor: 'pointer', fontFamily: 'inherit',
         }}>
-          + Créer un build
+          {B.list.create}
         </button>
       </div>
 
       {/* Chargement */}
       {buildsLoading && (
         <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 13 }}>
-          Chargement de tes builds…
+          {B.list.loading}
         </div>
       )}
 
@@ -653,10 +665,10 @@ export default function BuildsTab() {
         }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🔨</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>
-            Aucun build sauvegardé
+            {B.list.emptyTitle}
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-            Crée ton premier build en sélectionnant les items qui te correspondent.
+            {B.list.emptyText}
           </div>
           <button onClick={openNewBuild} style={{
             padding: '10px 24px', borderRadius: 8,
@@ -664,7 +676,7 @@ export default function BuildsTab() {
             border: 'none', color: 'white', fontSize: 13, fontWeight: 600,
             cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            Créer mon premier build
+            {B.list.emptyCta}
           </button>
         </div>
       )}
@@ -701,15 +713,18 @@ export default function BuildsTab() {
                       {build.name}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                      {build.champ?.name ?? 'Champion libre'} · {build.blocks.reduce((s, b) => s + b.items.reduce((ss, bi) => ss + bi.count, 0), 0)} items
+                      {build.champ?.name ?? B.list.freeChampion} · {B.list.itemCount.replace(
+                        '{count}',
+                        String(build.blocks.reduce((s, b) => s + b.items.reduce((ss, bi) => ss + bi.count, 0), 0)),
+                      )}
                     </div>
                     {/* Badges de composition : ce que contient le build */}
                     <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
                       {(build.components ?? ['items']).map(comp => {
                         const meta: Record<string, { label: string; icon: string; color: string }> = {
-                          items:  { label: 'Items',  icon: '🛡️', color: '#5DCAA5' },
-                          runes:  { label: 'Runes',  icon: '🔮', color: '#7F77DD' },
-                          skills: { label: 'Skills', icon: '⚡', color: '#EF9F27' },
+                          items:  { label: B.list.componentItems,  icon: '🛡️', color: '#5DCAA5' },
+                          runes:  { label: B.list.componentRunes,  icon: '🔮', color: '#7F77DD' },
+                          skills: { label: B.list.componentSkills, icon: '⚡', color: '#EF9F27' },
                         }
                         const m = meta[comp]
                         if (!m) return null
@@ -760,7 +775,7 @@ export default function BuildsTab() {
                     color: 'white', fontSize: 12, fontWeight: 600,
                     cursor: 'pointer', fontFamily: 'inherit',
                   }}>
-                    ✏️ Modifier
+                    {B.list.edit}
                   </button>
                   <button onClick={() => deleteBuild(build.id)} style={{
                     padding: '8px 12px',
@@ -776,9 +791,7 @@ export default function BuildsTab() {
                 <button
                   onClick={() => isPublished ? handleUnpublish(build) : handlePublish(build)}
                   disabled={!userId || isBusy}
-                  title={isPublished
-                    ? 'Retirer ce build du Workshop communauté'
-                    : 'Partager ce build dans le Workshop communauté'}
+                  title={isPublished ? B.list.unpublishTitle : B.list.publishTitle}
                   style={{
                     width: '100%', padding: '7px',
                     background: isPublished ? 'transparent' : 'rgba(93,202,165,0.12)',
@@ -792,8 +805,8 @@ export default function BuildsTab() {
                   }}
                 >
                   {isBusy
-                    ? (isPublished ? 'Retrait…' : 'Publication…')
-                    : (isPublished ? '🗑 Dépublier' : '↑ Publier au Workshop')}
+                    ? (isPublished ? B.list.unpublishing : B.list.publishing)
+                    : (isPublished ? B.list.unpublish    : B.list.publish)}
                 </button>
 
                 {/* Erreur de (dé)publication — visible dans l'UI, pas seulement en console */}
@@ -828,18 +841,18 @@ export default function BuildsTab() {
           color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
           display: 'inline-flex', alignItems: 'center',
         }}>
-          ← Mes builds
+          {B.editor.back}
         </button>
 
         {/* Build name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Nom :</span>
+          <span style={{ color: 'var(--text-muted)' }}>{B.editor.nameLabel}</span>
           <input
             className="wf-input"
             style={{ width: 140, height: 32, boxSizing: 'border-box', padding: '0 10px', fontSize: 12 }}
             value={buildName}
             onChange={e => setBuildName(e.target.value)}
-            placeholder="Mon build..."
+            placeholder={B.editor.namePlaceholder}
           />
         </div>
 
@@ -860,7 +873,7 @@ export default function BuildsTab() {
                     style={{ width: 22, height: 22, borderRadius: 3, objectFit: 'cover' }} />
                   {selectedChamp.name}
                 </>
-              : <span style={{ color: 'var(--text-muted)' }}>Champion ▾</span>
+              : <span style={{ color: 'var(--text-muted)' }}>{B.editor.championPlaceholder}</span>
             }
           </button>
 
@@ -873,7 +886,7 @@ export default function BuildsTab() {
             }}>
               <input
                 className="wf-input" style={{ marginBottom: 8 }}
-                placeholder="🔍 Rechercher..."
+                placeholder={B.editor.championSearch}
                 value={champSearch} onChange={e => setChampSearch(e.target.value)}
                 autoFocus
               />
@@ -913,7 +926,7 @@ export default function BuildsTab() {
           border: `1px solid ${showDetail ? accent : border}`,
           color: showDetail ? gold : 'var(--text-muted)',
         }}>
-          📊 Détails
+          {B.editor.details}
         </button>
 
         {/* Sauver */}
@@ -924,7 +937,7 @@ export default function BuildsTab() {
           border: 'none', borderRadius: 4, color: 'white', fontSize: 12,
           fontWeight: 600, cursor: savingBuild ? 'default' : 'pointer', fontFamily: 'inherit',
           transition: 'background 0.15s',
-        }}>{savingBuild ? 'Sauvegarde…' : 'Sauver'}</button>
+        }}>{savingBuild ? B.editor.saving : B.editor.save}</button>
       </div>
 
       {/* ══ Toggles composants : Items / Runes / Skills ══════════════════════ */}
@@ -934,12 +947,12 @@ export default function BuildsTab() {
         background: bg, border: `1px solid ${border}`, fontSize: 12,
       }}>
         <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginRight: 4 }}>
-          Composants :
+          {B.editor.componentsLabel}
         </span>
         {([
-          { key: 'items',  label: 'Items',           icon: '🛡️' },
-          { key: 'runes',  label: 'Runes',           icon: '🔮' },
-          { key: 'skills', label: 'Ordre de sorts',  icon: '⚡' },
+          { key: 'items',  label: B.list.componentItems,   icon: '🛡️' },
+          { key: 'runes',  label: B.list.componentRunes,   icon: '🔮' },
+          { key: 'skills', label: B.editor.componentSkills, icon: '⚡' },
         ] as { key: BuilderComponent; label: string; icon: string }[]).map(comp => {
           const on = activeComponents.includes(comp.key)
           return (
@@ -963,7 +976,7 @@ export default function BuildsTab() {
           )
         })}
         <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
-          Coche les composants à inclure dans ton build
+          {B.editor.componentsHint}
         </span>
       </div>
 
@@ -979,7 +992,7 @@ export default function BuildsTab() {
             {(['asc', 'desc'] as const).map(order => {
               const on = sortOrder === order
               return (
-                <button key={order} title={order === 'asc' ? 'Moins cher en premier' : 'Plus cher en premier'}
+                <button key={order} title={order === 'asc' ? B.editor.sortAsc : B.editor.sortDesc}
                   onClick={() => setSortOrder(order)}
                   onMouseEnter={e => {
                     if (!on) e.currentTarget.style.background = c ? 'rgba(186,117,23,0.1)' : 'rgba(127,119,221,0.1)'
@@ -998,7 +1011,7 @@ export default function BuildsTab() {
                     transition: 'background 0.15s, border-color 0.15s',
                   }}
                 >
-                  <img src="/icons/Stats/Gold.png" alt="or"
+                  <img src="/icons/Stats/Gold.png" alt={B.editor.goldAlt}
                     style={{ width: 14, height: 14, objectFit: 'contain',
                       filter: on ? 'none' : 'brightness(0.55)' }}
                   />
@@ -1013,15 +1026,16 @@ export default function BuildsTab() {
           <div style={{ height: 1, background: border, marginBottom: 6 }} />
 
           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: accent, marginBottom: 6, textAlign: 'center' }}>
-            Filtres
+            {B.editor.filtersTitle}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
             {FILTERS.map(f => {
-              const on = activeFilters.includes(f.label)
+              const on = activeFilters.includes(f.key)
+              const label = B.filters[f.key]
               return (
-                <button key={f.label} title={f.label}
+                <button key={f.key} title={label}
                   onClick={() => setActiveFilters(prev =>
-                    prev.includes(f.label) ? prev.filter(x => x !== f.label) : [...prev, f.label]
+                    prev.includes(f.key) ? prev.filter(x => x !== f.key) : [...prev, f.key]
                   )}
                   onMouseEnter={e => {
                     if (!on) e.currentTarget.style.background = c ? 'rgba(186,117,23,0.1)' : 'rgba(127,119,221,0.1)'
@@ -1039,7 +1053,7 @@ export default function BuildsTab() {
                     transition: 'background 0.15s, border-color 0.15s',
                   }}
                 >
-                  <img src={f.icon} alt={f.label}
+                  <img src={f.icon} alt={label}
                     style={{ width: 22, height: 22, objectFit: 'contain', display: 'block',
                       filter: on ? 'none' : 'brightness(0.55)',
                       transform: f.scale ? `scale(${f.scale})` : undefined }}
@@ -1051,7 +1065,7 @@ export default function BuildsTab() {
           {activeFilters.length > 0 && (
             <button onClick={() => setActiveFilters([])}
               style={{ marginTop: 8, background: 'none', border: 'none', color: '#E24B4A', fontSize: 11, cursor: 'pointer', width: '100%' }}
-            >✕ Reset</button>
+            >{B.editor.filtersReset}</button>
           )}
         </div>
 
@@ -1060,7 +1074,7 @@ export default function BuildsTab() {
           <input
             className="wf-input" style={{ flexShrink: 0 }}
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="🔍 Rechercher un item..."
+            placeholder={B.editor.itemSearch}
           />
           <div className="dash-items-grid thin-scroll" style={{
             background: c ? 'rgba(20,10,35,0.4)' : '#0F0F11',
@@ -1069,15 +1083,15 @@ export default function BuildsTab() {
           }}>
             {loading ? (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
-                Chargement des items Riot…
+                {B.editor.itemsLoading}
               </div>
-            ) : apiError ? (
+            ) : apiFailed ? (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#E24B4A', padding: 40, fontSize: 13 }}>
-                {apiError}
+                {B.editor.itemsError}
               </div>
             ) : filteredItems.length === 0 ? (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--text-dim)', padding: 40, fontSize: 13 }}>
-                Aucun item trouvé
+                {B.editor.itemsEmpty}
               </div>
             ) : filteredItems.map(item => (
               <div key={item.id}
@@ -1086,7 +1100,7 @@ export default function BuildsTab() {
                 onDragStart={() => setDragItem(item)}
                 onDragEnd={() => { setDragItem(null); setDragOverBlock(null) }}
                 onClick={() => setSelectedItem(prev => prev?.id === item.id ? null : item)}
-                title={`${item.name} — ${item.gold.total === 0 ? 'Gratuit' : item.gold.total + 'g'}\nClic = détail · Glisse = ajouter au bloc`}
+                title={`${item.name} — ${item.gold.total === 0 ? B.editor.free : item.gold.total + 'g'}\n${B.editor.itemHint}`}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   gap: 2, cursor: 'pointer', padding: 3, borderRadius: 5,
@@ -1102,7 +1116,7 @@ export default function BuildsTab() {
                   : <div style={{ width: '100%', aspectRatio: '1', borderRadius: 4, background: bgCard }} />
                 }
                 <div style={{ fontSize: 8, color: gold, fontWeight: 600, lineHeight: 1 }}>
-                  {item.gold.total === 0 ? 'Gratuit' : `${item.gold.total}g`}
+                  {item.gold.total === 0 ? B.editor.free : `${item.gold.total}g`}
                 </div>
               </div>
             ))}
@@ -1152,7 +1166,7 @@ export default function BuildsTab() {
                   }
                   <button onClick={() => removeBlock(block.id)}
                     style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 15, padding: 0, lineHeight: 1 }}
-                    title="Supprimer ce bloc"
+                    title={B.editor.blockRemove}
                   >×</button>
                 </div>
 
@@ -1164,7 +1178,7 @@ export default function BuildsTab() {
                     fontSize: 11, border: `1px dashed ${isOver ? accent : border}`,
                     borderRadius: 6, transition: 'all 0.15s',
                   }}>
-                    {isOver ? '⬇ Déposer ici' : 'Glisse des items ici'}
+                    {isOver ? B.editor.blockDropHere : B.editor.blockDropHint}
                   </div>
                 )}
 
@@ -1180,7 +1194,7 @@ export default function BuildsTab() {
                         padding: '7px 0', cursor: 'pointer',
                         borderBottom: `1px solid ${border}`,
                       }}
-                      title="Clic gauche = +1  •  Clic droit = -1"
+                      title={B.editor.blockItemHint}
                     >
                       {/* Icon */}
                       {version
@@ -1217,14 +1231,14 @@ export default function BuildsTab() {
                             >+</button>
                             <button onClick={() => removeFromBlock(block.id, item.id)}
                               style={{ background: 'none', border: 'none', color: '#E24B4A', cursor: 'pointer', fontSize: 14, padding: 0, marginLeft: 1, lineHeight: 1 }}
-                              title="Retirer l'item"
+                              title={B.editor.blockItemRemove}
                             >×</button>
                           </div>
                         </div>
 
                         {/* Gold */}
                         <div style={{ fontSize: 10, color: gold, fontWeight: 600, marginBottom: itemStats.length > 0 ? 4 : 0 }}>
-                          {item.gold.total === 0 ? 'Gratuit' : `${(item.gold.total * count).toLocaleString('fr-FR')}g`}
+                          {item.gold.total === 0 ? B.editor.free : `${(item.gold.total * count).toLocaleString('fr-FR')}g`}
                         </div>
 
                         {/* Stats */}
@@ -1237,7 +1251,7 @@ export default function BuildsTab() {
                                 : Math.round(raw)
                               return (
                                 <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                  <img src={s.icon} alt={s.label} style={{ width: 11, height: 11, objectFit: 'contain', flexShrink: 0,
+                                  <img src={s.icon} alt={B.stats[s.key]} style={{ width: 11, height: 11, objectFit: 'contain', flexShrink: 0,
                                     transform: s.scale ? `scale(${s.scale})` : undefined }} />
                                   <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                                     +{val}{s.suffix}
@@ -1268,7 +1282,7 @@ export default function BuildsTab() {
             border: `1px dashed ${border}`, borderRadius: 8,
             color: 'var(--text-muted)', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
           }}>
-            + Ajouter un bloc
+            {B.editor.blockAdd}
           </button>
 
           {/* Grand total */}
@@ -1279,7 +1293,7 @@ export default function BuildsTab() {
               border: `1px solid ${accent}`,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total build</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{B.editor.totalBuild}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: gold }}>
                 {totalGold.toLocaleString('fr-FR')} g
               </span>
@@ -1309,7 +1323,7 @@ export default function BuildsTab() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#F5F2FA' }}>
-              📊 Statistiques du build
+              {B.detail.title}
             </div>
             <button onClick={() => setShowDetail(false)}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}
@@ -1325,7 +1339,7 @@ export default function BuildsTab() {
               )}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA' }}>{selectedChamp.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{buildName || 'Build sans nom'}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{buildName || B.defaults.buildName}</div>
               </div>
             </div>
           )}
@@ -1337,7 +1351,7 @@ export default function BuildsTab() {
             background: c ? 'rgba(186,117,23,0.1)' : 'rgba(127,119,221,0.1)',
             border: `1px solid ${accent}`,
           }}>
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>💰 Coût total</span>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{B.detail.totalCost}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: gold }}>
               {totalGold.toLocaleString('fr-FR')} g
             </span>
@@ -1345,7 +1359,7 @@ export default function BuildsTab() {
 
           {/* Stat sections */}
           {(['off', 'def', 'util'] as const).map(cat => {
-            const label = cat === 'off' ? '⚔️ Offensif' : cat === 'def' ? '🛡️ Défensif' : '🔧 Utilitaire'
+            const label = cat === 'off' ? B.detail.offensive : cat === 'def' ? B.detail.defensive : B.detail.utility
             const rows = STATS.filter(s => s.category === cat && (statTotals[s.key] ?? 0) !== 0)
             if (rows.length === 0) return null
             return (
@@ -1362,9 +1376,9 @@ export default function BuildsTab() {
                     return (
                       <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <img src={s.icon} alt={s.label} style={{ width: 16, height: 16, objectFit: 'contain',
+                          <img src={s.icon} alt={B.stats[s.key]} style={{ width: 16, height: 16, objectFit: 'contain',
                             transform: s.scale ? `scale(${s.scale})` : undefined }} />
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.label}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{B.stats[s.key]}</span>
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA' }}>
                           +{val}{s.suffix}
@@ -1379,7 +1393,7 @@ export default function BuildsTab() {
 
           {totalGold === 0 && (
             <p style={{ color: 'var(--text-dim)', fontSize: 13, textAlign: 'center', padding: 20 }}>
-              Ajoute des items dans ton build pour voir les stats.
+              {B.detail.empty}
             </p>
           )}
 
@@ -1387,7 +1401,7 @@ export default function BuildsTab() {
           {blocks.some(b => b.items.length > 0) && (
             <div style={{ borderTop: `1px solid ${border}`, paddingTop: 14, marginTop: 4 }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: accent, marginBottom: 8 }}>
-                📦 Détail par bloc
+                {B.detail.byBlock}
               </div>
               {blocks.filter(b => b.items.length > 0).map(b => (
                 <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -1461,7 +1475,7 @@ export default function BuildsTab() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#F5F2FA', marginBottom: 4 }}>{si.name}</div>
                 <div style={{ fontSize: 13, color: gold, fontWeight: 600, marginBottom: 8 }}>
-                  {si.gold.total === 0 ? 'Gratuit' : `${si.gold.total.toLocaleString('fr-FR')} g`}
+                  {si.gold.total === 0 ? B.editor.free : `${si.gold.total.toLocaleString('fr-FR')} g`}
                 </div>
                 {siStats.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
@@ -1470,11 +1484,11 @@ export default function BuildsTab() {
                       const val = s.mult ? (Math.round(raw * s.mult * 10) / 10) : Math.round(raw)
                       return (
                         <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <img src={s.icon} alt={s.label}
+                          <img src={s.icon} alt={B.stats[s.key]}
                             style={{ width: 14, height: 14, objectFit: 'contain',
                               transform: s.scale ? `scale(${s.scale})` : undefined }} />
                           <span style={{ fontSize: 12, color: '#F5F2FA', fontWeight: 600 }}>+{val}{s.suffix}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{s.label}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{B.stats[s.key]}</span>
                         </div>
                       )
                     })}
@@ -1484,7 +1498,7 @@ export default function BuildsTab() {
               {/* Close */}
               <button onClick={closeDetail}
                 style={{ background: 'none', border: 'none', color: '#E24B4A', cursor: 'pointer', fontSize: 20, lineHeight: 1, flexShrink: 0 }}
-                title="Fermer"
+                title={B.item.close}
               >×</button>
             </div>
 
@@ -1517,7 +1531,7 @@ export default function BuildsTab() {
                     fontFamily: 'inherit', whiteSpace: 'nowrap',
                   }}
                 >
-                  + Ajouter au bloc
+                  {B.item.addToBlock}
                 </button>
               </div>
             )}
@@ -1537,7 +1551,7 @@ export default function BuildsTab() {
             {components.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: accent, marginBottom: 8 }}>
-                  🔨 Composants requis
+                  {B.item.components}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {components.map(comp => (
@@ -1560,7 +1574,7 @@ export default function BuildsTab() {
                       <div style={{ textAlign: 'left' }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: '#F5F2FA' }}>{comp.name}</div>
                         <div style={{ fontSize: 10, color: gold }}>
-                          {comp.gold.total === 0 ? 'Gratuit' : `${comp.gold.total}g`}
+                          {comp.gold.total === 0 ? B.editor.free : `${comp.gold.total}g`}
                         </div>
                       </div>
                     </button>
@@ -1573,7 +1587,7 @@ export default function BuildsTab() {
             {buildsInto.length > 0 && (
               <div>
                 <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: accent, marginBottom: 8 }}>
-                  ⬆ Se transforme en
+                  {B.item.buildsInto}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {buildsInto.map(next => (
@@ -1596,7 +1610,7 @@ export default function BuildsTab() {
                       <div style={{ textAlign: 'left' }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: '#F5F2FA' }}>{next.name}</div>
                         <div style={{ fontSize: 10, color: gold }}>
-                          {next.gold.total === 0 ? 'Gratuit' : `${next.gold.total}g`}
+                          {next.gold.total === 0 ? B.editor.free : `${next.gold.total}g`}
                         </div>
                       </div>
                     </button>
