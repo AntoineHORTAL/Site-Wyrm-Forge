@@ -1,13 +1,8 @@
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const SOURCE_LABELS: Record<string, string> = {
-  quest:      'Quête',
-  shop:       'Boutique',
-  tournament: 'Tournoi',
-  admin:      'Administrateur',
-  purchase:   'Achat',
-}
+/* Les libellés de `scales_ledger.source` vivent désormais dans le dico
+   (`src/locales/dashboard/ecailles.ts`, `balance.sources`) : ils sont traduits. */
 
 export async function callEF<T = unknown>(
   name: string,

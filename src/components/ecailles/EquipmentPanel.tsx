@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import { useDashboard } from '@/locales/dashboard'
 
 interface OwnedCosmetic {
   id: number
@@ -18,17 +19,15 @@ interface OwnedCosmetic {
   } | null
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  badge:        'Badges',
-  avatar:       'Avatars',
-  avatar_frame: "Cadres d'avatar",
-  avatar_anim:  'Avatars animés',
-}
+/* En-têtes de section au pluriel — voir `equipment.typesPlural` dans
+   src/locales/dashboard/ecailles.ts, indexé par `cosmetics.type`. */
 
 export default function EquipmentPanel() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
+  const eq = d.ecailles.equipment
 
   const [items, setItems] = useState<OwnedCosmetic[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,7 +66,7 @@ export default function EquipmentPanel() {
   }
 
   if (loading) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>Chargement…</div>
+    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>{d.common.loading}</div>
   }
 
   if (items.length === 0) {
@@ -78,10 +77,10 @@ export default function EquipmentPanel() {
       }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>👜</div>
         <h3 style={{ color: '#F5F2FA', fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-          Inventaire vide
+          {eq.emptyTitle}
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
-          Achète des cosmétiques dans la boutique pour les équiper ici.
+          {eq.emptyText}
         </p>
       </div>
     )
@@ -108,7 +107,7 @@ export default function EquipmentPanel() {
               letterSpacing: 1.2, color: 'var(--text-muted)', marginBottom: 4,
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              {TYPE_LABELS[type] ?? type}
+              {eq.typesPlural[type as keyof typeof eq.typesPlural] ?? type}
               {isBadge && (
                 <span style={{
                   fontSize: 11, fontWeight: 500, textTransform: 'none',
@@ -127,7 +126,7 @@ export default function EquipmentPanel() {
                 background: c ? 'rgba(186,117,23,0.08)' : 'rgba(127,119,221,0.08)',
                 border: `1px solid ${c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.2)'}`,
               }}>
-                5 badges max — retire un badge avant d&apos;en équiper un autre.
+                {eq.badgeLimit}
               </div>
             )}
 
@@ -168,7 +167,7 @@ export default function EquipmentPanel() {
                         <span style={{
                           marginLeft: 8, fontSize: 10, fontWeight: 600,
                           textTransform: 'uppercase', letterSpacing: 0.8, color: accent,
-                        }}>Équipé</span>
+                        }}>{eq.equipped}</span>
                       )}
                     </div>
 
@@ -189,7 +188,7 @@ export default function EquipmentPanel() {
                         transition: 'all 0.15s',
                       }}
                     >
-                      {acting[item.id] ? '…' : item.is_equipped ? 'Retirer' : 'Équiper'}
+                      {acting[item.id] ? '…' : item.is_equipped ? eq.unequip : eq.equip}
                     </button>
                   </div>
                 )

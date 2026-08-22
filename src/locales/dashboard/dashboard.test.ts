@@ -42,6 +42,8 @@ const INVARIANTS = new Set<string>([
   'Match Up', 'Post Game',
   // Lot 2 — sigles d'esport, unités et formats de fichier.
   'Description', 'Champion', 'KDA', 'CS/min', 'CS / min', 'Image (PNG)', 'PDF',
+  // La Forge — raretés et types de cosmétiques dont l'orthographe ne change pas.
+  'Rare', 'Badge', 'Badges', 'Avatar', 'Avatars',
 ])
 
 interface Anomalies {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { callEF } from '@/lib/ecailles'
+import { useDashboard } from '@/locales/dashboard'
 
 interface Cosmetic {
   id: number
@@ -27,23 +28,16 @@ const RARITY_COLORS: Record<string, string> = {
   legendary: '#EF9F27',
 }
 
-const RARITY_LABELS: Record<string, string> = {
-  common:    'Commun',
-  rare:      'Rare',
-  legendary: 'Légendaire',
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  badge:        'Badge',
-  avatar:       'Avatar',
-  avatar_frame: "Cadre d'avatar",
-  avatar_anim:  'Avatar animé',
-}
+/* Les libellés de rareté et de type sont traduits — voir `shop.rarities` /
+   `shop.types` dans src/locales/dashboard/ecailles.ts. Les COULEURS, elles, sont du
+   style : elles restent indexées par la valeur métier `cosmetics.rarity`. */
 
 export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
+  const sh = d.ecailles.shop
 
   const [cosmetics, setCosmetics] = useState<Cosmetic[]>([])
   const [ownedIds, setOwnedIds] = useState<Set<number>>(new Set())
@@ -87,10 +81,11 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
     const { error } = await callEF('shop-purchase', { cosmetic_id: id }, session.access_token)
 
     if (error) {
-      let msg = 'Erreur inattendue'
-      if (error.includes('402') || error.includes('insufficient')) msg = 'Solde insuffisant'
-      else if (error.includes('409') || error.includes('already_owned')) msg = 'Déjà possédé'
-      else if (error.includes('404') || error.includes('unavailable'))   msg = 'Cosmétique indisponible'
+      // Les motifs testés sont la réponse de l'Edge Function : clés, pas du texte affiché.
+      let msg = sh.errUnexpected
+      if (error.includes('402') || error.includes('insufficient')) msg = sh.errBalance
+      else if (error.includes('409') || error.includes('already_owned')) msg = sh.errOwned
+      else if (error.includes('404') || error.includes('unavailable'))   msg = sh.errUnavailable
       setErrors(prev => ({ ...prev, [id]: msg }))
     } else {
       setOwnedIds(prev => new Set([...prev, id]))
@@ -101,7 +96,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
   }
 
   if (loading) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>Chargement…</div>
+    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>{d.common.loading}</div>
   }
 
   return (
@@ -113,7 +108,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
           background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.25)',
           color: '#E24B4A', fontSize: 13,
         }}>
-          La boutique est temporairement fermée.
+          {sh.closed}
         </div>
       )}
 
@@ -124,10 +119,10 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
         }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🏪</div>
           <h3 style={{ color: '#F5F2FA', fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-            La boutique se prépare
+            {sh.emptyTitle}
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
-            Les cosmétiques arrivent bientôt. Accumule tes Écailles en attendant !
+            {sh.emptyText}
           </p>
         </div>
       ) : (
@@ -162,9 +157,9 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
                       fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
                       color: rarityColor, padding: '2px 6px', borderRadius: 4,
                       background: `${rarityColor}20`,
-                    }}>{RARITY_LABELS[item.rarity] ?? item.rarity}</span>
+                    }}>{sh.rarities[item.rarity as keyof typeof sh.rarities] ?? item.rarity}</span>
                     <span style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {TYPE_LABELS[item.type] ?? item.type}
+                      {sh.types[item.type as keyof typeof sh.types] ?? item.type}
                     </span>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F2FA' }}>{item.name}</div>
@@ -182,7 +177,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: accent, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
                     {item.price_scales.toLocaleString('fr-FR')}
-                    <img src="/icons/ecaille.png" alt="Écailles" width={15} height={15} />
+                    <img src="/icons/ecaille.png" alt={d.ecailles.scalesAlt} width={15} height={15} />
                   </span>
                   <button
                     onClick={() => buy(item.id)}
@@ -198,7 +193,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
                       transition: 'all 0.15s', whiteSpace: 'nowrap',
                     }}
                   >
-                    {owned ? '✓ Possédé' : buying[item.id] ? 'Achat…' : 'Acheter'}
+                    {owned ? sh.owned : buying[item.id] ? sh.buying : sh.buy}
                   </button>
                 </div>
               </div>

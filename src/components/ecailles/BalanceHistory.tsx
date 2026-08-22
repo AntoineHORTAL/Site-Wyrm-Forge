@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
-import { SOURCE_LABELS } from '@/lib/ecailles'
+import { useDashboard } from '@/locales/dashboard'
 
 const PAGE_SIZE = 10
 
@@ -31,6 +31,8 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
+  const e = d.ecailles
 
   const [rows, setRows] = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,24 +73,24 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
         display: 'flex', alignItems: 'center', gap: 20,
       }}>
         <div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 4 }}>Ton solde</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 4 }}>{e.balance.yourBalance}</div>
           <div style={{
             fontSize: 36, fontWeight: 700, color: accent,
             fontFamily: c ? 'Cinzel, serif' : 'inherit',
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             {balanceLoading ? '…' : balance.toLocaleString('fr-FR')}
-            <img src="/icons/ecaille.png" alt="Écailles" width={44} height={44} />
+            <img src="/icons/ecaille.png" alt={e.scalesAlt} width={44} height={44} />
           </div>
         </div>
       </div>
 
       {/* ── Historique ── */}
       <div>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA', marginBottom: 12 }}>Historique</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA', marginBottom: 12 }}>{e.balance.historyTitle}</h3>
 
         {loading && rows.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>Chargement…</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>{d.common.loading}</div>
         ) : rows.length === 0 ? (
           <div style={{
             textAlign: 'center', padding: '40px 32px', borderRadius: 10,
@@ -96,7 +98,7 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
           }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>📜</div>
             <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
-              Aucune transaction — complète tes premières quêtes !
+              {e.balance.empty}
             </p>
           </div>
         ) : (
@@ -111,7 +113,7 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
                 }}>
                   <div>
                     <div style={{ fontSize: 13, color: '#F5F2FA' }}>
-                      {SOURCE_LABELS[row.source] ?? row.source}
+                      {e.balance.sources[row.source as keyof typeof e.balance.sources] ?? row.source}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                       {fmtDate(row.created_at)}
@@ -138,7 +140,7 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
                   cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
                 }}
               >
-                {loading ? 'Chargement…' : 'Charger plus'}
+                {loading ? d.common.loading : e.balance.loadMore}
               </button>
             )}
           </>

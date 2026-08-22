@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { callEF } from '@/lib/ecailles'
+import { useDashboard } from '@/locales/dashboard'
 
 interface QuestStatus {
   slug: string
@@ -31,6 +32,9 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
+  // `qd` et pas `q` : la liste plus bas fait un `.map(q => …)` qui masquerait le dico.
+  const qd = d.ecailles.quests
 
   const [state, setState] = useState<QuestState | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,21 +98,24 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
         setClaiming(prev => ({ ...prev, [slug]: false }))
         return
       }
-      let msg = 'Erreur inattendue'
+      // ⚠️ Les motifs testés ci-dessous sont le texte renvoyé par l'Edge Function
+      // (français côté serveur) : ce sont des CLÉS de reconnaissance, elles ne se
+      // traduisent pas. Seuls les messages affichés changent de langue.
+      let msg = qd.errUnexpected
       if (error.includes('already_claimed') || error.includes('409') || error.includes('déjà réclamée'))
-        msg = 'Déjà réclamée aujourd\'hui'
+        msg = qd.errAlreadyClaimed
       else if (error.includes('plafond') || error.includes('daily_cap'))
-        msg = 'Plafond journalier atteint'
+        msg = qd.errCap
       else if (error.includes('désactivées') || error.includes('quests_enabled'))
-        msg = 'Quêtes temporairement désactivées'
+        msg = qd.errDisabled
       else if (error.includes('set du jour'))
-        msg = 'Quête non disponible aujourd\'hui'
+        msg = qd.errNotToday
       else if (error.includes('400') || error.includes('not fulfilled') || error.includes('trouvée'))
-        msg = 'Condition non remplie'
+        msg = qd.errCondition
       setErrors(prev => ({ ...prev, [slug]: msg }))
     } else if (claimData?.capped) {
       // HTTP 200 mais plafond atteint — finalize_quest_claim a rollbacké : rien n'est inscrit
-      setErrors(prev => ({ ...prev, [slug]: 'Plafond journalier atteint' }))
+      setErrors(prev => ({ ...prev, [slug]: qd.errCap }))
       await fetchStatus()
     } else {
       await fetchStatus()
@@ -119,7 +126,7 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
   }
 
   if (loading) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>Chargement…</div>
+    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>{d.common.loading}</div>
   }
 
   const streak      = state?.streak ?? 0
@@ -135,7 +142,7 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
           background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.25)',
           color: '#E24B4A', fontSize: 13,
         }}>
-          Les quêtes sont temporairement désactivées.
+          {qd.disabled}
         </div>
       )}
 
@@ -146,9 +153,9 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
           background: c ? 'rgba(186,117,23,0.08)' : 'rgba(127,119,221,0.08)',
           border: `1px solid ${border}`, fontSize: 13, color: 'var(--text-muted)',
         }}>
-          Lie ton compte Riot dans l'onglet{' '}
-          <strong style={{ color: accent }}>Accueil</strong>{' '}
-          pour débloquer les quêtes LoL.
+          {qd.riotLinkBefore}{' '}
+          <strong style={{ color: accent }}>{d.nav.tabs.accueil.label}</strong>{' '}
+          {qd.riotLinkAfter}
         </div>
       )}
 
@@ -163,16 +170,18 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA' }}>
-              {streak === 0 ? '0 jour' : `${streak} jour${streak > 1 ? 's' : ''}`} de streak
+              {streak === 0
+                ? qd.streakZero
+                : (streak > 1 ? qd.streakOther : qd.streakOne).replace('{count}', String(streak))}
             </div>
             {state && (
               <div style={{ fontSize: 11, color: earnedToday >= cap ? '#5DCAA5' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                {earnedToday} / {cap} Écailles
+                {qd.capProgress.replace('{earned}', String(earnedToday)).replace('{cap}', String(cap))}
               </div>
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-            Complète une quête chaque jour pour maintenir ton streak
+            {qd.streakHint}
           </div>
           {state && (
             <div style={{ height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.07)', marginTop: 6 }}>
@@ -201,8 +210,10 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
               {q.name}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Récompense :{' '}
-              <span style={{ color: accent, fontWeight: 600 }}>+{q.reward} Écailles</span>
+              {qd.rewardLabel}{' '}
+              <span style={{ color: accent, fontWeight: 600 }}>
+                {qd.rewardValue.replace('{count}', String(q.reward))}
+              </span>
             </div>
             {/* Barre de progression (forward-compat — présente si le serveur envoie progress) */}
             {q.progress && !q.completed_today && (
@@ -240,14 +251,14 @@ export default function QuestsPanel({ questsEnabled, onBalanceChange }: Props) {
               transition: 'all 0.15s', whiteSpace: 'nowrap',
             }}
           >
-            {q.completed_today ? '✓ Réclamée' : claiming[q.slug] ? 'En cours…' : 'Réclamer'}
+            {q.completed_today ? qd.claimed : claiming[q.slug] ? qd.claiming : qd.claim}
           </button>
         </div>
       ))}
 
       {(!state || state.quests.length === 0) && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 14 }}>
-          Aucune quête disponible.
+          {qd.empty}
         </div>
       )}
     </div>
