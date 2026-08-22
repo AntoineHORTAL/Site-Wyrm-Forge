@@ -56,6 +56,22 @@ type TabGroup = {
   tabs: TabDef[]
 }
 
+/**
+ * ⚠️ STRUCTURE vs LIBELLÉ — à lire avant de toucher à ce tableau (chantier i18n).
+ *
+ * Deux natures de données cohabitent ici et ne suivent PAS les mêmes règles :
+ *  - la STRUCTURE — `id`, `icon`, `locked`, `soon`, `href` — est technique.
+ *    `id` est une valeur de l'union `DashTab` : elle pilote l'état, le deep-link
+ *    `?tab=` et le routage. Elle ne se traduit JAMAIS.
+ *  - les LIBELLÉS — `label`, `shortLabel`, et le `label` de groupe — sont du texte
+ *    affiché, à déplacer dans `src/locales/dashboard/nav.ts` et à retrouver par `id`.
+ *
+ * Le refactor est le Lot 1, pas celui-ci. Il ne se réduit pas à un remplacement de
+ * chaînes : `tabGroups` est un `const` de niveau module, donc figé au chargement, et
+ * il est consommé par DEUX barres (la sidebar plus bas, et le drawer mobile de
+ * `Nav.tsx` via l'export `dashTabs`). Il devra devenir une valeur dérivée de la
+ * langue courante, sans dupliquer les libellés entre les deux barres.
+ */
 export const tabGroups: TabGroup[] = [
   {
     tabs: [

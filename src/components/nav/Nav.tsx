@@ -206,7 +206,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
         <div className="nav-desktop" style={{ gap: 20, alignItems: 'center', fontSize: 14 }}>
           {mode === 'visitor' ? (
             <>
-              {/* Bascule FR / EN — vitrine uniquement (le dashboard reste en français) */}
+              {/* Bascule FR / EN — pendant visiteur du switch du dropdown profil */}
               <LanguageSwitch />
               <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>{t.nav.login}</a>
               <a
@@ -289,6 +289,15 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                     icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
                     onClick={() => { setDropdownOpen(false); onLogout?.() }}
                     danger hoverBg={c ? 'rgba(255,255,255,0.05)' : '#27272A'} />
+
+                  {/* Bascule FR / EN — le connecté n'avait aucun moyen de changer de
+                      langue, le switch n'existant qu'en mode visiteur. Placé en bas et
+                      séparé : c'est un réglage, pas une action de navigation. */}
+                  <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A' }} />
+                  <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{t.nav.langLabel}</span>
+                    <LanguageSwitch />
+                  </div>
                 </div>
               )}
             </div>
@@ -471,7 +480,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               )}
 
               {mode === 'user' && (
-                <div style={{ padding: '0 16px 16px' }}>
+                <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Bascule FR / EN — pleine largeur, comme côté visiteur */}
+                  <LanguageSwitch full />
                   <button onClick={() => { setDrawerOpen(false); onLogout?.() }} style={{
                     width: '100%', padding: '11px',
                     background: 'transparent',

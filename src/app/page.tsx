@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LanguageProvider } from '@/components/providers/LanguageProvider'
 import Nav from '@/components/nav/Nav'
 import Hero from '@/components/landing/Hero'
 import Features from '@/components/landing/Features'
@@ -132,11 +131,12 @@ export default function Home() {
   // Admin always gets architecte+ display regardless of DB tier value
   const effectiveTier = isAdmin ? 'architecte+' : (profile?.tier ?? 'Apprenti')
 
-  // Le LanguageProvider coiffe toute la page parce que Nav en fait partie, mais seuls
-  // les composants de la vitrine (Nav en mode visiteur + sections marketing) le
-  // consomment : le dashboard connecté reste en français.
+  // Le LanguageProvider vit désormais dans le layout racine (src/app/layout.tsx) :
+  // il coiffe TOUTES les routes, pas seulement celle-ci. En remettre un ici créerait
+  // un provider imbriqué — le plus proche gagne, et `/` redeviendrait indépendant de
+  // la langue choisie sur /profil ou /consent.
   return (
-    <LanguageProvider>
+    <>
       <Nav
         mode={user ? 'user' : 'visitor'}
         username={profile?.username ?? user?.email?.split('@')[0] ?? 'Invocateur'}
@@ -194,6 +194,6 @@ export default function Home() {
           onSuccess={() => setShowAuth(false)}
         />
       )}
-    </LanguageProvider>
+    </>
   )
 }

@@ -3,13 +3,21 @@
 import { createContext, useContext, useCallback, useEffect, useState } from 'react'
 import { landingDicts, type Lang, type LandingDict } from '@/locales/landing'
 
-/* Clé localStorage — préfixe `wf-` comme le reste des préférences du site. */
-const STORAGE_KEY = 'wf-landing-lang'
+/* Clé localStorage — préfixe `wf-` comme le reste des préférences du site.
+   Renommée depuis `wf-landing-lang` quand la portée est passée de la vitrine à tout
+   le site : le nom « landing » était devenu faux. */
+const STORAGE_KEY = 'wf-lang'
+
+/* Ancienne clé du chantier vitrine. Lue en repli pour ne pas perdre le choix des
+   visiteurs déjà enregistrés, puis recopiée sous la nouvelle clé. Volontairement
+   PAS supprimée (même logique que le namespace v1 des scénarios MatchUp) : un
+   rollback du déploiement retrouve la préférence d'origine intacte. */
+const LEGACY_STORAGE_KEY = 'wf-landing-lang'
 
 interface LanguageCtx {
   lang: Lang
   setLang: (l: Lang) => void
-  /** Dictionnaire de la langue courante (voir src/locales/landing.ts). */
+  /** Dictionnaire VITRINE de la langue courante (voir src/locales/landing.ts). */
   t: LandingDict
 }
 
@@ -26,12 +34,19 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY)
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- setState en effet est
-      // ICI la solution, pas le problème : c'est ce qui garantit que le premier rendu
-      // client est identique au rendu serveur. Lire localStorage pendant le rendu (ce que
-      // suggère la règle) provoquerait le mismatch d'hydratation qu'on cherche à éviter.
-      if (stored === 'fr' || stored === 'en') setLangState(stored)
+      const stored =
+        window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
+      // Le setState en effet ci-dessous est ICI la solution, pas le problème : c'est ce
+      // qui garantit que le premier rendu client est identique au rendu serveur. Lire
+      // localStorage pendant le rendu (ce que suggère la règle) provoquerait le mismatch
+      // d'hydratation qu'on cherche à éviter.
+      if (stored === 'fr' || stored === 'en') {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- voir ci-dessus
+        setLangState(stored)
+        // Convergence : la valeur lue depuis l'ancienne clé est recopiée sous la
+        // nouvelle, pour que la migration n'ait lieu qu'une fois par navigateur.
+        window.localStorage.setItem(STORAGE_KEY, stored)
+      }
     } catch {
       /* stockage indisponible (navigation privée, cookies bloqués) → on reste en FR */
     }
@@ -59,4 +74,17 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Langue courante + dictionnaire de la VITRINE.
+ *
+ * Le provider est monté dans le layout racine : `lang` / `setLang` sont donc
+ * disponibles partout (vitrine, dashboard, pages connectées) et il n'existe qu'UN
+ * seul état de langue — c'est ce qui fait qu'un choix fait sur la vitrine survit à
+ * la connexion, et inversement.
+ *
+ * Le dictionnaire de la zone connectée a son propre hook, `useDashboard()`, qui vit
+ * avec son dico (`src/locales/dashboard/`). Il n'est volontairement PAS exposé ici :
+ * ce fichier est importé par toutes les pages via le layout, y compris publiques —
+ * y brancher le dico dashboard embarquerait ses chaînes dans le bundle des visiteurs.
+ */
 export const useLanguage = () => useContext(Ctx)
