@@ -18,11 +18,14 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 // Réduction annuelle (-10%, validé). Apprenti reste à 0€ dans les deux modes.
 const ANNUAL_FACTOR = 0.9
 
-// Structure des paliers : prix et CTA seulement. Tagline et features sont traduites
-// (src/locales/landing.ts, `pricing.tiers`, même ordre). `name` reste en français :
-// c'est la valeur de `profiles.tier` en base, partagée avec l'app de bureau.
+// Structure des paliers : prix et CTA seulement. Nom affiché, tagline et features
+// sont traduits (src/locales/landing.ts, `pricing.tiers`, même ordre).
+// ⚠️ `name` ici est la valeur de `profiles.tier` en base, partagée avec l'app de
+// bureau — elle reste en français et n'est JAMAIS affichée : le libellé à l'écran
+// vient de `copy.name` (dico). Ne pas la traduire, elle sert de clé de palier.
 // ⚠️ Vitrine tarifaire — AUCUN paiement réel : Apprenti → téléchargement, payants désactivés.
 interface Tier {
+  /** Valeur `profiles.tier` — clé, jamais affichée telle quelle. */
   name: string
   monthly: number // 0 = gratuit
   cta: 'download' | 'soon'
@@ -148,7 +151,7 @@ export default function Pricing() {
 
               {/* Nom + tagline */}
               <div style={{ fontSize: c ? 20 : 16, fontWeight: 700, color: c ? '#EF9F27' : '#A1A1AA', fontFamily: c ? 'var(--font-serif)' : undefined, letterSpacing: c ? '0.3px' : 1, textTransform: c ? undefined : 'uppercase', marginBottom: 4 }}>
-                {tier.name}
+                {copy.name}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 18 }}>{copy.tagline}</div>
 

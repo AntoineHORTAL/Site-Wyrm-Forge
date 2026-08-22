@@ -134,11 +134,14 @@ export const landingFr = {
     ctaSoon: 'Bientôt disponible',
     ctaSoonTitle: 'Le paiement sera disponible prochainement',
     moreTiers: "D'autres paliers (Architecte, Architecte+) arrivent prochainement.",
-    // Les noms de paliers (Apprenti / Forgeron / Maître) ne sont volontairement pas
-    // traduits : ce sont les valeurs de `profiles.tier` en base, partagées avec l'app
-    // de bureau. Seuls la tagline et les features le sont.
+    // ⚠️ `name` est un LIBELLÉ D'AFFICHAGE, pas la valeur de `profiles.tier`.
+    // Les valeurs en base (apprenti / forgeron / maître) sont partagées avec l'app
+    // de bureau et ne changent JAMAIS : elles restent portées par le tableau `tiers`
+    // de Pricing.tsx, qui sert de clé. Traduire ici n'affecte que la vitrine — aucune
+    // comparaison de tier côté code ne doit lire ces chaînes.
     tiers: [
       {
+        name: 'Apprenti',
         tagline: 'Pour découvrir',
         features: [
           'Overlay : 3 blocs actifs',
@@ -149,6 +152,7 @@ export const landingFr = {
         ],
       },
       {
+        name: 'Forgeron',
         tagline: 'Pour progresser',
         features: [
           'Overlay : 6 blocs actifs',
@@ -160,6 +164,7 @@ export const landingFr = {
         ],
       },
       {
+        name: 'Maître',
         tagline: 'Pour grimper',
         features: [
           'Overlay illimité',
@@ -340,6 +345,7 @@ export const landingEn: LandingDict = {
     moreTiers: 'More tiers (Architecte, Architecte+) are coming soon.',
     tiers: [
       {
+        name: 'Apprentice',
         tagline: 'To get started',
         features: [
           'Overlay: 3 active blocks',
@@ -350,6 +356,7 @@ export const landingEn: LandingDict = {
         ],
       },
       {
+        name: 'Blacksmith',
         tagline: 'To improve',
         features: [
           'Overlay: 6 active blocks',
@@ -361,6 +368,7 @@ export const landingEn: LandingDict = {
         ],
       },
       {
+        name: 'Master',
         tagline: 'To climb',
         features: [
           'Unlimited overlay',

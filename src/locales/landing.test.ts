@@ -77,6 +77,21 @@ describe('parité de structure FR / EN', () => {
     expect(landingEn.faq.items[0].a).not.toBe(landingFr.faq.items[0].a)
     expect(landingEn.footer.tagline).not.toBe(landingFr.footer.tagline)
   })
+
+  /**
+   * Les noms de paliers sont traduits pour l'AFFICHAGE seulement. Les valeurs de
+   * `profiles.tier` en base (partagées avec l'app WPF) restent portées par le
+   * tableau `tiers` de Pricing.tsx et ne bougent pas — d'où le double verrou :
+   * le FR reste calé sur les valeurs canoniques, l'EN doit en différer.
+   */
+  it('traduit les noms de paliers en anglais, FR calé sur profiles.tier', () => {
+    expect(landingFr.pricing.tiers.map(t => t.name)).toEqual(['Apprenti', 'Forgeron', 'Maître'])
+
+    landingFr.pricing.tiers.forEach((tier, i) => {
+      const en = landingEn.pricing.tiers[i].name
+      expect(en, `nom de palier resté en français en EN (index ${i})`).not.toBe(tier.name)
+    })
+  })
 })
 
 /**
