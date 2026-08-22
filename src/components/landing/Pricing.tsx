@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
+import { formatPrice } from '@/locales/landing'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
@@ -34,13 +35,9 @@ const tiers: Tier[] = [
   { name: 'Maître',   monthly: 5, cta: 'soon', popular: true },
 ]
 
-// Entier sans décimale (2 → "2"), sinon 2 décimales — séparateur selon la langue
-// affichée (1.8 → "1,80" en FR, "1.80" en EN).
-const eur = (n: number, lang: string) =>
-  n.toLocaleString(lang === 'en' ? 'en-GB' : 'fr-FR', {
-    minimumFractionDigits: n % 1 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  })
+// Le formatage des prix (séparateur décimal ET position du symbole €) vit dans
+// `formatPrice` (src/locales/landing.ts) — seule source de vérité, partagée par
+// tous les affichages de montant de la vitrine.
 
 export default function Pricing() {
   const { theme } = useTheme()
@@ -162,12 +159,12 @@ export default function Pricing() {
                 ) : (
                   <>
                     <div style={{ fontSize: 32, fontWeight: 700, color: '#F5F2FA', lineHeight: 1.1 }}>
-                      {eur(perMonth, lang)}€
+                      {formatPrice(perMonth, lang)}
                       <small style={{ fontSize: 14, color: 'var(--text-dim)', fontWeight: 400 }}>{p.perMonth}</small>
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, minHeight: 16 }}>
                       {annual
-                        ? p.billedAnnually.replace('{price}', eur(tier.monthly * 12 * ANNUAL_FACTOR, lang))
+                        ? p.billedAnnually.replace('{price}', formatPrice(tier.monthly * 12 * ANNUAL_FACTOR, lang))
                         : p.noCommitment}
                     </div>
                   </>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { landingFr, landingEn, landingDicts } from './landing'
+import { landingFr, landingEn, landingDicts, formatPrice } from './landing'
 
 /**
  * `LandingDict = typeof landingFr` force déjà les mêmes CLÉS des deux côtés à la
@@ -76,5 +76,44 @@ describe('parité de structure FR / EN', () => {
     expect(landingEn.hero.subtitle).not.toBe(landingFr.hero.subtitle)
     expect(landingEn.faq.items[0].a).not.toBe(landingFr.faq.items[0].a)
     expect(landingEn.footer.tagline).not.toBe(landingFr.footer.tagline)
+  })
+})
+
+/**
+ * Le symbole € ne se place pas du même côté selon la langue : « 2€ » en français,
+ * « €2 » en anglais. C'est une convention typographique, pas un détail cosmétique —
+ * et rien dans le typage ne l'empêche de régresser en silence, d'où ces tests.
+ */
+describe('formatage des prix', () => {
+  it('place le symbole € APRÈS le montant en français', () => {
+    expect(formatPrice(2, 'fr')).toBe('2€')
+    expect(formatPrice(1.8, 'fr')).toBe('1,80€')
+  })
+
+  it('place le symbole € AVANT le montant en anglais', () => {
+    expect(formatPrice(2, 'en')).toBe('€2')
+    expect(formatPrice(1.8, 'en')).toBe('€1.80')
+  })
+
+  it('omet les décimales sur un entier, en affiche deux sinon', () => {
+    // Prix annuels réellement affichés par Pricing.tsx (mensuel × 12 × 0,9)
+    expect(formatPrice(21.6, 'fr')).toBe('21,60€')
+    expect(formatPrice(54, 'en')).toBe('€54')
+  })
+
+  it('garde le marqueur {amount} dans le gabarit des deux langues', () => {
+    // formatPrice fait un .replace('{amount}', …) — sans marqueur, le montant disparaît
+    expect(landingFr.pricing.priceFormat).toContain('{amount}')
+    expect(landingEn.pricing.priceFormat).toContain('{amount}')
+  })
+
+  it("n'écrit le symbole € nulle part ailleurs que dans le gabarit", () => {
+    // `billedAnnually` reçoit un prix DÉJÀ formaté : un € en dur ferait « 21,60€€/an »
+    Object.values(landingDicts).forEach(dict => {
+      Object.entries(dict.pricing).forEach(([key, value]) => {
+        if (key === 'priceFormat' || typeof value !== 'string') return
+        expect(value, `symbole € en dur dans pricing.${key}`).not.toContain('€')
+      })
+    })
   })
 })

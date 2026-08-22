@@ -123,8 +123,12 @@ export const landingFr = {
     popular: 'Populaire',
     free: 'Gratuit',
     perMonth: ' /mois',
-    // {price} est remplacé par le montant déjà formaté par le composant
-    billedAnnually: 'Facturé {price}€/an',
+    // Gabarit de prix : {amount} est le montant formaté (séparateur décimal de la
+    // langue). En français le symbole se place APRÈS le montant, en anglais avant.
+    // Ne jamais écrire « € » ailleurs que dans ce gabarit — voir `formatPrice`.
+    priceFormat: '{amount}€',
+    // {price} est remplacé par le prix complet (symbole inclus) via `formatPrice`
+    billedAnnually: 'Facturé {price}/an',
     noCommitment: 'Sans engagement',
     ctaDownload: 'Télécharger gratuitement',
     ctaSoon: 'Bientôt disponible',
@@ -327,7 +331,8 @@ export const landingEn: LandingDict = {
     popular: 'Popular',
     free: 'Free',
     perMonth: ' /month',
-    billedAnnually: 'Billed {price}€/year',
+    priceFormat: '€{amount}',
+    billedAnnually: 'Billed {price}/year',
     noCommitment: 'No commitment',
     ctaDownload: 'Download for free',
     ctaSoon: 'Coming soon',
@@ -427,4 +432,24 @@ export const landingEn: LandingDict = {
 export const landingDicts: Record<Lang, LandingDict> = {
   fr: landingFr,
   en: landingEn,
+}
+
+/**
+ * Formate un montant en euros pour la vitrine, dans la langue affichée.
+ *
+ * Deux choses varient selon la langue et doivent rester groupées ici — c'est la
+ * SEULE fonction qui produit un prix affiché :
+ *  - le séparateur décimal (`1,80` en FR, `1.80` en EN) ;
+ *  - la POSITION du symbole, portée par `pricing.priceFormat` du dictionnaire
+ *    (`2€` en FR, `€2` en EN).
+ *
+ * Entier → aucune décimale (`2` → « 2€ » / « €2 »), sinon deux décimales
+ * (`1.8` → « 1,80€ » / « €1.80 »).
+ */
+export const formatPrice = (amount: number, lang: Lang): string => {
+  const value = amount.toLocaleString(lang === 'en' ? 'en-GB' : 'fr-FR', {
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })
+  return landingDicts[lang].pricing.priceFormat.replace('{amount}', value)
 }
