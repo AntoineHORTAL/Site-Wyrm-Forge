@@ -17,6 +17,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import { useDashboard } from '@/locales/dashboard'
+import type { ScenarioToolKey } from '@/locales/dashboard/strategie'
 
 const supabase = createClient()
 const DDN = 'https://ddragon.leagueoflegends.com'
@@ -60,6 +62,12 @@ interface Scenario {
 }
 
 // ── Constantes UI ────────────────────────────────────────────────────────────
+/**
+ * Les rôles s'affichent tels quels : la clé EST son propre libellé, identique en
+ * français et en anglais. Elle est écrite en base (`scenarios.allies[].role`) et
+ * partagée avec l'app WPF — la sortir dans le dico laisserait croire qu'elle se
+ * traduit. Voir l'en-tête de `locales/dashboard/strategie.ts`.
+ */
 const ROLE_LABELS: Record<Role, string> = {
   TOP: 'TOP', JUNGLE: 'JUNGLE', MID: 'MID', ADC: 'ADC', SUPPORT: 'SUPPORT',
 }
@@ -73,10 +81,6 @@ const WARD_COLORS = {
 const PING_COLORS = {
   danger: '#E24B4A', help: '#5DCAA5', fight: '#EF9F27',
 }
-const PHASE_LABELS = {
-  early: 'Early', mid: 'Mid', late: 'Late', all: 'Toute la game',
-}
-
 const SR_MAP = '/icons/maps/summoners_rift.png'
 
 const uid = () => Math.random().toString(36).slice(2, 9)
@@ -84,6 +88,7 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 // ── Composant ────────────────────────────────────────────────────────────────
 export default function ScenariosTab() {
   const { theme } = useTheme()
+  const S = useDashboard().strategie.scenarios
   const c = theme === 'mythic'
   const bg = c ? 'rgba(42,21,71,0.4)' : '#18181B'
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
@@ -202,7 +207,9 @@ export default function ScenariosTab() {
     if (!userId) return
     setSaving(true)
     const payload = {
-      name: scenarioName.trim() || 'Scénario sans nom',
+      // ⚠️ Cette valeur ATTERRIT EN BASE (`scenarios.name`) — amorce éditable,
+      // comparée nulle part. Voir l'en-tête de `locales/dashboard/strategie.ts`.
+      name: scenarioName.trim() || S.defaults.unnamedScenario,
       allies,
       drawings,
     }
@@ -311,14 +318,15 @@ export default function ScenariosTab() {
           marginBottom: 16,
         }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            {savedScenarios.length} scénario{savedScenarios.length !== 1 ? 's' : ''} sauvegardé{savedScenarios.length !== 1 ? 's' : ''}
+            {(savedScenarios.length === 1 ? S.list.countOne : S.list.countOther)
+              .replace('{count}', String(savedScenarios.length))}
           </div>
           <button onClick={openNew} style={{
             padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
             background: 'linear-gradient(135deg, #7F77DD, #534AB7)',
             color: 'white', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            + Nouveau scénario
+            {S.list.create}
           </button>
         </div>
 
@@ -328,7 +336,7 @@ export default function ScenariosTab() {
             background: bg, border: `1px solid ${border}`,
             color: 'var(--text-muted)', fontSize: 14,
           }}>
-            Aucun scénario sauvegardé. Crée ton premier pour planifier ta macro.
+            {S.list.empty}
           </div>
         ) : (
           <div style={{
@@ -362,7 +370,8 @@ export default function ScenariosTab() {
                   ))}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
-                  {s.drawings.length} élément{s.drawings.length !== 1 ? 's' : ''} sur la map
+                  {(s.drawings.length === 1 ? S.list.elementCountOne : S.list.elementCountOther)
+                    .replace('{count}', String(s.drawings.length))}
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onClick={() => openEdit(s)} style={{
@@ -370,8 +379,8 @@ export default function ScenariosTab() {
                     background: 'rgba(127,119,221,0.15)',
                     border: '1px solid rgba(127,119,221,0.4)',
                     color: '#F5F2FA', borderRadius: 5, fontFamily: 'inherit',
-                  }}>Modifier</button>
-                  <button onClick={() => deleteScenario(s.id)} style={{
+                  }}>{S.list.edit}</button>
+                  <button onClick={() => deleteScenario(s.id)} title={S.list.deleteTitle} style={{
                     padding: '6px 10px', fontSize: 12, cursor: 'pointer',
                     background: 'transparent', border: '1px solid #E24B4A',
                     color: '#E24B4A', borderRadius: 5, fontFamily: 'inherit',
@@ -406,14 +415,14 @@ export default function ScenariosTab() {
           border: `1px solid ${border}`, borderRadius: 4,
           color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
           display: 'inline-flex', alignItems: 'center',
-        }}>← Mes scénarios</button>
+        }}>{S.editor.back}</button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Nom :</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{S.editor.nameLabel}</span>
           <input
             value={scenarioName}
             onChange={e => setScenarioName(e.target.value)}
-            placeholder="Mon scénario..."
+            placeholder={S.editor.namePlaceholder}
             style={{
               width: 200, height: 32, boxSizing: 'border-box', padding: '0 10px', fontSize: 12,
               background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(127,119,221,0.3)',
@@ -434,7 +443,7 @@ export default function ScenariosTab() {
               border: `1px solid ${activePhase === p ? '#EF9F27' : border}`,
               color: activePhase === p ? '#F5F2FA' : 'var(--text-muted)',
               display: 'inline-flex', alignItems: 'center',
-            }}>{PHASE_LABELS[p]}</button>
+            }}>{S.phases[p]}</button>
           ))}
         </div>
 
@@ -444,7 +453,7 @@ export default function ScenariosTab() {
           border: 'none', borderRadius: 4, color: 'white', fontSize: 12,
           fontWeight: 600, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit',
           display: 'inline-flex', alignItems: 'center',
-        }}>{saving ? 'Sauvegarde…' : 'Sauver'}</button>
+        }}>{saving ? S.editor.saving : S.editor.save}</button>
       </div>
 
       {/* ══ Layout principal ════════════════════════════════════════════════ */}
@@ -459,7 +468,7 @@ export default function ScenariosTab() {
             fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase',
             marginBottom: 12, fontWeight: 600,
           }}>
-            Alliés
+            {S.allies.title}
           </div>
           {allies.map(a => (
             <button key={a.role}
@@ -488,7 +497,7 @@ export default function ScenariosTab() {
                   {ROLE_LABELS[a.role]}
                 </div>
                 <div style={{ fontSize: 13, color: a.champ ? '#F5F2FA' : 'var(--text-dim)' }}>
-                  {a.champ?.name ?? 'Choisir un champion'}
+                  {a.champ?.name ?? S.allies.pickChampion}
                 </div>
               </div>
             </button>
@@ -498,7 +507,7 @@ export default function ScenariosTab() {
             marginTop: 14, paddingTop: 12, borderTop: `1px solid ${border}`,
             fontSize: 11, color: 'var(--text-dim)', textAlign: 'center',
           }}>
-            <span style={{ color: '#E24B4A', fontWeight: 700 }}>■</span> Ennemis (juste les rôles)
+            <span style={{ color: '#E24B4A', fontWeight: 700 }}>■</span> {S.allies.enemies}
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'center' }}>
             {ROLES.map(r => (
@@ -519,19 +528,22 @@ export default function ScenariosTab() {
             display: 'flex', gap: 6, padding: '8px 10px', marginBottom: 10,
             background: bg, border: `1px solid ${border}`, borderRadius: 6, flexWrap: 'wrap',
           }}>
+            {/* `id` est l'état `activeTool` ET la clé de libellé du dico. L'intersection
+                `Tool & ScenarioToolKey` n'est pas décorative : un outil retiré du dico
+                sort de l'union et l'assertion cesse de compiler. */}
             {([
-              { id: 'select', icon: '↖', label: 'Sélection' },
-              { id: 'ward',   icon: '👁', label: 'Ward' },
-              { id: 'arrow',  icon: '→',  label: 'Rotation' },
-              { id: 'zone',   icon: '○',  label: 'Zone' },
-              { id: 'ping',   icon: '⚔', label: 'Ping' },
-              { id: 'lane',   icon: '═',  label: 'Lane prio.' },
-              { id: 'erase',  icon: '🗑', label: 'Effacer tout' },
-            ] as { id: Tool; icon: string; label: string }[]).map(t => (
+              { id: 'select', icon: '↖' },
+              { id: 'ward',   icon: '👁' },
+              { id: 'arrow',  icon: '→' },
+              { id: 'zone',   icon: '○' },
+              { id: 'ping',   icon: '⚔' },
+              { id: 'lane',   icon: '═' },
+              { id: 'erase',  icon: '🗑' },
+            ] as { id: Tool & ScenarioToolKey; icon: string }[]).map(t => (
               <button key={t.id}
                 onClick={() => {
                   if (t.id === 'erase') {
-                    if (confirm('Effacer tous les dessins du scénario ?')) setDrawings([])
+                    if (confirm(S.toolbar.eraseConfirm)) setDrawings([])
                     return
                   }
                   setActiveTool(t.id)
@@ -544,34 +556,34 @@ export default function ScenariosTab() {
                   color: activeTool === t.id ? '#F5F2FA' : 'var(--text-muted)',
                   borderRadius: 4,
                 }}>
-                <span style={{ marginRight: 4 }}>{t.icon}</span>{t.label}
+                <span style={{ marginRight: 4 }}>{t.icon}</span>{S.tools[t.id]}
               </button>
             ))}
 
             {/* Sub-tool selectors */}
             {activeTool === 'ward' && (
               <div style={{ display: 'flex', gap: 4, marginLeft: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Type :</span>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{S.toolbar.typeLabel}</span>
                 {(['yellow', 'control', 'blue'] as const).map(w => (
                   <button key={w} onClick={() => setActiveWardType(w)} style={{
                     width: 24, height: 24, borderRadius: '50%', cursor: 'pointer',
                     background: WARD_COLORS[w],
                     border: `2px solid ${activeWardType === w ? '#fff' : 'transparent'}`,
                     opacity: activeWardType === w ? 1 : 0.5,
-                  }} title={w} />
+                  }} title={S.wardTypes[w]} />
                 ))}
               </div>
             )}
             {activeTool === 'ping' && (
               <div style={{ display: 'flex', gap: 4, marginLeft: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Type :</span>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{S.toolbar.typeLabel}</span>
                 {(['danger', 'help', 'fight'] as const).map(p => (
                   <button key={p} onClick={() => setActivePingType(p)} style={{
                     padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer',
                     background: activePingType === p ? PING_COLORS[p] : 'transparent',
                     color: activePingType === p ? '#0a0612' : PING_COLORS[p],
                     border: `1px solid ${PING_COLORS[p]}`, borderRadius: 3, fontFamily: 'inherit',
-                  }}>{p.toUpperCase()}</button>
+                  }}>{S.pingTypes[p]}</button>
                 ))}
               </div>
             )}
@@ -582,15 +594,12 @@ export default function ScenariosTab() {
             fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, textAlign: 'center',
             minHeight: 16,
           }}>
-            {activeTool === 'arrow' && (arrowStart
-              ? 'Clique pour placer le point d\'arrivée'
-              : 'Clique pour placer le départ de la flèche'
-            )}
-            {activeTool === 'ward' && 'Clique sur la map pour placer une ward'}
-            {activeTool === 'ping' && 'Clique sur la map pour placer un ping'}
-            {activeTool === 'zone' && 'Clique sur la map pour placer une zone d\'engagement'}
-            {activeTool === 'lane' && 'Clique sur une lane (TOP/MID/BOT) pour la prioriser'}
-            {activeTool === 'select' && 'Clique sur un dessin dans le panneau de droite pour l\'éditer'}
+            {activeTool === 'arrow' && (arrowStart ? S.hints.arrowEnd : S.hints.arrowStart)}
+            {activeTool === 'ward' && S.hints.ward}
+            {activeTool === 'ping' && S.hints.ping}
+            {activeTool === 'zone' && S.hints.zone}
+            {activeTool === 'lane' && S.hints.lane}
+            {activeTool === 'select' && S.hints.select}
           </div>
 
           {/* Map */}
@@ -713,21 +722,22 @@ export default function ScenariosTab() {
             fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase',
             marginBottom: 12, fontWeight: 600,
           }}>
-            Éléments ({visibleDrawings.length})
+            {S.elements.title.replace('{count}', String(visibleDrawings.length))}
           </div>
           {visibleDrawings.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', padding: 20 }}>
-              Utilise les outils pour dessiner sur la map
+              {S.elements.empty}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {visibleDrawings.map(d => {
+                // `{type}` reçoit un libellé traduit ; `{lane}` la clé de lane, technique.
                 const meta: Record<string, { icon: string; label: string }> = {
-                  ward:  { icon: '👁', label: `Ward ${d.wardType ?? ''}` },
-                  arrow: { icon: '→',  label: 'Rotation' },
-                  zone:  { icon: '○',  label: 'Zone d\'engagement' },
-                  ping:  { icon: '⚔', label: `Ping ${d.pingType ?? ''}` },
-                  lane:  { icon: '═',  label: `Lane ${d.laneId ?? ''}` },
+                  ward:  { icon: '👁', label: S.elements.ward.replace('{type}', d.wardType ? S.wardTypes[d.wardType] : '').trim() },
+                  arrow: { icon: '→',  label: S.elements.arrow },
+                  zone:  { icon: '○',  label: S.elements.zone },
+                  ping:  { icon: '⚔', label: S.elements.ping.replace('{type}', d.pingType ? S.pingTypes[d.pingType] : '').trim() },
+                  lane:  { icon: '═',  label: S.elements.lane.replace('{lane}', d.laneId ?? '').trim() },
                 }
                 const m = meta[d.type]
                 if (!m) return null
@@ -745,9 +755,9 @@ export default function ScenariosTab() {
                       <span style={{
                         fontSize: 9, padding: '1px 5px', borderRadius: 3,
                         background: 'rgba(239,159,39,0.15)', color: '#EF9F27',
-                      }}>{PHASE_LABELS[d.phase]}</span>
+                      }}>{S.phases[d.phase]}</span>
                     )}
-                    <button onClick={() => deleteDrawing(d.id)} style={{
+                    <button onClick={() => deleteDrawing(d.id)} title={S.elements.remove} style={{
                       background: 'transparent', border: 'none',
                       color: '#E24B4A', cursor: 'pointer', fontSize: 14, padding: 0,
                     }}>×</button>
@@ -774,11 +784,11 @@ export default function ScenariosTab() {
               border: `1px solid ${border}`, borderRadius: 10, padding: 16,
             }}>
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: ROLE_COLORS[champPickerRole] }}>
-              Choisir un champion pour {champPickerRole}
+              {S.picker.title.replace('{role}', champPickerRole)}
             </div>
             <input
               value={champSearch} onChange={e => setChampSearch(e.target.value)}
-              placeholder="🔍 Rechercher..." autoFocus
+              placeholder={S.picker.search} autoFocus
               style={{
                 padding: '8px 10px', marginBottom: 10, fontSize: 13,
                 background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(127,119,221,0.3)',
@@ -826,7 +836,7 @@ export default function ScenariosTab() {
               color: '#E24B4A', borderRadius: 4, fontFamily: 'inherit',
               alignSelf: 'flex-start',
             }}>
-              Retirer le champion
+              {S.picker.clear}
             </button>
           </div>
         </div>
@@ -834,5 +844,3 @@ export default function ScenariosTab() {
     </div>
   )
 }
-
-void ROLE_LABELS

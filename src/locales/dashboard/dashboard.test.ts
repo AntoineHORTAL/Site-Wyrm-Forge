@@ -52,6 +52,26 @@ const INVARIANTS = new Set<string>([
   'Champion ▾', '✕ Reset',
   // « items » est employé tel quel en français dans tout le Builder.
   '{count} items',
+  // Lot 4 — noms propres de la Faille (camps, monstres) et vocabulaire de jungle
+  // employé tel quel en français.
+  'Gromp', 'Rift Scuttler', 'Dragon', 'Krug', 'Raptor', 'Baron',
+  'Smite', 'Ward', 'Invade', 'Gank',
+  // Exemples de champions dans un placeholder — noms propres Riot.
+  'Vi, Hecarim...',
+  // Rôles LoL : mêmes sigles des deux côtés (« Jungle » est déjà plus haut).
+  'Top', 'Mid', 'ADC', 'Support',
+  // Phases de game et outils de l'éditeur de scénarios — anglicismes déjà employés
+  // tels quels en français.
+  'Early', 'Mid', 'Late',
+  'Rotation', 'Zone', 'Lane prio.', 'Ping',
+  // Types de ping : seul « help » se traduit (AIDE), les deux autres sont identiques.
+  'DANGER', 'FIGHT',
+  // Gabarits de la liste des dessins — le seul mot traduisible y est interpolé.
+  'Ward {type}', 'Ping {type}', 'Lane {lane}',
+  // Numéro de patch : le mot « patch » est identique dans les deux langues.
+  'patch {patch}',
+  // Infobulle d'un item du Workshop : nom + quantité, aucun mot à traduire.
+  '{name} (×{count})',
 ])
 
 interface Anomalies {
@@ -116,7 +136,8 @@ describe('dico dashboard — parité FR / EN', () => {
     // Une zone oubliée dans index.ts n'existerait nulle part à l'exécution, alors que
     // son module compilerait très bien tout seul.
     expect(Object.keys(dashboardFr).sort()).toEqual([
-      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'nav', 'profil', 'workshop',
+      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'nav', 'profil',
+      'strategie', 'workshop',
     ])
   })
 
@@ -263,6 +284,163 @@ describe('dico builder — libellés appariés aux tables de structure', () => {
       const en = dashboardEn.builds.defaults[clé as keyof typeof dashboardEn.builds.defaults]
       expect(en.trim(), `défaut EN vide : ${clé}`).not.toBe('')
     })
+  })
+})
+
+/**
+ * Lot 4 — Jungle Path et Scénarios (`strategie`). Mêmes règles qu'au Lot 3 : tout ce
+ * qui est listé côté composant l'est par une CLÉ stable, jamais par le libellé
+ * affiché. Ces tests verrouillent l'appariement avec les tables de structure, qui
+ * vivent dans les composants et ne peuvent pas être typées depuis le dico sans créer
+ * un cycle d'import.
+ */
+describe('dico stratégie — libellés appariés aux tables de structure', () => {
+  /* Union de `campsBlu` et `campsRed` (JunglePathTab.tsx) — `scuttler` est dans les
+     deux colonnes et n'a donc qu'une seule entrée de dico. */
+  const CLÉS_CAMPS = [
+    'baron', 'blueSentinel', 'dragon', 'gromp', 'krug',
+    'raptors', 'redBrambleback', 'scuttler', 'wolves',
+  ]
+
+  /* Recopié depuis `placements` (JunglePathTab.tsx). */
+  const CLÉS_PLACEMENTS = ['smite', 'ward', 'invade', 'gank']
+
+  it('a un nom pour chaque camp affiché, et aucun nom orphelin', () => {
+    expect(Object.keys(dashboardFr.strategie.jungle.camps).sort()).toEqual([...CLÉS_CAMPS].sort())
+  })
+
+  it('a un libellé pour chaque marqueur posable', () => {
+    expect(Object.keys(dashboardFr.strategie.jungle.placements).sort())
+      .toEqual([...CLÉS_PLACEMENTS].sort())
+  })
+
+  /**
+   * `savedPaths` (JunglePathTab.tsx) est une liste de DÉMONSTRATION en dur, rendue par
+   * index : `demoPathNames[i]`. Un tableau plus court côté dico afficherait une carte
+   * vide, sans erreur. Le parcours générique garantit déjà FR ↔ EN de même longueur ;
+   * ici on verrouille l'accord avec le nombre de cartes réellement rendues.
+   */
+  it('a autant de noms de démonstration que de paths de démonstration', () => {
+    expect(dashboardFr.strategie.jungle.demoPathNames).toHaveLength(2)
+  })
+
+  /**
+   * ⚠️ Les clés ci-dessous sont le CONTRAT JSONB de `scenarios.drawings`, partagé avec
+   * l'app WPF (`Models/Scenario.cs`) : elles sont écrites en base et comparées dans les
+   * deux clients. Le dico les indexe telles quelles — les renommer casserait l'interop,
+   * pas seulement l'affichage.
+   */
+  const CLÉS_PHASES = ['all', 'early', 'mid', 'late']
+  const CLÉS_WARD   = ['yellow', 'control', 'blue']
+  const CLÉS_PING   = ['danger', 'help', 'fight']
+  /* Recopié depuis le type `Tool` (ScenariosTab.tsx) — état `activeTool`, non stocké. */
+  const CLÉS_OUTILS = ['select', 'ward', 'arrow', 'zone', 'ping', 'lane', 'erase']
+
+  it('indexe les phases par la clé du contrat jsonb', () => {
+    expect(Object.keys(dashboardFr.strategie.scenarios.phases).sort()).toEqual([...CLÉS_PHASES].sort())
+  })
+
+  it('indexe les types de ward et de ping par la clé du contrat jsonb', () => {
+    expect(Object.keys(dashboardFr.strategie.scenarios.wardTypes).sort()).toEqual([...CLÉS_WARD].sort())
+    expect(Object.keys(dashboardFr.strategie.scenarios.pingTypes).sort()).toEqual([...CLÉS_PING].sort())
+  })
+
+  it('a un libellé pour chaque outil de dessin, et aucun orphelin', () => {
+    expect(Object.keys(dashboardFr.strategie.scenarios.tools).sort()).toEqual([...CLÉS_OUTILS].sort())
+  })
+
+  /**
+   * Les gabarits de la colonne de droite composent un libellé traduit à partir d'un
+   * autre libellé traduit (`Ward {type}` ← `wardTypes`). Le parcours générique ne
+   * vérifie que la PARITÉ des marqueurs entre FR et EN : si le marqueur disparaissait
+   * des DEUX côtés, la ligne afficherait « Ward » sans son type, sans rien casser.
+   */
+  it('conserve les marqueurs des gabarits de la liste des dessins', () => {
+    const el = dashboardFr.strategie.scenarios.elements
+    expect(el.ward).toContain('{type}')
+    expect(el.ping).toContain('{type}')
+    expect(el.lane).toContain('{lane}')
+    expect(el.title).toContain('{count}')
+    expect(dashboardEn.strategie.scenarios.picker.title).toContain('{role}')
+  })
+
+  /**
+   * `defaults.unnamedScenario` est le seul libellé de ce module dont la valeur atterrit
+   * EN BASE (`scenarios.name` quand l'utilisateur sauvegarde sans nommer). Même garde
+   * que `builds.defaults` : un défaut vide créerait une ligne sans nom.
+   */
+  it('a un nom de scénario par défaut non vide dans les deux langues', () => {
+    expect(dashboardFr.strategie.scenarios.defaults.unnamedScenario.trim()).not.toBe('')
+    expect(dashboardEn.strategie.scenarios.defaults.unnamedScenario.trim()).not.toBe('')
+  })
+})
+
+/**
+ * Lot 4 — Workshop. Les deux vitrines filtrent sur une valeur EN BASE (`role`, `side`)
+ * mais affichent un libellé traduit : les filtres sont donc indexés par une clé interne,
+ * la valeur comparée restant en dur dans le composant. Ces tests verrouillent le jeu de
+ * clés — l'appariement clé ↔ valeur, lui, est prouvé à la compilation par le type
+ * `WorkshopRoleKey` / `WorkshopSideKey` porté par les tables des composants.
+ */
+describe('dico workshop — filtres appariés aux tables de structure', () => {
+  /* Recopié depuis `ROLES` (WorkshopBuildsTab.tsx) et `SIDES` (WorkshopJungleTab.tsx). */
+  const CLÉS_ROLES = ['all', 'top', 'jungle', 'mid', 'adc', 'support']
+  const CLÉS_SIDES = ['all', 'blue', 'red']
+
+  it('a un libellé pour chaque filtre de rôle', () => {
+    expect(Object.keys(dashboardFr.workshop.builds.roles).sort()).toEqual([...CLÉS_ROLES].sort())
+  })
+
+  it('a un libellé pour chaque filtre de côté', () => {
+    expect(Object.keys(dashboardFr.workshop.jungle.sides).sort()).toEqual([...CLÉS_SIDES].sort())
+  })
+
+  /**
+   * Les deux vitrines partagent `by` et `patchBadge`. Ce test ne verrouille pas leur
+   * contenu — il documente qu'ils sont bien MUTUALISÉS, pour qu'un futur lot ne
+   * réintroduise pas une copie par onglet qui divergerait en silence.
+   */
+  it('mutualise l\'auteur et le badge de patch entre les deux vitrines', () => {
+    expect(Object.keys(dashboardFr.workshop.shared).sort()).toEqual(['by', 'patchBadge'])
+    expect(dashboardFr.workshop.shared.patchBadge).toContain('{patch}')
+  })
+
+  it('conserve le marqueur du nom dans les confirmations de retrait', () => {
+    // `removeConfirm` nomme le build supprimé : sans `{name}`, la boîte de dialogue
+    // demanderait de confirmer une suppression sans dire laquelle.
+    expect(dashboardFr.workshop.builds.removeConfirm).toContain('{name}')
+    expect(dashboardEn.workshop.builds.removeConfirm).toContain('{name}')
+  })
+
+  it('conserve les deux marqueurs de l\'infobulle d\'item', () => {
+    expect(dashboardFr.workshop.builds.itemTitle).toContain('{name}')
+    expect(dashboardFr.workshop.builds.itemTitle).toContain('{count}')
+  })
+})
+
+/**
+ * Lot 4 — `LockedScreen` (Dashboard.tsx) affiche `Scénarios` en mode verrouillé. Son
+ * titre et son sous-titre viennent de `nav.pageTitles.scenarios` : rien à tester de plus
+ * que la couverture déjà prouvée plus haut. Ce qui est propre à cet écran, en revanche,
+ * est une CONCATÉNATION — `{subtitle}{upgrade}` — dont la ponctuation ne peut pas être
+ * vérifiée par le type.
+ */
+describe('écran verrouillé — phrase d\'incitation', () => {
+  it('commence par le point qui clôt le sous-titre', () => {
+    // Le sous-titre est rendu sans ponctuation finale : c'est `upgrade` qui la porte.
+    // Une traduction qui l'oublierait produirait « … zones de fight Passe à un plan… ».
+    expect(dashboardFr.nav.locked.upgrade.startsWith('.')).toBe(true)
+    expect(dashboardEn.nav.locked.upgrade.startsWith('.')).toBe(true)
+  })
+
+  it('n\'a pas de sous-titre déjà ponctué à traiter', () => {
+    expect(dashboardFr.nav.pageTitles.scenarios.subtitle.endsWith('.')).toBe(false)
+    expect(dashboardEn.nav.pageTitles.scenarios.subtitle.endsWith('.')).toBe(false)
+  })
+
+  it('a un bouton non vide dans les deux langues', () => {
+    expect(dashboardFr.nav.locked.cta.trim()).not.toBe('')
+    expect(dashboardEn.nav.locked.cta.trim()).not.toBe('')
   })
 })
 

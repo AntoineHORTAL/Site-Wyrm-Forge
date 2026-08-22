@@ -251,7 +251,12 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {activeTab === 'scenarios'        && (
           (isAdmin || isProTier)
             ? <ScenariosTab />
-            : <LockedScreen title="Scénarios" subtitle="Planifie ta macro : wards, rotations, zones de fight" c={c} badge="Pro" />
+            : <LockedScreen
+                title={tabTitles.scenarios.title}
+                subtitle={tabTitles.scenarios.subtitle}
+                labels={d.nav.locked}
+                c={c} badge={d.nav.badges.pro}
+              />
         )}
         {activeTab === 'workshop-builds'  && <WorkshopBuildsTab />}
         {activeTab === 'workshop-jungle'  && <WorkshopJungleTab />}
@@ -340,7 +345,15 @@ function SidebarBtn({ tab, label, badges, active, c, onClick, unlocked, admin }:
 }
 
 /* ── Locked screen ── */
-function LockedScreen({ title, subtitle, c, badge }: { title: string; subtitle: string; c: boolean; badge?: string }) {
+/* `title` / `subtitle` viennent de `nav.pageTitles` de l'onglet concerné : ils y
+   disaient déjà exactement la même chose, les redéclarer ici les ferait diverger. */
+function LockedScreen({ title, subtitle, labels, c, badge }: {
+  title: string
+  subtitle: string
+  labels: { upgrade: string; cta: string }
+  c: boolean
+  badge?: string
+}) {
   return (
     <div style={{
       textAlign: 'center', padding: '60px 32px', borderRadius: 12,
@@ -358,9 +371,9 @@ function LockedScreen({ title, subtitle, c, badge }: { title: string; subtitle: 
       <div style={{ fontSize: 36, marginBottom: 16 }}>🔒</div>
       <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>{title}</h3>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '0 auto 24px', maxWidth: 400 }}>
-        {subtitle}. Passe à un plan supérieur pour débloquer cette fonctionnalité.
+        {subtitle}{labels.upgrade}
       </p>
-      <button className="wf-btn-primary" style={{ margin: '0 auto' }}>Voir les plans</button>
+      <button className="wf-btn-primary" style={{ margin: '0 auto' }}>{labels.cta}</button>
     </div>
   )
 }

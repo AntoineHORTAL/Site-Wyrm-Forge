@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { removeWorkshopBuild } from '@/lib/workshop-builds'
+import { useDashboard } from '@/locales/dashboard'
+import type { WorkshopRoleKey } from '@/locales/dashboard/workshop'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface WBItem {
@@ -35,11 +37,25 @@ const DDN     = 'https://ddragon.leagueoflegends.com'
 const itemImg = (v: string, id: number) => `${DDN}/cdn/${v}/img/item/${id}.png`
 const champImg = (v: string, name: string) => `${DDN}/cdn/${v}/img/champion/${name}.png`
 
-const ROLES = ['Tous', 'Top', 'Jungle', 'Mid', 'ADC', 'Support']
+/**
+ * Filtres de rôle. `key` sert l'état et le libellé (dico) ; `value` est la valeur
+ * comparée à `workshop_builds.role` — c'est la FRONTIÈRE MÉTIER, elle reste en dur
+ * ici et ne suit pas la langue. `null` = aucun filtre.
+ */
+const ROLES: { key: WorkshopRoleKey; value: string | null }[] = [
+  { key: 'all',     value: null },
+  { key: 'top',     value: 'Top' },
+  { key: 'jungle',  value: 'Jungle' },
+  { key: 'mid',     value: 'Mid' },
+  { key: 'adc',     value: 'ADC' },
+  { key: 'support', value: 'Support' },
+]
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 export default function WorkshopBuildsTab() {
   const { theme } = useTheme()
+  const dico = useDashboard()
+  const W = dico.workshop.builds
   const c = theme === 'mythic'
   const supabase = createClient()
 
@@ -47,7 +63,7 @@ export default function WorkshopBuildsTab() {
   const [loading, setLoading]   = useState(true)
   const [version, setVersion]   = useState('')
   const [search, setSearch]     = useState('')
-  const [role, setRole]         = useState('Tous')
+  const [role, setRole]         = useState<WorkshopRoleKey>('all')
   const [userId, setUserId]     = useState<string | null>(null)
   const [importing, setImporting] = useState<string | null>(null)
   const [liking, setLiking]     = useState<string | null>(null)
@@ -165,7 +181,7 @@ export default function WorkshopBuildsTab() {
   // le test d'appartenance côté client ne sert qu'à afficher le bouton, il n'autorise rien.
   async function handleDelete(build: WorkshopBuild) {
     if (deleting) return
-    if (!confirm(`Retirer « ${build.titre} » du Workshop ?\n\nCette action est irréversible : le build ne sera plus visible par la communauté et ses ♥ et ↓ seront perdus. Ta copie personnelle dans « Builds Items » n'est pas affectée.`)) return
+    if (!confirm(W.removeConfirm.replace('{name}', build.titre))) return
 
     setDeleting(build.id)
     // Logique de suppression partagée avec le toggle « Dépublier » de BuildsTab
@@ -182,8 +198,10 @@ export default function WorkshopBuildsTab() {
   }
 
   // ── Filtres ───────────────────────────────────────────────────────────────
+  // `roleValue` est la valeur en base, jamais le libellé affiché.
+  const roleValue = ROLES.find(r => r.key === role)?.value ?? null
   const filtered = builds.filter(b => {
-    if (role !== 'Tous' && b.role.toLowerCase() !== role.toLowerCase()) return false
+    if (roleValue && b.role.toLowerCase() !== roleValue.toLowerCase()) return false
     if (search && !b.titre.toLowerCase().includes(search.toLowerCase()) &&
         !b.champion.toLowerCase().includes(search.toLowerCase())) return false
     return true
@@ -193,14 +211,14 @@ export default function WorkshopBuildsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-        Parcours, vote et importe les builds créés par la communauté.
+        {W.intro}
       </p>
 
       {/* ── Filtres ── */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <input
           value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Rechercher un build ou un champion..."
+          placeholder={W.search}
           style={{
             flex: '1 1 200px', padding: '9px 14px', borderRadius: 8,
             background: c ? 'rgba(20,10,35,0.6)' : '#18181B',
@@ -210,15 +228,15 @@ export default function WorkshopBuildsTab() {
         />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {ROLES.map(r => {
-            const on = role === r
+            const on = role === r.key
             return (
-              <button key={r} onClick={() => setRole(r)} style={{
+              <button key={r.key} onClick={() => setRole(r.key)} style={{
                 padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500,
                 border: `1px solid ${on ? accent : border}`,
                 background: on ? (c ? 'rgba(186,117,23,0.15)' : 'rgba(127,119,221,0.15)') : 'transparent',
                 color: on ? (c ? '#FAC775' : '#FAFAFA') : 'var(--text-muted)',
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-              }}>{r}</button>
+              }}>{W.roles[r.key]}</button>
             )
           })}
         </div>
@@ -227,7 +245,7 @@ export default function WorkshopBuildsTab() {
       {/* ── Chargement ── */}
       {loading && (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', fontSize: 13 }}>
-          Chargement des builds…
+          {W.loading}
         </div>
       )}
 
@@ -240,7 +258,7 @@ export default function WorkshopBuildsTab() {
         }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
           <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            {builds.length === 0 ? 'Aucun build publié pour l\'instant.' : 'Aucun build ne correspond à ta recherche.'}
+            {builds.length === 0 ? W.emptyAll : W.emptySearch}
           </div>
         </div>
       )}
@@ -299,7 +317,7 @@ export default function WorkshopBuildsTab() {
                     <div style={{ fontSize: 12, color: 'var(--text-dim)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span>{build.champion}</span>
                       {build.role && <><span>·</span><span>{build.role}</span></>}
-                      {build.patch && <><span>·</span><span style={{ color: accent }}>patch {build.patch}</span></>}
+                      {build.patch && <><span>·</span><span style={{ color: accent }}>{dico.workshop.shared.patchBadge.replace('{patch}', build.patch)}</span></>}
                     </div>
                   </div>
                 </div>
@@ -323,7 +341,9 @@ export default function WorkshopBuildsTab() {
                         <img key={i}
                           src={itemImg(version, item.Id)}
                           alt={item.Name ?? ''}
-                          title={`${item.Name ?? ''} (×${item.Count ?? 1})`}
+                          title={W.itemTitle
+                            .replace('{name}', item.Name ?? '')
+                            .replace('{count}', String(item.Count ?? 1))}
                           onError={e => { e.currentTarget.style.display = 'none' }}
                           style={{ width: 32, height: 32, borderRadius: 5, objectFit: 'cover' }}
                         />
@@ -335,7 +355,7 @@ export default function WorkshopBuildsTab() {
                 {/* ── Footer ── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                   <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                    par <span style={{ color: 'var(--text-muted)' }}>{build.creator_name}</span>
+                    {dico.workshop.shared.by} <span style={{ color: 'var(--text-muted)' }}>{build.creator_name}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {/* Like */}
@@ -378,12 +398,12 @@ export default function WorkshopBuildsTab() {
                   }}
                 >
                   {isImported
-                    ? '✓ Importé'
+                    ? W.imported
                     : isImportingThis
-                      ? 'Import…'
+                      ? W.importing
                       : !userId
-                        ? 'Connecte-toi pour importer'
-                        : 'Importer le build'}
+                        ? W.importSignedOut
+                        : W.import}
                 </button>
 
                 {/* ── Retirer (propriétaire uniquement) ── */}
@@ -402,7 +422,7 @@ export default function WorkshopBuildsTab() {
                       opacity: isDeletingThis ? 0.6 : 1,
                     }}
                   >
-                    {isDeletingThis ? 'Retrait…' : '🗑 Retirer du Workshop'}
+                    {isDeletingThis ? W.removing : W.remove}
                   </button>
                 )}
               </div>

@@ -2,22 +2,27 @@
 
 import { useState, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useDashboard } from '@/locales/dashboard'
+import type { JungleCampKey, JunglePlacementKey } from '@/locales/dashboard/strategie'
 
 interface Point { x: number; y: number }
-interface PathData { id: number; name: string; champion: string; points: Point[] }
+/* ⚠️ Données de DÉMONSTRATION : liste en dur, sans persistance ni clic. Seuls les
+   noms viennent du dico (`jungle.demoPathNames`) — le champion est un nom propre. */
+interface PathData { id: number; champion: string; points: Point[] }
 
 const savedPaths: PathData[] = [
-  { id: 1, name: 'Full Clear Blue Side', champion: 'Hecarim', points: [] },
-  { id: 2, name: 'Invade Red Côté Rouge', champion: 'Vi', points: [] },
+  { id: 1, champion: 'Hecarim', points: [] },
+  { id: 2, champion: 'Vi', points: [] },
 ]
 
-const campsBlu = ['Gromp', 'Loups', 'Gardien', 'Rift Scuttler', 'Dragon']
-const campsRed = ['Krug', 'Raptor', 'Fantôme Rouge', 'Rift Scuttler', 'Baron']
-const placements = [
-  { label: 'Smite', c: 'orange' },
-  { label: 'Ward', c: 'green' },
-  { label: 'Invade', c: 'red' },
-  { label: 'Gank', c: 'purple' },
+/* Composition des colonnes : des CLÉS de camp, jamais des noms affichés. */
+const campsBlu: JungleCampKey[] = ['gromp', 'wolves', 'blueSentinel', 'scuttler', 'dragon']
+const campsRed: JungleCampKey[] = ['krug', 'raptors', 'redBrambleback', 'scuttler', 'baron']
+const placements: { key: JunglePlacementKey; c: string }[] = [
+  { key: 'smite',  c: 'orange' },
+  { key: 'ward',   c: 'green' },
+  { key: 'invade', c: 'red' },
+  { key: 'gank',   c: 'purple' },
 ]
 
 const campColors: Record<string, string> = {
@@ -26,6 +31,7 @@ const campColors: Record<string, string> = {
 
 export default function JunglePathTab() {
   const { theme } = useTheme()
+  const J = useDashboard().strategie.jungle
   const c = theme === 'mythic'
   const svgRef = useRef<SVGSVGElement>(null)
   const [tool, setTool] = useState<'select' | 'draw' | 'erase'>('draw')
@@ -90,48 +96,48 @@ export default function JunglePathTab() {
         fontSize: 12,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Nom :</span>
-          <input style={{ ...inputStyle, width: 130 }} value={name} onChange={e => setName(e.target.value)} placeholder="Mon path..." />
+          <span style={{ color: 'var(--text-muted)' }}>{J.nameLabel}</span>
+          <input style={{ ...inputStyle, width: 130 }} value={name} onChange={e => setName(e.target.value)} placeholder={J.namePlaceholder} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Champion :</span>
-          <input style={{ ...inputStyle, width: 110 }} value={champion} onChange={e => setChampion(e.target.value)} placeholder="Vi, Hecarim..." />
+          <span style={{ color: 'var(--text-muted)' }}>{J.championLabel}</span>
+          <input style={{ ...inputStyle, width: 110 }} value={champion} onChange={e => setChampion(e.target.value)} placeholder={J.championPlaceholder} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Côté :</span>
+          <span style={{ color: 'var(--text-muted)' }}>{J.sideLabel}</span>
           {(['blue', 'red'] as const).map(s => (
             <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text)', cursor: 'pointer', fontSize: 12 }}>
               <input type="radio" checked={side === s} onChange={() => setSide(s)} style={{ accentColor: '#BA7517' }} />
-              {s === 'blue' ? 'Bleu' : 'Rouge'}
+              {s === 'blue' ? J.sideBlue : J.sideRed}
             </label>
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Outil :</span>
+          <span style={{ color: 'var(--text-muted)' }}>{J.toolLabel}</span>
           {(['select', 'draw', 'erase'] as const).map(t => (
             <button key={t} onClick={() => setTool(t)} style={{
               ...inputStyle, cursor: 'pointer', padding: '4px 10px',
               background: tool === t ? (c ? 'rgba(186,117,23,0.2)' : '#27272A') : 'transparent',
               borderColor: tool === t ? (c ? 'rgba(186,117,23,0.6)' : '#7F77DD') : undefined,
             }}>
-              {t === 'select' ? 'Sélection' : t === 'draw' ? 'Tracé' : 'Gomme'}
+              {t === 'select' ? J.toolSelect : t === 'draw' ? J.toolDraw : J.toolErase}
             </button>
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Couleur :</span>
+          <span style={{ color: 'var(--text-muted)' }}>{J.colorLabel}</span>
           <input type="color" value={color} onChange={e => setColor(e.target.value)}
             style={{ width: 28, height: 22, border: '1px solid rgba(186,117,23,0.4)', borderRadius: 3, cursor: 'pointer', background: 'none' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Épais. :</span>
+          <span style={{ color: 'var(--text-muted)' }}>{J.thicknessLabel}</span>
           <input type="range" min={1} max={8} value={thickness} onChange={e => setThickness(+e.target.value)}
             style={{ width: 80, accentColor: '#BA7517' }} />
         </div>
         <button onClick={() => setPaths([])} style={{
           ...inputStyle, marginLeft: 'auto', cursor: 'pointer', color: '#E24B4A',
           borderColor: 'rgba(226,75,74,0.4)',
-        }}>Annuler</button>
+        }}>{J.clear}</button>
       </div>
 
       {/* Main layout */}
@@ -139,9 +145,9 @@ export default function JunglePathTab() {
         {/* Sidebar paths */}
         <div>
           <div style={{ fontSize: 12, color: c ? '#BA7517' : '#7F77DD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            Mes paths
+            {J.myPaths}
           </div>
-          {savedPaths.map(p => (
+          {savedPaths.map((p, i) => (
             <div key={p.id} style={{
               background: c ? 'rgba(42,21,71,0.4)' : '#18181B',
               border: `1px solid ${c ? 'rgba(186,117,23,0.25)' : '#27272A'}`,
@@ -149,7 +155,7 @@ export default function JunglePathTab() {
               fontSize: 11, color: c ? '#FAC775' : '#A1A1AA', cursor: 'pointer',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {p.name}
+              {J.demoPathNames[i]}
               <div style={{ color: 'var(--text-dim)', marginTop: 2 }}>{p.champion}</div>
             </div>
           ))}
@@ -206,7 +212,7 @@ export default function JunglePathTab() {
         <div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: c ? '#BA7517' : '#7F77DD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-              Camps Bleu
+              {J.campsBlueTitle}
             </div>
             {campsBlu.map(camp => (
               <button key={camp} style={{
@@ -215,12 +221,12 @@ export default function JunglePathTab() {
                 border: '1px solid rgba(58,138,201,0.4)',
                 borderRadius: 4, color: '#3A8AC9', fontSize: 11,
                 cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center',
-              }}>{camp}</button>
+              }}>{J.camps[camp]}</button>
             ))}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: c ? '#BA7517' : '#7F77DD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-              Camps Rouge
+              {J.campsRedTitle}
             </div>
             {campsRed.map(camp => (
               <button key={camp} style={{
@@ -229,24 +235,24 @@ export default function JunglePathTab() {
                 border: '1px solid rgba(226,75,74,0.4)',
                 borderRadius: 4, color: '#E24B4A', fontSize: 11,
                 cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center',
-              }}>{camp}</button>
+              }}>{J.camps[camp]}</button>
             ))}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: c ? '#BA7517' : '#7F77DD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-              Placer
+              {J.placeTitle}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8, lineHeight: 1.4 }}>
-              Clique sur la map pour placer un marqueur
+              {J.placeHint}
             </div>
             {placements.map(p => (
-              <button key={p.label} style={{
+              <button key={p.key} style={{
                 display: 'block', width: '100%', padding: '6px 10px', marginBottom: 4,
                 background: 'rgba(20,10,35,0.4)',
                 border: `1px solid ${campColors[p.c]}40`,
                 borderRadius: 4, color: campColors[p.c], fontSize: 11,
                 cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center',
-              }}>{p.label}</button>
+              }}>{J.placements[p.key]}</button>
             ))}
           </div>
           <button style={{
@@ -256,7 +262,7 @@ export default function JunglePathTab() {
             fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             marginTop: 'auto',
           }}>
-            Sauvegarder
+            {J.save}
           </button>
         </div>
       </div>

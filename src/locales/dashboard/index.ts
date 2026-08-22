@@ -22,40 +22,43 @@
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import type { Lang } from '@/locales/landing'
 
-import { commonFr,   commonEn }   from './common'
-import { navFr,      navEn }      from './nav'
-import { accueilFr,  accueilEn }  from './accueil'
-import { buildsFr,   buildsEn }   from './builds'
-import { workshopFr, workshopEn } from './workshop'
-import { analyseFr,  analyseEn }  from './analyse'
-import { adminFr,    adminEn }    from './admin'
-import { profilFr,   profilEn }   from './profil'
-import { ecaillesFr, ecaillesEn } from './ecailles'
+import { commonFr,    commonEn }    from './common'
+import { navFr,       navEn }       from './nav'
+import { accueilFr,   accueilEn }   from './accueil'
+import { buildsFr,    buildsEn }    from './builds'
+import { workshopFr,  workshopEn }  from './workshop'
+import { strategieFr, strategieEn } from './strategie'
+import { analyseFr,   analyseEn }   from './analyse'
+import { adminFr,     adminEn }     from './admin'
+import { profilFr,    profilEn }    from './profil'
+import { ecaillesFr,  ecaillesEn }  from './ecailles'
 
 export const dashboardFr = {
-  common:   commonFr,
-  nav:      navFr,
-  accueil:  accueilFr,
-  builds:   buildsFr,
-  workshop: workshopFr,
-  analyse:  analyseFr,
-  admin:    adminFr,
-  profil:   profilFr,
-  ecailles: ecaillesFr,
+  common:    commonFr,
+  nav:       navFr,
+  accueil:   accueilFr,
+  builds:    buildsFr,
+  workshop:  workshopFr,
+  strategie: strategieFr,
+  analyse:   analyseFr,
+  admin:     adminFr,
+  profil:    profilFr,
+  ecailles:  ecaillesFr,
 }
 
 export type DashboardDict = typeof dashboardFr
 
 export const dashboardEn: DashboardDict = {
-  common:   commonEn,
-  nav:      navEn,
-  accueil:  accueilEn,
-  builds:   buildsEn,
-  workshop: workshopEn,
-  analyse:  analyseEn,
-  admin:    adminEn,
-  profil:   profilEn,
-  ecailles: ecaillesEn,
+  common:    commonEn,
+  nav:       navEn,
+  accueil:   accueilEn,
+  builds:    buildsEn,
+  workshop:  workshopEn,
+  strategie: strategieEn,
+  analyse:   analyseEn,
+  admin:     adminEn,
+  profil:    profilEn,
+  ecailles:  ecaillesEn,
 }
 
 export const dashboardDicts: Record<Lang, DashboardDict> = {

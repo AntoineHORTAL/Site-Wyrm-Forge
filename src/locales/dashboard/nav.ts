@@ -185,6 +185,20 @@ export const navFr = {
     pro:  'Pro',
     soon: 'Bientôt',
   },
+  /**
+   * Écran de remplacement d'un onglet verrouillé (`LockedScreen`, Dashboard.tsx).
+   *
+   * Le titre et le sous-titre ne sont PAS ici : l'écran reçoit ceux de `pageTitles`
+   * de l'onglet concerné, qui disaient déjà exactement la même chose. Seuls restent
+   * la phrase d'incitation et son bouton, qui n'appartiennent à aucun onglet.
+   *
+   * ⚠️ `upgrade` est rendu APRÈS le sous-titre, dans la même phrase : elle commence
+   * donc par le point qui clôt celui-ci.
+   */
+  locked: {
+    upgrade: '. Passe à un plan supérieur pour débloquer cette fonctionnalité.',
+    cta: 'Voir les plans',
+  },
   /* Chrome du mode connecté : dropdown profil (desktop) et encart du drawer (mobile). */
   user: {
     profile:     'Profil',
@@ -205,6 +219,10 @@ export const navEn: NavDict = {
   badges: {
     pro:  'Pro',
     soon: 'Soon',
+  },
+  locked: {
+    upgrade: '. Upgrade to a higher plan to unlock this feature.',
+    cta: 'See the plans',
   },
   user: {
     profile:     'Profile',
