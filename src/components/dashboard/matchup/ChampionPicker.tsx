@@ -16,10 +16,14 @@ function norm(s: string): string {
 }
 
 export default function ChampionPicker({
-  champs, version, onPick, onClose, c,
+  champs, version, searchPlaceholder, emptyLabel, onPick, onClose, c,
 }: {
   champs: DDChampFull[]
   version: string
+  /* Libellés injectés par le parent : cette vue d'overlay n'a pas d'autre raison
+     de dépendre du contexte de langue. */
+  searchPlaceholder: string
+  emptyLabel: string
   onPick: (champ: DDChampFull) => void
   onClose: () => void
   c: boolean
@@ -68,7 +72,7 @@ export default function ChampionPicker({
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Rechercher un champion…"
+            placeholder={searchPlaceholder}
             style={{
               width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 14,
               color: 'var(--text)', background: c ? 'rgba(255,255,255,0.04)' : '#18181B',
@@ -85,7 +89,7 @@ export default function ChampionPicker({
         >
           {filtered.length === 0 && (
             <p style={{ gridColumn: '1/-1', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
-              Aucun champion trouvé.
+              {emptyLabel}
             </p>
           )}
           {filtered.map(ch => (

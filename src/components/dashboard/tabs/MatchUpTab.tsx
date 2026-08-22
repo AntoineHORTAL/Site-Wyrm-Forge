@@ -12,7 +12,9 @@ import {
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
-import { analyzeMatchup, getQuota, formatResetFr, canAfford, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
+import { analyzeMatchup, getQuota, formatResetFr, canAfford, analysisErrorText, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
+import { useDashboard } from '@/locales/dashboard'
+import { balanceLabel, needLabel, type AnalyseDict } from '@/locales/dashboard/analyse'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
 import BuildPicker, { type SavedBuildDisplay } from '@/components/dashboard/matchup/BuildPicker'
@@ -34,6 +36,8 @@ type PickerTarget = { side: Side; index: number }
 // MatchUp (contrairement aux Scénarios où les 5 rôles sont fixes) : re-cliquer le
 // rôle actif le retire.
 const ROLES = MATCHUP_ROLES   // source unique (types.ts), partagée avec le payload
+// Abréviations d'affichage : identiques dans les deux langues, et la clé qu'elles
+// indexent part telle quelle dans le payload de l'EF — elles restent donc ici.
 const ROLE_SHORT: Record<MatchUpRole, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MID: 'MID', ADC: 'ADC', SUPPORT: 'SUP',
 }
@@ -56,6 +60,8 @@ interface BuildSummary {
 
 export default function MatchUpTab() {
   const { theme } = useTheme()
+  const A = useDashboard().analyse
+  const M = A.matchup
   const c = theme === 'mythic'
   const supabase = useMemo(() => createClient(), [])
 
@@ -198,20 +204,20 @@ export default function MatchUpTab() {
     if (build.kind === 'none') return null
     if (build.kind === 'saved') {
       const sd = savedById[build.buildId]
-      if (!sd) return { label: 'Build supprimé', itemImages: [], gold: 0 }
+      if (!sd) return { label: M.buildDeleted, itemImages: [], gold: 0 }
       return { label: sd.name, itemImages: sd.itemImages, gold: sd.totalGold }
     }
     // temp
     const items = build.blocks.flatMap(b => b.items)
     const gold = items.reduce((s, it) => s + (itemsById[it.id]?.gold ?? 0) * it.count, 0)
-    return { label: 'Build temporaire', itemImages: items.map(it => it.image), gold }
+    return { label: M.buildTemp, itemImages: items.map(it => it.image), gold }
   }
 
   if (ddError) {
-    return <p style={{ color: '#E5484D', fontSize: 14 }}>Impossible de charger les données des champions. Réessaie plus tard.</p>
+    return <p style={{ color: '#E5484D', fontSize: 14 }}>{M.loadError}</p>
   }
   if (!dd || !scenario) {
-    return <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Chargement des champions…</p>
+    return <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{M.loading}</p>
   }
 
   const buildSlot = buildTarget ? scenario[buildTarget.side][buildTarget.index] : null
@@ -232,7 +238,7 @@ export default function MatchUpTab() {
   const quotaExhausted = quota != null && !canAfford(quota, false)
 
   const columnProps = (side: Side, champions: MatchUpChampion[]) => ({
-    side, champions, version: dd.version, c,
+    side, champions, version: dd.version, c, m: M,
     describeBuild,
     onAdd:   (i: number) => setChampTarget({ side, index: i }),
     onClear: (i: number) => clearSlot(side, i),
@@ -246,21 +252,21 @@ export default function MatchUpTab() {
       <ModeSelector mode={scenario.mode} onChange={changeMode} c={c} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, alignItems: 'start' }}>
-        <SlotColumn label="Alliés" color="#5DCAA5" {...columnProps('allies', scenario.allies)} />
-        <div style={{ alignSelf: 'center', color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>VS</div>
-        <SlotColumn label="Ennemis" color="#E5484D" {...columnProps('enemies', scenario.enemies)} />
+        <SlotColumn label={M.allies} color="#5DCAA5" {...columnProps('allies', scenario.allies)} />
+        <div style={{ alignSelf: 'center', color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>{M.versus}</div>
+        <SlotColumn label={M.enemies} color="#E5484D" {...columnProps('enemies', scenario.enemies)} />
       </div>
 
       {/* Comparaison de stats — radar seul (parité AddStatsComparison WPF). */}
       <div style={{ marginTop: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
-          Comparaison des stats
+          {M.radarTitle}
         </div>
         {hasAlly && hasEnemy ? (
-          <StatRadar axes={radar} c={c} />
+          <StatRadar axes={radar} c={c} labels={A.radarAxes} alt={M.radarAlt} />
         ) : (
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Ajoute au moins un champion dans chaque camp pour comparer les stats.
+            {M.radarEmpty}
           </p>
         )}
       </div>
@@ -268,11 +274,15 @@ export default function MatchUpTab() {
       {/* Analyse IA (matchup-analyze) */}
       <div style={{ marginTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Analyse IA</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{M.analysisTitle}</div>
           {quota && (
             <span style={{ fontSize: 12, color: quotaExhausted ? '#E5484D' : 'var(--text-muted)' }}>
-              Chaleur de la Forge — {quota.remaining} braise{quota.remaining > 1 ? 's' : ''} sur {quota.limit}
-              {quota.resetsAt && quotaExhausted ? ` · réinit. ${formatResetFr(quota.resetsAt)}` : ''}
+              {A.quota.potName} — {balanceLabel(A, quota.remaining, quota.limit)}
+              {/* ⚠️ `formatResetFr` reste en `fr-FR` : locale de DONNÉE (Lot 8).
+                  Seule la phrase autour vient du dico. */}
+              {quota.resetsAt && quotaExhausted
+                ? ` · ${A.quota.resetShort.replace('{date}', formatResetFr(quota.resetsAt))}`
+                : ''}
             </span>
           )}
         </div>
@@ -284,7 +294,7 @@ export default function MatchUpTab() {
             disabled={!canQuick}
             style={analyzeBtnStyle(c, analyzing === 'quick', !canQuick)}
           >
-            {analyzing === 'quick' ? 'Analyse…' : 'Analyse rapide'}
+            {analyzing === 'quick' ? M.running : M.quick}
             {quota && quota.costs.quick > 0 ? ` · ${quota.costs.quick}` : ''}
           </button>
           <button
@@ -292,25 +302,26 @@ export default function MatchUpTab() {
             disabled={!canDetailed}
             style={analyzeBtnStyle(c, analyzing === 'detailed', !canDetailed)}
           >
-            {analyzing === 'detailed' ? 'Analyse…' : 'Analyse détaillée'}
+            {analyzing === 'detailed' ? M.running : M.detailed}
             {quota && quota.costs.detailed > 0 ? ` · ${quota.costs.detailed}` : ''}
           </button>
         </div>
 
         {!hasAlly || !hasEnemy ? (
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-            Ajoute un champion dans chaque camp pour lancer une analyse.
+            {M.needChampions}
           </p>
         ) : quotaExhausted ? (
           <p style={{ fontSize: 12, color: '#E5484D', marginTop: 8 }}>
-            Chaleur de la Forge épuisée pour cette semaine.
+            {A.quota.exhausted}
           </p>
         ) : quota && !canDetailed ? (
           // Cas propre au pot fongible : assez pour une rapide, pas pour une
           // détaillée. Sans ce message, le bouton détaillée serait grisé sans
-          // aucune explication visible.
+          // aucune explication visible. Même gabarit que le 429 de la couche
+          // réseau — la phrase ne doit pas diverger selon d'où vient le refus.
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-            Il te reste {quota.remaining} braises — il en faut {quota.costs.detailed} pour une analyse détaillée.
+            {needLabel(A, quota.remaining, quota.costs.detailed, M.actionDetailed)}
           </p>
         ) : null}
 
@@ -324,11 +335,14 @@ export default function MatchUpTab() {
           >
             {analysis.truncated && (
               <div style={{ fontSize: 12, color: c ? '#FAC775' : '#EF9F27', marginBottom: 8 }}>
-                ⚠ Analyse tronquée (limite de longueur atteinte).
+                {M.truncated}
               </div>
             )}
+            {/* Succès : le texte vient d'Anthropic (non traduisible ici). Échec :
+                le message est composé MAINTENANT depuis le code mémorisé, donc il
+                suit une bascule de langue. */}
             <div style={{ fontSize: 13, lineHeight: 1.55, color: analysis.success ? 'var(--text)' : '#E5484D', whiteSpace: 'pre-wrap' }}>
-              {analysis.text}
+              {analysis.success ? analysis.text : analysisErrorText(A, analysis)}
             </div>
           </div>
         )}
@@ -337,6 +351,7 @@ export default function MatchUpTab() {
       {champTarget && (
         <ChampionPicker
           champs={dd.champs} version={dd.version} c={c}
+          searchPlaceholder={M.searchChampion} emptyLabel={M.noChampionFound}
           onPick={pickChampion} onClose={() => setChampTarget(null)}
         />
       )}
@@ -344,6 +359,7 @@ export default function MatchUpTab() {
       {buildTarget && buildSlot && (
         <BuildPicker
           items={dd.items} version={dd.version} c={c}
+          labels={M.picker}
           savedBuilds={saved}
           initial={buildSlot.build}
           onApply={applyBuild} onClose={() => setBuildTarget(null)}
@@ -368,7 +384,7 @@ function analyzeBtnStyle(c: boolean, loading: boolean, disabled: boolean): CSSPr
 
 // Colonne de slots d'un camp.
 function SlotColumn({
-  label, color, side, champions, version, c, describeBuild, onAdd, onClear, onLevel, onRole, onBuild,
+  label, color, side, champions, version, c, m, describeBuild, onAdd, onClear, onLevel, onRole, onBuild,
 }: {
   label: string
   color: string
@@ -376,6 +392,7 @@ function SlotColumn({
   champions: MatchUpChampion[]
   version: string
   c: boolean
+  m: AnalyseDict['matchup']
   describeBuild: (build: BuildRef) => BuildSummary | null
   onAdd: (index: number) => void
   onClear: (index: number) => void
@@ -393,7 +410,7 @@ function SlotColumn({
           ch.champ ? (
             <FilledSlot
               key={`${side}-${i}`}
-              champ={ch} version={version} c={c}
+              champ={ch} version={version} c={c} m={m}
               build={describeBuild(ch.build)}
               onClear={() => onClear(i)}
               onLevel={lvl => onLevel(i, lvl)}
@@ -411,7 +428,7 @@ function SlotColumn({
                 border: `1px dashed ${c ? 'rgba(186,117,23,0.25)' : '#27272A'}`,
               }}
             >
-              + Ajouter
+              {m.addSlot}
             </button>
           )
         )}
@@ -422,11 +439,12 @@ function SlotColumn({
 
 // Slot occupé : icône + nom + niveau + build attaché + retrait.
 function FilledSlot({
-  champ, version, c, build, onClear, onLevel, onRole, onBuild,
+  champ, version, c, m, build, onClear, onLevel, onRole, onBuild,
 }: {
   champ: MatchUpChampion
   version: string
   c: boolean
+  m: AnalyseDict['matchup']
   build: BuildSummary | null
   onClear: () => void
   onLevel: (level: number) => void
@@ -453,7 +471,7 @@ function FilledSlot({
             {name}
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Niveau</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.level}</span>
             <select
               value={champ.level}
               onChange={e => onLevel(Number(e.target.value))}
@@ -467,7 +485,7 @@ function FilledSlot({
               ))}
             </select>
             {champ.role === 'TOP' && (
-              <span title="Role Quest Top (Season 16) : plafond 20" style={{ fontSize: 10, color: ROLE_COLORS.TOP, fontWeight: 700 }}>
+              <span title={m.topLevelCap} style={{ fontSize: 10, color: ROLE_COLORS.TOP, fontWeight: 700 }}>
                 /20
               </span>
             )}
@@ -475,7 +493,7 @@ function FilledSlot({
         </div>
         <button
           onClick={onClear}
-          title="Retirer" aria-label={`Retirer ${name}`}
+          title={m.removeSlot} aria-label={m.removeSlotLabel.replace('{name}', name)}
           style={{
             flexShrink: 0, width: 24, height: 24, borderRadius: 6, cursor: 'pointer', lineHeight: 1,
             color: 'var(--text-muted)', background: 'transparent', border: `1px solid ${border}`,
@@ -486,7 +504,7 @@ function FilledSlot({
       </div>
 
       {/* Rôle du slot (optionnel) — toggle : re-cliquer le rôle actif le retire. */}
-      <div style={{ display: 'flex', gap: 4 }} role="group" aria-label={`Rôle de ${name}`}>
+      <div style={{ display: 'flex', gap: 4 }} role="group" aria-label={m.roleGroupLabel.replace('{name}', name)}>
         {ROLES.map(r => {
           const on = champ.role === r
           return (
@@ -494,7 +512,7 @@ function FilledSlot({
               key={r}
               onClick={() => onRole(r)}
               aria-pressed={on}
-              title={on ? `Retirer le rôle ${r}` : `Assigner le rôle ${r}`}
+              title={(on ? m.unassignRole : m.assignRole).replace('{role}', r)}
               style={{
                 flex: 1, padding: '3px 0', borderRadius: 5, fontSize: 10, fontWeight: 700, letterSpacing: 0.5, cursor: 'pointer',
                 color: on ? '#fff' : 'var(--text-muted)',
@@ -526,11 +544,12 @@ function FilledSlot({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{build.label}</div>
-              {build.gold > 0 && <div style={{ fontSize: 10, color: c ? '#FAC775' : '#EF9F27' }}>{build.gold.toLocaleString('fr-FR')} g</div>}
+              {/* ⚠️ `toLocaleString('fr-FR')` : locale de DONNÉE, traitée au Lot 8. */}
+              {build.gold > 0 && <div style={{ fontSize: 10, color: c ? '#FAC775' : '#EF9F27' }}>{build.gold.toLocaleString('fr-FR')} {m.goldSuffix}</div>}
             </div>
           </>
         ) : (
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+ Build d&apos;items</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.addBuild}</span>
         )}
       </button>
     </div>

@@ -16,9 +16,12 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import type { UserProfile } from '@/app/page'
 import {
   analyzePostGame, getPostGameQuota, canAffordPostGame, costOfCombo, hasLaneOpponent,
-  POSTGAME_DEPTHS, POSTGAME_MODES, DEPTH_LABEL, MODE_LABEL,
+  postGameErrorText, comboLabel,
+  POSTGAME_DEPTHS, POSTGAME_MODES,
   type PostGameQuota, type PostGameResult, type PostGameDepth, type PostGameMode,
 } from '@/lib/postgame/api'
+import { useDashboard } from '@/locales/dashboard'
+import { balanceLabel, needLabel } from '@/locales/dashboard/analyse'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -49,6 +52,8 @@ interface SlimMatch {
 // Vocabulaire Riot → abréviation d'affichage. Deux copies de cette table
 // existent déjà (`/summoner`, `/matches`) ; on n'en extrait pas un module
 // partagé ici pour ne pas toucher deux pages committées hors périmètre.
+// Ces abréviations sont identiques dans les deux langues et la clé vient de Riot :
+// elles ne passent donc pas par le dico.
 const ROLE_LABEL: Record<string, string> = {
   TOP: 'TOP', JUNGLE: 'JGL', MIDDLE: 'MID', BOTTOM: 'ADC', UTILITY: 'SUP',
 }
@@ -103,15 +108,25 @@ const dayFr = (ms: number) =>
 const timeFr = (ms: number) =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
+/**
+ * Échec du chargement de l'historique. Comme les erreurs d'analyse, on mémorise un
+ * CODE et non un message : l'effet ne tourne qu'au montage, un message capturé là
+ * resterait figé dans la langue d'alors. `server` porte le texte de l'Edge Function,
+ * qui n'est pas traduisible côté client.
+ */
+type HistoryError = { kind: 'unavailable' | 'network' } | { kind: 'server'; text: string }
+
 export default function PostGameTab({ profile }: { profile?: UserProfile | null }) {
   const { theme } = useTheme()
+  const A = useDashboard().analyse
+  const P = A.postgame
   const c = theme === 'mythic'
 
   const puuid    = profile?.riot_puuid
   const platform = profile?.riot_platform ?? 'euw1'
 
   const [matches, setMatches] = useState<SlimMatch[] | null>(null)
-  const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [loadErr, setLoadErr] = useState<HistoryError | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [quota, setQuota]   = useState<PostGameQuota | null>(null)
   const [busy, setBusy]     = useState(false)
@@ -132,12 +147,18 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
         })
         const body = await res.json().catch(() => null)
         if (!alive) return
-        if (!res.ok) { setLoadErr(body?.error ?? 'Historique indisponible.'); return }
+        if (!res.ok) {
+          // ⚠️ `body.error` vient de l'Edge Function : affiché tel quel, non traduisible.
+          setLoadErr(typeof body?.error === 'string' && body.error.trim()
+            ? { kind: 'server', text: body.error }
+            : { kind: 'unavailable' })
+          return
+        }
         const list: SlimMatch[] = body?.matches ?? (Array.isArray(body) ? body : [])
         setMatches(list)
         if (list.length) setSelected(list[0].matchId)
       } catch {
-        if (alive) setLoadErr('Erreur réseau — historique indisponible.')
+        if (alive) setLoadErr({ kind: 'network' })
       }
     })()
     return () => { alive = false }
@@ -185,7 +206,7 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
     return (
       <div style={{ padding: 24 }}>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-          Lie ton compte Riot depuis ta page profil pour analyser tes parties.
+          {P.noRiotAccount}
         </p>
       </div>
     )
@@ -195,25 +216,29 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
     <div>
       {/* En-tête : solde partagé + coût de l'action */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Bilan de partie</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{P.title}</div>
         {quota && (
           <span style={{ fontSize: 12, color: affordable ? 'var(--text-muted)' : '#E5484D' }}>
-            Chaleur de la Forge — {quota.remaining} braise{quota.remaining > 1 ? 's' : ''} sur {quota.limit}
-            {cost > 0 ? ` · ce bilan en coûte ${cost}` : ''}
+            {A.quota.potName} — {balanceLabel(A, quota.remaining, quota.limit)}
+            {cost > 0 ? ` · ${P.costHint.replace('{cost}', String(cost))}` : ''}
           </span>
         )}
       </div>
 
       {loadErr && (
-        <p style={{ fontSize: 13, color: '#E5484D', marginBottom: 12 }}>{loadErr}</p>
+        <p style={{ fontSize: 13, color: '#E5484D', marginBottom: 12 }}>
+          {loadErr.kind === 'server' ? loadErr.text
+            : loadErr.kind === 'network' ? P.historyNetwork
+            : P.historyUnavailable}
+        </p>
       )}
 
       {/* Sélecteur de match */}
       {matches === null && !loadErr && (
-        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Chargement de ton historique…</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{P.historyLoading}</p>
       )}
       {matches?.length === 0 && (
-        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Aucune partie récente trouvée.</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{P.historyEmpty}</p>
       )}
 
       {!!matches?.length && (
@@ -246,9 +271,10 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
                   background: m.win ? 'rgba(93,202,165,0.16)' : 'rgba(229,72,77,0.16)',
                   color: m.win ? '#5DCAA5' : '#E5484D',
                 }}>
-                  {m.win ? 'V' : 'D'}
+                  {m.win ? P.win : P.loss}
                 </span>
-                <span style={{ fontWeight: 600, minWidth: 90 }}>{m.championName ?? '—'}</span>
+                {/* Nom de champion : donnée DDragon, non traduite (Lot 8). */}
+                <span style={{ fontWeight: 600, minWidth: 90 }}>{m.championName ?? P.unknownChampion}</span>
                 {/* Rôle : absent sur ARAM/Arena — on n'affiche rien plutôt qu'un tiret. */}
                 {m.position && ROLE_LABEL[m.position] && (
                   <span style={{
@@ -266,8 +292,8 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
                   color: 'var(--text-dim)', marginLeft: 'auto', fontSize: 12,
                   textAlign: 'right', flexShrink: 0,
                 }}>
-                  {/* Mode de jeu déjà résolu serveur ; durée + date/heure pour
-                      distinguer deux parties proches. */}
+                  {/* ⚠️ `queueName` est résolu par l'Edge Function et `dayFr`/`timeFr`
+                      formatent en `fr-FR` : locale de DONNÉE, traitée au Lot 8. */}
                   {[
                     m.queueName,
                     m.duration ? mmss(m.duration) : null,
@@ -284,18 +310,18 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
       {!!matches?.length && (
         <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
           <PillRow
-            label="Profondeur"
+            label={P.depthLabel}
             options={POSTGAME_DEPTHS.map(d => ({
-              id: d, label: DEPTH_LABEL[d],
+              id: d, label: P.depths[d],
               cost: costOfCombo(quota, d, mode),
               disabled: false,
             }))}
             value={depth} onChange={(v) => setDepth(v as PostGameDepth)} c={c}
           />
           <PillRow
-            label="Sujet"
+            label={P.modeLabel}
             options={POSTGAME_MODES.map(m => ({
-              id: m, label: MODE_LABEL[m],
+              id: m, label: P.modes[m],
               cost: costOfCombo(quota, depth, m),
               // Grisé sur les parties sans voies — jamais cliquable pour rien.
               disabled: m !== 'perso' && !laneOk,
@@ -307,8 +333,7 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
 
       {!laneOk && !!matches?.length && (
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          Cette partie n&apos;a pas de duel de voie (ARAM, Arena…) : seule l&apos;analyse
-          «&nbsp;Moi&nbsp;» est disponible.
+          {P.noLaneOpponent}
         </p>
       )}
 
@@ -324,18 +349,21 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
           color: 'var(--text)',
         }}
       >
-        {busy ? 'Analyse…' : 'Analyser cette partie'}{cost > 0 ? ` · ${cost}` : ''}
+        {busy ? P.running : P.run}{cost > 0 ? ` · ${cost}` : ''}
       </button>
 
       {/* Solde insuffisant : message explicite, sinon le bouton grisé n'explique rien */}
       {quota && !affordable && (
         <p style={{ fontSize: 12, color: '#E5484D', marginTop: 8 }}>
-          Il te reste {quota.remaining} braise{quota.remaining > 1 ? 's' : ''} — il en faut {cost} pour
-          {' '}{DEPTH_LABEL[depth].toLowerCase()} · {MODE_LABEL[mode].toLowerCase()}.
+          {/* Même gabarit que le 429 de la couche réseau : la phrase ne doit pas
+              diverger selon d'où vient le refus. La combinaison n'est plus mise en
+              minuscules — un `toLowerCase()` sur un libellé traduit dépend de la
+              langue, et la lisibilité n'y gagnait rien. */}
+          {needLabel(A, quota.remaining, cost, comboLabel(A, depth, mode))}
           {/* Suggestion actionnable : une combinaison moins chère est peut-être
               encore finançable — ne pas laisser l'utilisateur dans l'impasse. */}
           {canAffordPostGame(quota, 'simple', 'perso') && !(depth === 'simple' && mode === 'perso') && (
-            <> Une analyse Simple · moi reste à ta portée ({costOfCombo(quota, 'simple', 'perso')}).</>
+            <> {P.fallbackHint.replace('{cost}', String(costOfCombo(quota, 'simple', 'perso')))}</>
           )}
         </p>
       )}
@@ -348,20 +376,25 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
         }}>
           {result.success && result.champion && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600 }}>
-              {result.champion}{result.opponent ? ` vs ${result.opponent}` : ''}
-              {' · '}{DEPTH_LABEL[result.depth ?? depth] ?? ''} · {MODE_LABEL[result.mode ?? mode] ?? ''}
+              {result.opponent
+                ? P.resultVs.replace('{champion}', result.champion).replace('{opponent}', result.opponent)
+                : result.champion}
+              {' · '}{comboLabel(A, result.depth ?? depth, result.mode ?? mode)}
             </div>
           )}
           {result.truncated && (
             <div style={{ fontSize: 12, color: '#EF9F27', marginBottom: 8 }}>
-              ⚠ Analyse tronquée (limite de longueur atteinte).
+              {P.truncated}
             </div>
           )}
+          {/* Succès : le texte vient d'Anthropic (non traduisible ici). Échec : le
+              message est composé MAINTENANT depuis le code mémorisé, donc il suit
+              une bascule de langue. */}
           <div style={{
             fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
             color: result.success ? 'var(--text)' : '#E5484D',
           }}>
-            {result.text}
+            {result.success ? result.text : postGameErrorText(A, result)}
           </div>
         </div>
       )}

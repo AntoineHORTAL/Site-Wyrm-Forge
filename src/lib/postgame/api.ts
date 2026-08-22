@@ -19,6 +19,7 @@
 // faux — `canAffordPostGame` prend la combinaison en paramètre.
 
 import { createClient } from '@/lib/supabase/client'
+import { needLabel, type AnalyseDict } from '@/locales/dashboard/analyse'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -30,12 +31,19 @@ export type PostGameMode  = 'perso' | 'adversaire' | 'les_deux'
 export const POSTGAME_DEPTHS: PostGameDepth[] = ['simple', 'medium', 'advanced']
 export const POSTGAME_MODES:  PostGameMode[]  = ['perso', 'adversaire', 'les_deux']
 
-export const DEPTH_LABEL: Record<PostGameDepth, string> = {
-  simple: 'Simple', medium: 'Médium', advanced: 'Avancée',
-}
-export const MODE_LABEL: Record<PostGameMode, string> = {
-  perso: 'Moi', adversaire: 'Adversaire', les_deux: 'Les deux',
-}
+/**
+ * Les libellés de profondeur et de mode vivent dans le dico
+ * (`analyse.postgame.depths` / `.modes`), indexés par CES MÊMES clés — qui sont la
+ * valeur envoyée à l'Edge Function et la moitié de `comboKey`.
+ *
+ * Les deux alias ci-dessous sont des assertions PUREMENT DE TYPE (aucun artefact à
+ * l'exécution) : renommer une clé d'un seul côté fait échouer la compilation, au lieu
+ * d'afficher une pill vide ou un `undefined` dans une clé de coût.
+ */
+type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+type AssertTrue<T extends true> = T
+export type DepthKeysMatchDict = AssertTrue<Equal<PostGameDepth, keyof AnalyseDict['postgame']['depths']>>
+export type ModeKeysMatchDict  = AssertTrue<Equal<PostGameMode,  keyof AnalyseDict['postgame']['modes']>>
 
 /** Clé de combinaison — miroir de `comboKey` côté serveur. */
 export const comboKey = (d: PostGameDepth, m: PostGameMode): string => `${d}_${m}`
@@ -52,9 +60,27 @@ export interface PostGameQuota {
   costs: PostGameCosts
 }
 
+/**
+ * Cause d'échec, mémorisée en CODE et jamais en message — voir `AnalysisErrorCode`
+ * côté MatchUp pour le pourquoi (bascule FR/EN pendant l'affichage).
+ *
+ * `server` est l'exception nécessaire : sur 400 générique / 404 / autre, l'Edge
+ * Function renvoie SON propre `error`, écrit côté serveur. Il n'est pas traduisible
+ * ici, on le transporte tel quel. Pendant exact du cas `raw` de `StatsError` (Lot 2).
+ */
+export type PostGameError =
+  | { kind: 'signedOut' | 'network' | 'service' | 'riot' | 'unexpected' | 'empty' }
+  | { kind: 'badRequest' | 'matchNotFound' | 'opponentUnavailable' | 'overQuota' }
+  | { kind: 'server'; text: string }
+
 export interface PostGameResult extends PostGameQuota {
   success: boolean
-  text: string          // analyse, ou message d'erreur FR
+  /** Texte de l'analyse (serveur, non traduisible). Vide sur échec. */
+  text: string
+  /** Cause d'échec, null en cas de succès — voir `postGameErrorText`. */
+  error: PostGameError | null
+  /** Coût réclamé par le serveur au moment du refus 429 (0 si inconnu). */
+  needed: number
   truncated: boolean
   overQuota: boolean
   champion: string
@@ -133,12 +159,36 @@ const EMPTY: PostGameQuota = {
   used: 0, limit: 0, remaining: 0, model: '', resetsAt: null, costs: {},
 }
 
-function fail(message: string, extra: Partial<PostGameResult> = {}): PostGameResult {
+function fail(error: PostGameError, extra: Partial<PostGameResult> = {}): PostGameResult {
   return {
-    ...EMPTY, success: false, text: message, truncated: false, overQuota: false,
+    ...EMPTY, success: false, text: '', error, needed: 0, truncated: false, overQuota: false,
     champion: '', win: null, opponent: null, opponentUnavailable: false,
     depth: 'simple', mode: 'perso', ...extra,
   }
+}
+
+/**
+ * Message affiché pour un résultat en échec. PUR : le dico entre en paramètre.
+ * `{action}` du message de solde insuffisant reçoit la combinaison demandée
+ * (« Médium · Les deux »), c'est ce qui rend la phrase actionnable.
+ */
+export function postGameErrorText(d: AnalyseDict, r: PostGameResult): string {
+  const e = r.error
+  if (!e) return ''
+  if (e.kind === 'server') return e.text
+  if (e.kind !== 'overQuota') return d.errors[e.kind]
+
+  if (r.remaining > 0 && r.needed > 0) {
+    return needLabel(d, r.remaining, r.needed, comboLabel(d, r.depth, r.mode))
+  }
+  return d.quota.exhaustedWithCount
+    .replace('{used}', String(r.used))
+    .replace('{limit}', String(r.limit))
+}
+
+/** « Médium · Les deux » — la combinaison telle qu'elle se lit dans les pills. */
+export function comboLabel(d: AnalyseDict, depth: PostGameDepth, mode: PostGameMode): string {
+  return `${d.postgame.depths[depth]} · ${d.postgame.modes[mode]}`
 }
 
 async function accessToken(): Promise<string | null> {
@@ -166,7 +216,7 @@ export async function analyzePostGame(
   depth: PostGameDepth = 'simple', mode: PostGameMode = 'perso',
 ): Promise<PostGameResult> {
   const token = await accessToken()
-  if (!token) return fail('Connecte-toi à ton compte Wyrm Forge pour utiliser l\'analyse IA.')
+  if (!token) return fail({ kind: 'signedOut' }, { depth, mode })
 
   let status = 0
   let body: unknown = null
@@ -179,47 +229,49 @@ export async function analyzePostGame(
     status = res.status
     body = await res.json().catch(() => null)
   } catch {
-    return fail('Erreur réseau — vérifie ta connexion internet.')
+    return fail({ kind: 'network' }, { depth, mode })
   }
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const b = body as any
+  // ⚠️ `b.error` est un message ÉCRIT PAR L'EDGE FUNCTION : on le transporte tel
+  // quel (`kind: 'server'`), il n'est pas traduisible côté client. Le repli, lui,
+  // est un code résolu depuis le dico.
+  const serverOr = (kind: 'badRequest' | 'matchNotFound' | 'unexpected'): PostGameError =>
+    typeof b?.error === 'string' && b.error.trim() ? { kind: 'server', text: b.error } : { kind }
+
   switch (status) {
-    case 401: return fail('Connecte-toi à ton compte Wyrm Forge pour utiliser l\'analyse IA.')
+    case 401: return fail({ kind: 'signedOut' }, { depth, mode })
     // Partie sans adversaire de voie identifiable (ARAM, Arena, ou Faille où
     // Riot n'a pas inféré les rôles). État NOMINAL de la donnée, pas une panne :
     // message explicatif, et le composant rebascule sur le mode « Moi ».
     case 400:
       if (b?.code === 'opponent_unavailable') {
-        return fail(
-          'Cette partie ne permet pas d\'identifier ton adversaire de voie (ARAM, Arena, ou rôles non détectés). Les modes « Adversaire » et « Les deux » ne sont pas disponibles ici.',
-          { opponentUnavailable: true },
-        )
+        return fail({ kind: 'opponentUnavailable' }, { opponentUnavailable: true, depth, mode })
       }
-      return fail(b?.error ?? 'Requête invalide.')
-    case 404: return fail(b?.error ?? 'Partie introuvable.')
+      return fail(serverOr('badRequest'), { depth, mode })
+    case 404: return fail(serverOr('matchNotFound'), { depth, mode })
     case 429: {
       const q = readPostGameQuota(b)
       const need = Number.isFinite(b?.cost) ? b.cost : costOfCombo(q, depth, mode)
-      const text = q.remaining > 0 && need > 0
-        ? `Il te reste ${q.remaining} braise${q.remaining > 1 ? 's' : ''}, il en faut ${need} pour cette analyse.`
-        : `Chaleur de la Forge épuisée pour cette semaine (${q.used}/${q.limit} braises).`
       return {
-        ...q, success: false, text, truncated: false, overQuota: true,
+        ...q, success: false, text: '', error: { kind: 'overQuota' }, needed: need,
+        truncated: false, overQuota: true,
         champion: '', win: null, opponent: null, opponentUnavailable: false,
         depth, mode,
       }
     }
-    case 502: return fail('Le service d\'analyse est momentanément indisponible. Réessaie dans un instant.')
-    case 503: return fail('Les données de la partie sont momentanément indisponibles. Réessaie dans un instant.')
+    case 502: return fail({ kind: 'service' }, { depth, mode })
+    case 503: return fail({ kind: 'riot' }, { depth, mode })
   }
-  if (status !== 200 || !b) return fail(b?.error ?? 'Erreur inattendue du service d\'analyse.')
+  if (status !== 200 || !b) return fail(serverOr('unexpected'), { depth, mode })
 
   const text = typeof b.analysis === 'string' ? b.analysis : ''
-  if (!text.trim()) return fail('Analyse vide renvoyée par le service.')
+  if (!text.trim()) return fail({ kind: 'empty' }, { depth, mode })
   return {
     ...readPostGameQuota(b),
-    success: true, text, truncated: b.truncated === true, overQuota: false,
+    success: true, text, error: null, needed: 0,
+    truncated: b.truncated === true, overQuota: false,
     champion: typeof b.champion === 'string' ? b.champion : '',
     win: typeof b.win === 'boolean' ? b.win : null,
     opponent: typeof b.opponent === 'string' ? b.opponent : null,

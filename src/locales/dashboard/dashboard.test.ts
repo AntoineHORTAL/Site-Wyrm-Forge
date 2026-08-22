@@ -8,6 +8,12 @@ import { NAV_TAB_IDS, subscriptionTierLabel } from './nav'
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({}) }))
 
 import { tabGroups, dashTabs } from '@/components/dashboard/Dashboard'
+import { RADAR_AXES } from '@/lib/matchup/stats-compare'
+import {
+  POSTGAME_DEPTHS, POSTGAME_MODES, comboKey, comboLabel, postGameErrorText,
+  type PostGameError, type PostGameResult,
+} from '@/lib/postgame/api'
+import { balanceLabel, needLabel } from './analyse'
 
 /**
  * Mêmes invariants que `landing.test.ts`, mais écrits de façon GÉNÉRIQUE : la suite
@@ -70,6 +76,9 @@ const INVARIANTS = new Set<string>([
   'Ward {type}', 'Ping {type}', 'Lane {lane}',
   // Numéro de patch : le mot « patch » est identique dans les deux langues.
   'patch {patch}',
+  // Lot 5 — sigles, unités et gabarits sans mot traduisible.
+  'VS', 'g', 'Simple', '—',
+  '{name} — {gold} g', '{count} item', '{champion} vs {opponent}',
   // Infobulle d'un item du Workshop : nom + quantité, aucun mot à traduire.
   '{name} (×{count})',
 ])
@@ -441,6 +450,142 @@ describe('écran verrouillé — phrase d\'incitation', () => {
   it('a un bouton non vide dans les deux langues', () => {
     expect(dashboardFr.nav.locked.cta.trim()).not.toBe('')
     expect(dashboardEn.nav.locked.cta.trim()).not.toBe('')
+  })
+})
+
+/**
+ * Lot 5 — les deux onglets d'analyse IA. Comme aux lots précédents, tout ce qui est
+ * listé côté code l'est par une CLÉ stable ; ici ces clés sont en plus des valeurs
+ * de contrat (clé de stat DDragon, `depth`/`mode` envoyés à l'Edge Function), donc
+ * l'appariement se vérifie contre les tables RÉELLES, importées et non recopiées.
+ */
+describe('dico analyse — libellés appariés aux tables de structure', () => {
+  it('a un libellé pour chaque axe du radar, et aucun orphelin', () => {
+    // `RADAR_AXES` ne porte plus de `label` depuis ce lot : si une clé n'était pas
+    // dans le dico, l'axe s'afficherait `undefined` sur le graphe.
+    expect(Object.keys(dashboardFr.analyse.radarAxes).sort())
+      .toEqual(RADAR_AXES.map(a => a.key).sort())
+  })
+
+  it('a un libellé pour chaque profondeur et chaque sujet de Post Game', () => {
+    expect(Object.keys(dashboardFr.analyse.postgame.depths).sort()).toEqual([...POSTGAME_DEPTHS].sort())
+    expect(Object.keys(dashboardFr.analyse.postgame.modes).sort()).toEqual([...POSTGAME_MODES].sort())
+  })
+
+  /**
+   * ⚠️ FRONTIÈRE MÉTIER : ces clés sont la valeur envoyée à l'EF ET la moitié de
+   * `comboKey`, qui indexe la grille de coûts renvoyée par le serveur. Traduire le
+   * libellé ne doit jamais les toucher — une clé traduite ferait lire un coût
+   * `undefined`, donc « gratuit », sur les 9 combinaisons.
+   */
+  it('les clés de combinaison restent les valeurs du contrat serveur', () => {
+    const clés = POSTGAME_DEPTHS.flatMap(d => POSTGAME_MODES.map(m => comboKey(d, m)))
+    expect(clés).toHaveLength(9)
+    expect(clés).toContain('simple_perso')
+    expect(clés).toContain('advanced_les_deux')
+    // Aucune clé ne doit contenir un libellé traduit.
+    clés.forEach(k => expect(k).toMatch(/^[a-z_]+$/))
+  })
+
+  it('compose un libellé de combinaison pour les 9 cas, dans les deux langues', () => {
+    POSTGAME_DEPTHS.forEach(d => POSTGAME_MODES.forEach(m => {
+      expect(comboLabel(dashboardFr.analyse, d, m)).not.toContain('undefined')
+      expect(comboLabel(dashboardEn.analyse, d, m)).not.toContain('undefined')
+    }))
+  })
+})
+
+/**
+ * Lot 5 — les deux couches réseau mémorisent un CODE d'erreur et non un message
+ * (patron acté au Lot 2 pour `StatsTab`). Le risque introduit est qu'un code
+ * n'ait pas d'entrée de dico : l'écran afficherait `undefined` à la place du
+ * message, sans que rien n'échoue à la compilation.
+ */
+describe('dico analyse — messages d\'erreur résolus depuis un code', () => {
+  const base: PostGameResult = {
+    success: false, text: '', error: null, needed: 0, truncated: false, overQuota: false,
+    champion: '', win: null, opponent: null, opponentUnavailable: false,
+    depth: 'simple', mode: 'perso',
+    used: 0, limit: 0, remaining: 0, model: '', resetsAt: null, costs: {},
+  }
+
+  /* Tous les `kind` que `analyzePostGame` peut produire, hors `server` (dont le
+     texte vient de l'Edge Function) et `overQuota` (composé, testé plus bas). */
+  const CODES = [
+    'signedOut', 'network', 'service', 'riot', 'unexpected', 'empty',
+    'badRequest', 'matchNotFound', 'opponentUnavailable',
+  ] as const
+
+  it.each(CODES)('résout le code « %s » dans les deux langues', kind => {
+    const r = { ...base, error: { kind } as PostGameError }
+    expect(postGameErrorText(dashboardFr.analyse, r)).toBe(dashboardFr.analyse.errors[kind])
+    expect(postGameErrorText(dashboardEn.analyse, r).trim()).not.toBe('')
+    expect(postGameErrorText(dashboardEn.analyse, r)).not.toContain('undefined')
+  })
+
+  it('affiche TEL QUEL le message écrit par l\'Edge Function', () => {
+    // Un message serveur n'est pas traduisible côté client : il ne doit surtout pas
+    // être remplacé par un libellé générique, ni disparaître.
+    const r = { ...base, error: { kind: 'server', text: 'Quota Riot dépassé.' } as PostGameError }
+    expect(postGameErrorText(dashboardFr.analyse, r)).toBe('Quota Riot dépassé.')
+    expect(postGameErrorText(dashboardEn.analyse, r)).toBe('Quota Riot dépassé.')
+  })
+
+  it('compose le message de solde insuffisant avec la combinaison demandée', () => {
+    const r: PostGameResult = {
+      ...base, error: { kind: 'overQuota' }, overQuota: true,
+      needed: 25, remaining: 8, used: 127, limit: 135,
+      depth: 'medium', mode: 'les_deux',
+    }
+    const fr = postGameErrorText(dashboardFr.analyse, r)
+    expect(fr).toContain('25')
+    expect(fr).toContain(comboLabel(dashboardFr.analyse, 'medium', 'les_deux'))
+    expect(postGameErrorText(dashboardEn.analyse, r)).toContain('Medium · Both')
+  })
+
+  it('retombe sur « épuisée » quand il ne reste plus rien', () => {
+    const r: PostGameResult = {
+      ...base, error: { kind: 'overQuota' }, overQuota: true,
+      needed: 6, remaining: 0, used: 135, limit: 135,
+    }
+    expect(postGameErrorText(dashboardFr.analyse, r)).toContain('135/135')
+    expect(postGameErrorText(dashboardEn.analyse, r)).toContain('135/135')
+  })
+
+  it('ne rend aucun message pour un résultat sans erreur', () => {
+    expect(postGameErrorText(dashboardFr.analyse, { ...base, success: true, text: 'ok' })).toBe('')
+  })
+})
+
+/**
+ * Lot 5 — le solde du pot « Chaleur de la Forge » est composé par deux helpers
+ * PARTAGÉS entre les deux onglets ET la couche réseau. Ils vivent dans le dico
+ * (même patron que `subscriptionTierLabel`) précisément pour que la phrase ne
+ * diverge pas selon l'endroit qui l'affiche.
+ */
+describe('libellés de solde — pluriel et interpolation', () => {
+  it('accorde le singulier et le pluriel dans les deux langues', () => {
+    expect(balanceLabel(dashboardFr.analyse, 1, 135)).toBe('1 braise sur 135')
+    expect(balanceLabel(dashboardFr.analyse, 20, 135)).toBe('20 braises sur 135')
+    expect(balanceLabel(dashboardEn.analyse, 1, 135)).toBe('1 ember out of 135')
+    expect(balanceLabel(dashboardEn.analyse, 20, 135)).toBe('20 embers out of 135')
+  })
+
+  it('ne laisse aucun marqueur non substitué', () => {
+    const tousLesCas = [
+      balanceLabel(dashboardFr.analyse, 1, 135),
+      balanceLabel(dashboardEn.analyse, 20, 135),
+      needLabel(dashboardFr.analyse, 1, 17, dashboardFr.analyse.matchup.actionQuick),
+      needLabel(dashboardEn.analyse, 20, 33, dashboardEn.analyse.matchup.actionDetailed),
+    ]
+    tousLesCas.forEach(t => expect(t).not.toMatch(/\{[a-z]+\}/i))
+  })
+
+  it('nomme l\'action dans le message de solde insuffisant', () => {
+    // Sans `{action}`, la phrase dirait « il en faut 33 » sans dire pour quoi —
+    // c'est précisément ce que le pot fongible rend ambigu.
+    expect(needLabel(dashboardFr.analyse, 20, 33, dashboardFr.analyse.matchup.actionDetailed))
+      .toContain('une analyse détaillée')
   })
 })
 

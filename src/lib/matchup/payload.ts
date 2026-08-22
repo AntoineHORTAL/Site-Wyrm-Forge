@@ -13,6 +13,9 @@
 import { statAtLevel } from '../champion-stats'
 import { normalizeRole } from './types'
 import type { MatchUpScenario, MatchUpChampion, BuildRef, MatchUpRole } from './types'
+// Import RELATIF (pas l'alias `@/`) : ce module est testé sans configuration
+// d'alias vitest, et le dico est un module de données pur, sans dépendance.
+import { needLabel, type AnalyseDict } from '../../locales/dashboard/analyse'
 
 export interface ApiChampStat { label: string; value: string }
 export interface ApiChamp {
@@ -64,12 +67,41 @@ export function canAfford(q: QuotaState | null, advanced: boolean): boolean {
   return q.remaining >= (advanced ? q.costs.detailed : q.costs.quick)
 }
 
+/**
+ * Cause d'échec, mémorisée en CODE et jamais en message.
+ *
+ * Le message correspondant est résolu AU RENDU (`analysisErrorText`) : figé ici, il
+ * resterait dans la langue de l'appel si l'utilisateur bascule FR/EN pendant que
+ * l'erreur est affichée. Même traitement qu'au Lot 2 pour `StatsTab`.
+ *
+ * Les clés sont celles de `analyse.errors` : en ajouter une ici sans l'ajouter au
+ * dico ne compile pas.
+ */
+export type AnalysisErrorCode =
+  Extract<keyof AnalyseDict['errors'], 'signedOut' | 'network' | 'service' | 'unexpected' | 'empty'>
+  | 'overQuota'
+
 // Résultat d'analyse — miroir de MatchUpAnalysisResult (C#).
 export interface MatchUpAnalysisResult extends QuotaState {
-  success: boolean       // true = text est l'analyse ; false = message d'erreur FR
+  success: boolean       // true = `text` porte l'analyse
+  /** Texte de l'analyse (serveur, non traduisible). Vide sur échec. */
   text: string
+  /** Cause d'échec, null en cas de succès — voir `analysisErrorText`. */
+  error: AnalysisErrorCode | null
+  /** Type d'analyse demandée : le message « pas assez de braises » en dépend. */
+  advanced: boolean
   truncated: boolean     // stop_reason = max_tokens
   overQuota: boolean     // plafond hebdo atteint (HTTP 429)
+}
+
+/**
+ * Message affiché pour un résultat en échec. PUR : le dico entre en paramètre, rien
+ * n'est lu d'un contexte React ici (la couche réseau reste testable sans rendu).
+ */
+export function analysisErrorText(d: AnalyseDict, r: MatchUpAnalysisResult): string {
+  if (!r.error) return ''
+  if (r.error === 'overQuota') return overQuotaMessage(d, r, r.advanced)
+  return d.errors[r.error]
 }
 
 // ── Résolution des noms d'items d'un build ────────────────────────────────────
@@ -150,16 +182,22 @@ export function formatResetFr(iso: string | null): string {
   return `${date} à ${hh}h${mm}`
 }
 
-// Message FR du solde insuffisant (429) — miroir de ClaudeService.
+// Message du solde insuffisant (429) — miroir de ClaudeService.
 // Distingue « plus rien du tout » de « pas assez pour CETTE analyse », que le
 // pot fongible rend possible : il peut rester des braises suffisantes pour une
 // rapide mais pas pour une détaillée.
-export function overQuotaMessage(q: QuotaState, advanced?: boolean): string {
-  const suffix = q.resetsAt ? ` Réinitialisation le ${formatResetFr(q.resetsAt)}.` : ''
+export function overQuotaMessage(d: AnalyseDict, q: QuotaState, advanced?: boolean): string {
+  // ⚠️ `formatResetFr` reste en `fr-FR` : c'est une locale de DONNÉE (Lot 8). Seule
+  // la phrase qui l'entoure vient du dico, la date arrive par `{date}`.
+  const suffix = q.resetsAt
+    ? ' ' + d.quota.resetSentence.replace('{date}', formatResetFr(q.resetsAt))
+    : ''
   if (advanced !== undefined && q.remaining > 0) {
     const need = advanced ? q.costs.detailed : q.costs.quick
-    const kind = advanced ? 'détaillée' : 'rapide'
-    return `Il te reste ${q.remaining} braises, il en faut ${need} pour une analyse ${kind}.${suffix}`
+    const action = advanced ? d.matchup.actionDetailed : d.matchup.actionQuick
+    return needLabel(d, q.remaining, need, action) + suffix
   }
-  return `Chaleur de la Forge épuisée pour cette semaine (${q.used}/${q.limit} braises).${suffix}`
+  return d.quota.exhaustedWithCount
+    .replace('{used}', String(q.used))
+    .replace('{limit}', String(q.limit)) + suffix
 }

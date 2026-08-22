@@ -10,27 +10,29 @@
 //   → 401 (JWT) · 502 (Anthropic KO) · 500
 //   GET → { used, limit, remaining, model, resets_at }  (ne consomme rien)
 //
-// La clé Anthropic reste CÔTÉ SERVEUR. Le mapping de messages FR est identique à
-// ClaudeService (statut 0/401/429/502/autre/vide). La logique pure (payload,
-// formats) vit dans matchup/payload.ts (testée).
+// La clé Anthropic reste CÔTÉ SERVEUR. Le découpage des cas est identique à
+// ClaudeService (statut 0/401/429/502/autre/vide), mais ce module mémorise un CODE
+// d'erreur et NON un message : le texte est résolu au rendu (`analysisErrorText`),
+// sinon il resterait dans la langue de l'appel après une bascule FR/EN.
+// La logique pure (payload, formats, messages) vit dans matchup/payload.ts (testée).
 
 import { createClient } from '@/lib/supabase/client'
 import {
-  buildScenarioPayload, readQuota, overQuotaMessage,
-  type BuildNameContext, type MatchUpAnalysisResult, type QuotaState,
+  buildScenarioPayload, readQuota,
+  type BuildNameContext, type MatchUpAnalysisResult, type AnalysisErrorCode, type QuotaState,
 } from './payload'
 import type { MatchUpScenario } from './types'
 
-export type { BuildNameContext, MatchUpAnalysisResult, QuotaState, AnalysisCosts, ApiScenario } from './payload'
-export { buildScenarioPayload, formatResetFr, canAfford } from './payload'
+export type { BuildNameContext, MatchUpAnalysisResult, AnalysisErrorCode, QuotaState, AnalysisCosts, ApiScenario } from './payload'
+export { buildScenarioPayload, formatResetFr, canAfford, analysisErrorText } from './payload'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const FN = 'matchup-analyze'
 
-function fail(message: string): MatchUpAnalysisResult {
+function fail(error: AnalysisErrorCode, advanced: boolean): MatchUpAnalysisResult {
   return {
-    success: false, text: message, truncated: false, overQuota: false,
+    success: false, text: '', error, advanced, truncated: false, overQuota: false,
     used: 0, limit: 0, remaining: 0, model: '', resetsAt: null,
     // Coûts à 0 : sur un échec, l'état de quota est inconnu. `canAfford` renvoie
     // alors true et laisse l'utilisateur retenter — c'est le serveur qui tranche.
@@ -51,7 +53,7 @@ export async function analyzeMatchup(
   ctx: BuildNameContext,
 ): Promise<MatchUpAnalysisResult> {
   const token = await accessToken()
-  if (!token) return fail('Connecte-toi à ton compte Wyrm Forge pour utiliser l\'analyse IA.')
+  if (!token) return fail('signedOut', advanced)
 
   const payload = { advanced, scenario: buildScenarioPayload(scenario, ctx) }
 
@@ -66,29 +68,30 @@ export async function analyzeMatchup(
     status = res.status
     body = await res.json().catch(() => null)
   } catch {
-    return fail('Erreur réseau — vérifie ta connexion internet.')   // statut 0
+    return fail('network', advanced)   // statut 0
   }
 
   switch (status) {
-    case 401: return fail('Connecte-toi à ton compte Wyrm Forge pour utiliser l\'analyse IA.')
+    case 401: return fail('signedOut', advanced)
     case 429: {
       const q = readQuota(body)
-      // `advanced` transmis : le message distingue « plus de braises du tout »
-      // de « pas assez pour CETTE analyse » (pot fongible, coûts différenciés).
-      return { ...q, success: false, truncated: false, overQuota: true, text: overQuotaMessage(q, advanced) }
+      // `advanced` conservé sur le résultat : le message distingue « plus de braises
+      // du tout » de « pas assez pour CETTE analyse » (pot fongible, coûts
+      // différenciés), et il est composé au rendu, pas ici.
+      return { ...q, success: false, text: '', error: 'overQuota', advanced, truncated: false, overQuota: true }
     }
-    case 502: return fail('Le service d\'analyse est momentanément indisponible. Réessaie dans un instant.')
+    case 502: return fail('service', advanced)
   }
 
-  if (status !== 200 || !body) return fail('Erreur inattendue du service d\'analyse.')
+  if (status !== 200 || !body) return fail('unexpected', advanced)
 
   const q = readQuota(body)
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const text = typeof (body as any).analysis === 'string' ? (body as any).analysis : ''
   const truncated = (body as any).truncated === true
   /* eslint-enable @typescript-eslint/no-explicit-any */
-  if (!text.trim()) return fail('Analyse vide renvoyée par le service.')
-  return { ...q, success: true, truncated, overQuota: false, text }
+  if (!text.trim()) return fail('empty', advanced)
+  return { ...q, success: true, text, error: null, advanced, truncated, overQuota: false }
 }
 
 // ── Lecture du quota (GET, ne consomme rien) ──────────────────────────────────

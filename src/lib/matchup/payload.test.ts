@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildScenarioPayload, buildItemNames, formatResetFr, overQuotaMessage, readQuota, canAfford,
-  type BuildNameContext, type QuotaState,
+  analysisErrorText,
+  type BuildNameContext, type QuotaState, type MatchUpAnalysisResult,
 } from './payload'
+// Import RELATIF : ce fichier tourne sans configuration d'alias vitest.
+import { analyseFr, analyseEn } from '../../locales/dashboard/analyse'
 import { createScenario, setChampion, setLevel, setBuild, setRole, type BuildRef } from './types'
 
 const CTX: BuildNameContext = {
@@ -159,17 +162,70 @@ describe('formatResetFr / overQuotaMessage', () => {
     expect(formatResetFr(null)).toBe('')
     expect(formatResetFr('pas une date')).toBe('')
   })
+  // ⚠️ La date de réinitialisation reste en `fr-FR` dans les DEUX langues : c'est
+  // une locale de DONNÉE, traitée au Lot 8. Seule la phrase autour est traduite.
   it('produit une date FR avec heure au format HHhMM', () => {
     expect(formatResetFr('2026-07-27T00:00:00.000Z')).toMatch(/ à \d{2}h\d{2}$/)
   })
   it('solde à zéro → message « épuisée » avec used/limit', () => {
-    expect(overQuotaMessage({ ...base, used: 135, limit: 135, remaining: 0 }))
+    expect(overQuotaMessage(analyseFr, { ...base, used: 135, limit: 135, remaining: 0 }))
       .toBe('Chaleur de la Forge épuisée pour cette semaine (135/135 braises).')
+    expect(overQuotaMessage(analyseEn, { ...base, used: 135, limit: 135, remaining: 0 }))
+      .toBe('Forge Heat used up for this week (135/135 embers).')
   })
   // Distinction impossible dans l'ancien modèle « N analyses ».
   it('solde restant mais insuffisant → message ciblé sur l\'action', () => {
-    expect(overQuotaMessage({ ...base, used: 115, limit: 135, remaining: 20 }, true))
+    expect(overQuotaMessage(analyseFr, { ...base, used: 115, limit: 135, remaining: 20 }, true))
       .toBe('Il te reste 20 braises, il en faut 33 pour une analyse détaillée.')
+    expect(overQuotaMessage(analyseEn, { ...base, used: 115, limit: 135, remaining: 20 }, true))
+      .toBe('You have 20 embers left, 33 are needed for a detailed analysis.')
+  })
+  // Le singulier a son propre gabarit : « 1 braises » serait fautif.
+  it('accorde le singulier à une seule braise restante', () => {
+    expect(overQuotaMessage(analyseFr, { ...base, used: 134, limit: 135, remaining: 1 }, false))
+      .toBe('Il te reste 1 braise, il en faut 17 pour une analyse rapide.')
+  })
+})
+
+/**
+ * Lot 5 — la couche réseau mémorise un CODE, le message est composé AU RENDU.
+ * Ces tests verrouillent le second bout : `analysisErrorText` indexe le dico
+ * dynamiquement, donc un code sans entrée afficherait `undefined` sans que la
+ * compilation s'en aperçoive.
+ */
+describe('analysisErrorText — code → message, dans les deux langues', () => {
+  const base: MatchUpAnalysisResult = {
+    success: false, text: '', error: null, advanced: false, truncated: false, overQuota: false,
+    used: 0, limit: 0, remaining: 0, model: '', resetsAt: null, costs: { quick: 0, detailed: 0 },
+  }
+
+  it('un succès n\'a pas de message d\'erreur', () => {
+    expect(analysisErrorText(analyseFr, { ...base, success: true, text: 'analyse' })).toBe('')
+  })
+
+  it.each(['signedOut', 'network', 'service', 'unexpected', 'empty'] as const)(
+    'résout le code « %s » dans les deux langues', code => {
+      expect(analysisErrorText(analyseFr, { ...base, error: code })).toBe(analyseFr.errors[code])
+      expect(analysisErrorText(analyseEn, { ...base, error: code })).toBe(analyseEn.errors[code])
+      expect(analysisErrorText(analyseEn, { ...base, error: code }).trim()).not.toBe('')
+    },
+  )
+
+  it('le code `overQuota` compose le message de solde, pas une entrée fixe', () => {
+    const r: MatchUpAnalysisResult = {
+      ...base, error: 'overQuota', overQuota: true, advanced: true,
+      used: 115, limit: 135, remaining: 20, costs: { quick: 17, detailed: 33 },
+    }
+    expect(analysisErrorText(analyseFr, r)).toContain('33')
+    expect(analysisErrorText(analyseFr, r)).toContain('une analyse détaillée')
+    expect(analysisErrorText(analyseEn, r)).toContain('a detailed analysis')
+  })
+
+  // C'est la raison d'être du code : le même résultat, relu après une bascule de
+  // langue, doit changer de langue. Un message figé à l'appel ne le pourrait pas.
+  it('le même résultat rend un message différent selon la langue', () => {
+    const r = { ...base, error: 'network' as const }
+    expect(analysisErrorText(analyseFr, r)).not.toBe(analysisErrorText(analyseEn, r))
   })
 })
 

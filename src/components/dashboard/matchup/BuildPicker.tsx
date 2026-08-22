@@ -3,6 +3,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import { itemImgUrl, type DDItemFull } from '@/lib/matchup/ddragon'
 import type { BuildRef, MatchUpBuildItem } from '@/lib/matchup/types'
+import type { AnalyseDict } from '@/locales/dashboard/analyse'
+
+// Libellés injectés par le parent plutôt que lus d'un hook : ce composant est une
+// pure vue d'overlay, il n'a pas d'autre raison de dépendre du contexte de langue.
+type PickerLabels = AnalyseDict['matchup']['picker']
 
 // ════════════════════════════════════════════════════════════════════════════
 //  BuildPicker — attribution d'un build à un slot (Lot 2.3)
@@ -31,12 +36,13 @@ function norm(s: string): string {
 }
 
 export default function BuildPicker({
-  items, version, savedBuilds, initial, onApply, onClose, c,
+  items, version, savedBuilds, initial, labels, onApply, onClose, c,
 }: {
   items: DDItemFull[]
   version: string
   savedBuilds: SavedBuildDisplay[]
   initial: BuildRef
+  labels: PickerLabels
   onApply: (build: BuildRef) => void
   onClose: () => void
   c: boolean
@@ -87,6 +93,9 @@ export default function BuildPicker({
 
   function applyTemp() {
     if (tempItems.length === 0) { onApply({ kind: 'none' }); return }
+    // ⚠️ `name` n'est JAMAIS affiché : le slot montre `matchup.buildTemp`, et
+    // `buildItemNames` ne lit que `items`. C'est une étiquette interne du snapshot
+    // persisté en localStorage — elle ne passe donc pas par le dico.
     onApply({ kind: 'temp', blocks: [{ id: uid(), name: 'Build', items: tempItems }] })
   }
 
@@ -117,15 +126,15 @@ export default function BuildPicker({
         {/* Header + onglets */}
         <div style={{ padding: 14, borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setMode('saved')} style={tabStyle(mode === 'saved')}>Sauvegardés</button>
-            <button onClick={() => setMode('temp')} style={tabStyle(mode === 'temp')}>Temporaire</button>
+            <button onClick={() => setMode('saved')} style={tabStyle(mode === 'saved')}>{labels.tabSaved}</button>
+            <button onClick={() => setMode('temp')} style={tabStyle(mode === 'temp')}>{labels.tabTemp}</button>
           </div>
           <div style={{ flex: 1 }} />
           <button
             onClick={() => onApply({ kind: 'none' })}
             style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', color: 'var(--text-muted)', background: 'transparent', border: `1px solid ${border}` }}
           >
-            Aucun build
+            {labels.none}
           </button>
         </div>
 
@@ -134,7 +143,7 @@ export default function BuildPicker({
           <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {savedBuilds.length === 0 && (
               <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
-                Aucun build sauvegardé. Crée-en un dans l&apos;onglet « Builds Items », ou compose un build temporaire.
+                {labels.emptySaved}
               </p>
             )}
             {savedBuilds.map(b => {
@@ -154,7 +163,8 @@ export default function BuildPicker({
                       {b.name}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {b.champName ?? 'Champion libre'} · {b.totalGold.toLocaleString('fr-FR')} g
+                      {/* ⚠️ `toLocaleString('fr-FR')` : locale de DONNÉE (Lot 8). */}
+                      {b.champName ?? labels.freeChampion} · {b.totalGold.toLocaleString('fr-FR')} g
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
@@ -189,7 +199,7 @@ export default function BuildPicker({
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Rechercher un item…"
+                placeholder={labels.searchItem}
                 style={{
                   width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 14,
                   color: 'var(--text)', background: c ? 'rgba(255,255,255,0.04)' : '#18181B',
@@ -204,7 +214,7 @@ export default function BuildPicker({
                 <button
                   key={it.id}
                   onClick={() => addTemp(it)}
-                  title={`${it.name} — ${it.gold} g`}
+                  title={labels.itemTitle.replace('{name}', it.name).replace('{gold}', String(it.gold))}
                   style={{ padding: 3, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid transparent' }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = accent }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent' }}
@@ -218,14 +228,15 @@ export default function BuildPicker({
             {/* Pied : total + appliquer */}
             <div style={{ padding: 12, borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {tempItems.length} item{tempItems.length !== 1 ? 's' : ''} · {tempGold.toLocaleString('fr-FR')} g
+                {(tempItems.length === 1 ? labels.countOne : labels.countOther)
+                  .replace('{count}', String(tempItems.length))} · {tempGold.toLocaleString('fr-FR')} g
               </span>
               <div style={{ flex: 1 }} />
               <button
                 onClick={applyTemp}
                 style={{ padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#fff', background: accent, border: `1px solid ${accent}` }}
               >
-                Appliquer
+                {labels.apply}
               </button>
             </div>
           </div>

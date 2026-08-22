@@ -16,32 +16,33 @@ import { statAtLevel } from '../champion-stats'
 import { resolveBuildStats, type SavedBuildLite, type ItemStatsIndex } from './build-resolve'
 import type { MatchUpChampion } from './types'
 
-// Un axe du radar : clé DDragon de base, libellé court, clé item à sommer (ou null).
+// Un axe du radar : clé DDragon de base + clé item à sommer (ou null).
+// ⚠️ Plus de `label` ici : le libellé affiché vit dans le dico
+// (`analyse.radarAxes`), indexé par CETTE clé. `stats-compare` reste un module de
+// calcul pur, sans texte d'interface.
 export interface RadarAxisDef {
   key: string
-  label: string
   itemKey: string | null
 }
 
 // 11 axes — miroir exact de statLabels/statItemKeys du WPF.
 export const RADAR_AXES: RadarAxisDef[] = [
-  { key: 'hp',           label: 'PV',         itemKey: 'FlatHPPoolMod' },
-  { key: 'hpregen',      label: 'Régén PV',   itemKey: 'FlatHPRegenMod' },
-  { key: 'mp',           label: 'Mana',       itemKey: 'FlatMPPoolMod' },
-  { key: 'mpregen',      label: 'Régén mana', itemKey: 'FlatMPRegenMod' },
-  { key: 'armor',        label: 'Armure',     itemKey: 'FlatArmorMod' },
-  { key: 'spellblock',   label: 'Rés. mag.',  itemKey: 'FlatSpellBlockMod' },
-  { key: 'attackdamage', label: 'AD',         itemKey: 'FlatPhysicalDamageMod' },
-  { key: 'attackspeed',  label: 'Vit. att.',  itemKey: 'PercentAttackSpeedMod' },
-  { key: 'attackrange',  label: 'Portée',     itemKey: null },
-  { key: 'movespeed',    label: 'Vit. dépl.', itemKey: 'FlatMovementSpeedMod' },
-  { key: 'crit',         label: 'Crit',       itemKey: 'FlatCritChanceMod' },
+  { key: 'hp',           itemKey: 'FlatHPPoolMod' },
+  { key: 'hpregen',      itemKey: 'FlatHPRegenMod' },
+  { key: 'mp',           itemKey: 'FlatMPPoolMod' },
+  { key: 'mpregen',      itemKey: 'FlatMPRegenMod' },
+  { key: 'armor',        itemKey: 'FlatArmorMod' },
+  { key: 'spellblock',   itemKey: 'FlatSpellBlockMod' },
+  { key: 'attackdamage', itemKey: 'FlatPhysicalDamageMod' },
+  { key: 'attackspeed',  itemKey: 'PercentAttackSpeedMod' },
+  { key: 'attackrange',  itemKey: null },
+  { key: 'movespeed',    itemKey: 'FlatMovementSpeedMod' },
+  { key: 'crit',         itemKey: 'FlatCritChanceMod' },
 ]
 
 // Valeur d'un axe : totaux bruts des deux camps (avant normalisation d'affichage).
 export interface RadarAxisValue {
   key: string
-  label: string
   ally: number
   enemy: number
 }
@@ -80,7 +81,7 @@ export function computeRadar(
 ): RadarAxisValue[] {
   const a = teamTotals(allies, savedById, itemStats)
   const e = teamTotals(enemies, savedById, itemStats)
-  return RADAR_AXES.map(ax => ({ key: ax.key, label: ax.label, ally: a[ax.key], enemy: e[ax.key] }))
+  return RADAR_AXES.map(ax => ({ key: ax.key, ally: a[ax.key], enemy: e[ax.key] }))
 }
 
 // Normalisation PAR AXE (unités hétérogènes : PV ~2000 vs crit ~0.2) : le camp le

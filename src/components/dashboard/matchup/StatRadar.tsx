@@ -1,6 +1,7 @@
 'use client'
 
 import { normalizeAxis, type RadarAxisValue } from '@/lib/matchup/stats-compare'
+import type { AnalyseDict } from '@/locales/dashboard/analyse'
 
 // ════════════════════════════════════════════════════════════════════════════
 //  StatRadar — radar de comparaison Alliés vs Ennemis (Lot 2.4)
@@ -25,7 +26,13 @@ function polar(angleDeg: number, v: number): [number, number] {
   return [CX + R * v * Math.cos(a), CY + R * v * Math.sin(a)]
 }
 
-export default function StatRadar({ axes, c }: { axes: RadarAxisValue[]; c: boolean }) {
+export default function StatRadar({ axes, c, labels, alt }: {
+  axes: RadarAxisValue[]
+  c: boolean
+  /* Libellés d'axes indexés par la clé de stat DDragon portée par `RadarAxisValue`. */
+  labels: AnalyseDict['radarAxes']
+  alt: string
+}) {
   const n = axes.length
   const step = 360 / n
   const angleOf = (i: number) => -90 + i * step
@@ -40,7 +47,7 @@ export default function StatRadar({ axes, c }: { axes: RadarAxisValue[]; c: bool
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ width: '100%', maxWidth: 420, height: 'auto' }} role="img" aria-label="Radar de comparaison des stats alliés contre ennemis">
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ width: '100%', maxWidth: 420, height: 'auto' }} role="img" aria-label={alt}>
         {/* Anneaux de grille */}
         {RINGS.map((ring, ri) => (
           <polygon
@@ -64,7 +71,7 @@ export default function StatRadar({ axes, c }: { axes: RadarAxisValue[]; c: bool
                 x={lx} y={ly}
                 fill={labelColor} fontSize={11} textAnchor={anchor} dominantBaseline="middle"
               >
-                {ax.label}
+                {labels[ax.key as keyof typeof labels]}
               </text>
             </g>
           )
