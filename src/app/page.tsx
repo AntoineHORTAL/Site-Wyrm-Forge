@@ -18,7 +18,7 @@ import type { User } from '@supabase/supabase-js'
 export type DashTab =
   | 'accueil'
   | 'todo' | 'stats'
-  | 'overlay' | 'jungle' | 'builds' | 'scenarios'
+  | 'jungle' | 'builds' | 'scenarios'
   | 'workshop-builds' | 'workshop-jungle'
   | 'matchup' | 'postgame'
   | 'tournois'

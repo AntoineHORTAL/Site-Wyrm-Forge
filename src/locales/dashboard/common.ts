@@ -14,7 +14,7 @@ export const commonFr = {
   loading: 'Chargement…',
   delete: 'Supprimer',
   cancel: 'Annuler',
-  /* Résultat d'une partie — affiché par Accueil, Stats et Historique. */
+  /* Résultat d'une partie — affiché par Accueil et Stats. */
   win: 'Victoire',
   loss: 'Défaite',
   /* Initiales du même résultat, pour les cases compactes de la timeline Stats. */

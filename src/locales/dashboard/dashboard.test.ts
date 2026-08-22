@@ -39,7 +39,7 @@ const INVARIANTS = new Set<string>([
   'To-Do Lists', 'To-Do', 'Stats', 'Patch Notes', 'Champions',
   'Jungle Path', 'Jungle', 'Builder',
   'Workshop Builds', 'W. Builds', 'Workshop Jungle', 'W. Jungle',
-  'Match Up', 'Post Game', 'Overlay Workshop',
+  'Match Up', 'Post Game',
   // Lot 2 — sigles d'esport, unités et formats de fichier.
   'Description', 'Champion', 'KDA', 'CS/min', 'CS / min', 'Image (PNG)', 'PDF',
 ])

@@ -1,10 +1,9 @@
 /**
- * Onglets « légers » du dashboard : Accueil, To-Do Lists, Stats, Overlay,
- * Historique, Patch Notes.
+ * Onglets « légers » du dashboard : Accueil, To-Do Lists, Stats, Patch Notes.
  *
- * Regroupés parce qu'ils portent peu de texte chacun (4 à 21 chaînes) et qu'un
- * module par onglet donnerait une dizaine de fichiers de trois lignes. Un
- * sous-espace par onglet à l'intérieur : `d.accueil.todo.newList`.
+ * Regroupés parce qu'ils portent peu de texte chacun (9 à 21 chaînes) et qu'un
+ * module par onglet donnerait quatre fichiers de trois lignes. Un sous-espace par
+ * onglet à l'intérieur : `d.accueil.todo.newList`.
  *
  * ⚠️ Restent VOLONTAIREMENT en dur dans les composants, parce qu'ils s'écrivent à
  * l'identique dans les deux langues : les unités et sigles d'esport (CS, KDA, KP,
@@ -110,21 +109,6 @@ export const accueilFr = {
     noRiotCta: 'Aller à mon profil',
   },
 
-  /* ── OverlayTab ── ⚠️ écran actuellement INATTEIGNABLE (voir dashboard.test.ts). */
-  overlay: {
-    intro: 'Importe un overlay de la communauté ou crée le tien depuis zéro.',
-    by: 'par {author}',
-    uses: '{count} utilisations',
-  },
-
-  /* ── HistoriqueTab ── ⚠️ écran actuellement INATTEIGNABLE (voir dashboard.test.ts). */
-  historique: {
-    statGames: 'Parties jouées',
-    statWinrate: 'Winrate',
-    statKda: 'KDA moyen',
-    statCsPerMin: 'CS/min',
-  },
-
   /* ── PatchNotesTab ── */
   patchnotes: {
     loading: 'Chargement des patch notes…',
@@ -227,19 +211,6 @@ export const accueilEn: AccueilDict = {
     noRiotTitle: 'No Riot account linked',
     noRiotText: 'Link your Riot ID (GameName#TAG) from the Home tab or your profile page to see your stats.',
     noRiotCta: 'Go to my profile',
-  },
-
-  overlay: {
-    intro: 'Import a community overlay or build your own from scratch.',
-    by: 'by {author}',
-    uses: '{count} uses',
-  },
-
-  historique: {
-    statGames: 'Games played',
-    statWinrate: 'Win rate',
-    statKda: 'Average KDA',
-    statCsPerMin: 'CS/min',
   },
 
   patchnotes: {
