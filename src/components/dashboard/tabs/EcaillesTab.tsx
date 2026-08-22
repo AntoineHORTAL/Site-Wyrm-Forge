@@ -7,14 +7,18 @@ import BalanceHistory from '@/components/ecailles/BalanceHistory'
 import QuestsPanel from '@/components/ecailles/QuestsPanel'
 import ShopPanel from '@/components/ecailles/ShopPanel'
 import EquipmentPanel from '@/components/ecailles/EquipmentPanel'
+import { useDashboard } from '@/locales/dashboard'
+import type { EcaillesDict } from '@/locales/dashboard/ecailles'
 
 type SubView = 'balance' | 'quetes' | 'boutique' | 'equipement'
 
-const VIEWS: { id: SubView; label: string }[] = [
-  { id: 'balance',    label: 'Solde & Historique' },
-  { id: 'quetes',     label: 'Quêtes'             },
-  { id: 'boutique',   label: 'Boutique'            },
-  { id: 'equipement', label: 'Mon Équipement'      },
+/* Les `id` sont structurels (état local, jamais traduits) ; le libellé est résolu
+   dans la langue courante au moment du rendu. */
+const VIEWS: { id: SubView; label: (e: EcaillesDict) => string }[] = [
+  { id: 'balance',    label: e => e.viewBalance   },
+  { id: 'quetes',     label: e => e.viewQuests    },
+  { id: 'boutique',   label: e => e.viewShop      },
+  { id: 'equipement', label: e => e.viewEquipment },
 ]
 
 interface Props {
@@ -30,6 +34,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
 
   // forgeRequest > 0 = navigation via le bouton "+" → atterrir sur Quêtes
   const [view, setView] = useState<SubView>(forgeRequest > 0 ? 'quetes' : 'balance')
@@ -61,7 +66,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (flagsLoading) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>Chargement…</div>
+    return <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>{d.common.loading}</div>
   }
 
   // Écran "bientôt" pour les non-admins quand la feature est désactivée
@@ -73,10 +78,10 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
       }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>🔥</div>
         <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>
-          La Forge arrive bientôt
+          {d.ecailles.soonTitle}
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '0 auto', maxWidth: 380 }}>
-          Le système d'Écailles, les quêtes journalières et la boutique de cosmétiques seront disponibles prochainement.
+          {d.ecailles.soonText}
         </p>
       </div>
     )
@@ -107,7 +112,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
               transition: 'all 0.15s',
             }}
           >
-            {v.label}
+            {v.label(d.ecailles)}
           </button>
         ))}
       </div>

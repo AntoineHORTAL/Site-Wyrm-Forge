@@ -1,7 +1,10 @@
 'use client'
 
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useDashboard } from '@/locales/dashboard'
 
+/* ⚠️ Données de MAQUETTE (titres et auteurs fictifs) : elles simulent du contenu
+   communautaire, elles ne sont donc pas traduites. */
 const overlays = [
   { title: 'Jungle Timer Pro', author: 'JungleKing', uses: '12.4k', rating: '4.9' },
   { title: 'Mid Lane Master', author: 'ProMid99', uses: '8.2k', rating: '4.7' },
@@ -14,11 +17,12 @@ const overlays = [
 export default function OverlayTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const ov = useDashboard().accueil.overlay
 
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24 }}>
-        Importe un overlay de la communauté ou crée le tien depuis zéro.
+        {ov.intro}
       </p>
       <div style={{
         display: 'grid',
@@ -36,10 +40,10 @@ export default function OverlayTab() {
               {o.title}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
-              par {o.author}
+              {ov.by.replace('{author}', o.author)}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-              <span>{o.uses} utilisations</span>
+              <span>{ov.uses.replace('{count}', o.uses)}</span>
               <span style={{ color: c ? '#BA7517' : '#EF9F27' }}>★ {o.rating}</span>
             </div>
           </div>

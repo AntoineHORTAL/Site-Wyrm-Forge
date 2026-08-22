@@ -6,6 +6,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { IconMaximize, IconX, IconDownload, IconPhoto, IconFileText } from '@tabler/icons-react'
 import PatchCard, { type PatchNote } from '@/components/patch-notes/PatchCard'
+import { useDashboard } from '@/locales/dashboard'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
 
@@ -19,6 +20,7 @@ export default function PatchNotesTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const pn = useDashboard().accueil.patchnotes
 
   const [patches, setPatches]               = useState<PatchNote[]>([])
   const [loading, setLoading]               = useState(true)
@@ -142,7 +144,7 @@ export default function PatchNotesTab() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Chargement des patch notes…</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>{pn.loading}</div>
       </div>
     )
   }
@@ -155,10 +157,10 @@ export default function PatchNotesTab() {
       }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>📜</div>
         <h3 style={{ color: '#F5F2FA', fontSize: 18, fontWeight: 600, margin: '0 0 8px' }}>
-          Aucun patch notes publié
+          {pn.emptyTitle}
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
-          Les résumés des prochaines mises à jour apparaîtront ici.
+          {pn.emptyText}
         </p>
       </div>
     )
@@ -202,7 +204,7 @@ export default function PatchNotesTab() {
                       {patch.title}
                     </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>
-                      Publié le {formatDate(patch.published_at)}
+                      {pn.publishedOn.replace('{date}', formatDate(patch.published_at))}
                     </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -214,7 +216,7 @@ export default function PatchNotesTab() {
                 {/* Bouton plein écran */}
                 <button
                   onClick={() => setFullscreenPatch(patch)}
-                  title="Plein écran"
+                  title={pn.fullscreen}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     width: 42, flexShrink: 0, background: 'transparent', border: 'none',
@@ -232,7 +234,7 @@ export default function PatchNotesTab() {
                       else exportBtnRefs.current.delete(patch.id)
                     }}
                     onClick={() => openExportMenu(patch.id)}
-                    title="Exporter"
+                    title={pn.export}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                       padding: '0 12px', flexShrink: 0,
@@ -242,7 +244,7 @@ export default function PatchNotesTab() {
                     }}
                   >
                     <IconDownload size={13} />
-                    <span>Exporter</span>
+                    <span>{pn.export}</span>
                   </button>
                 )}
               </div>
@@ -301,7 +303,7 @@ export default function PatchNotesTab() {
                 fontSize: 13, fontFamily: 'inherit', textAlign: 'left',
               }}
             >
-              <IconPhoto size={14} /> Image (PNG)
+              <IconPhoto size={14} /> {pn.exportPng}
             </button>
             <button
               onClick={() => { closeExportMenu(); exportPdf() }}
@@ -314,7 +316,7 @@ export default function PatchNotesTab() {
                 fontSize: 13, fontFamily: 'inherit', textAlign: 'left',
               }}
             >
-              <IconFileText size={14} /> PDF
+              <IconFileText size={14} /> {pn.exportPdf}
             </button>
           </div>
         </>,
@@ -328,7 +330,7 @@ export default function PatchNotesTab() {
             <button
               className="pn-modal-close"
               onClick={() => setFullscreenPatch(null)}
-              aria-label="Fermer"
+              aria-label={pn.close}
             >
               <IconX size={18} />
             </button>

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import RiotLinkBlock from '@/components/player/RiotLinkBlock'
+import { useDashboard } from '@/locales/dashboard'
+import type { AccueilDict } from '@/locales/dashboard/accueil'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
@@ -67,13 +69,13 @@ function sanitize(s: string): string {
   return s.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').trim()
 }
 
-function timeAgo(ts: number) {
+function timeAgo(ts: number, t: AccueilDict['accueil']) {
   const diff = Date.now() - ts
   const h = Math.floor(diff / 3_600_000)
-  if (h < 1) return 'il y a moins d\'1h'
-  if (h < 24) return `il y a ${h}h`
+  if (h < 1) return t.agoLessThanHour
+  if (h < 24) return t.agoHours.replace('{n}', String(h))
   const d = Math.floor(h / 24)
-  return `il y a ${d}j`
+  return t.agoDays.replace('{n}', String(d))
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -81,6 +83,8 @@ export default function AccueilTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const dico = useDashboard()
+  const tr = dico.accueil.accueil
 
   // Router (pour ouvrir une partie sur sa page dédiée)
   const router = useRouter()
@@ -278,7 +282,7 @@ export default function AccueilTab() {
     try {
       // Edge Function privée — on envoie le JWT du user pour que Supabase valide l'auth.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setMatchError('Connexion requise pour voir l\'historique.'); return }
+      if (!session) { setMatchError(tr.errorAuth); return }
 
       const res = await fetch(
         FN_URL('riot-matches', {
@@ -296,7 +300,7 @@ export default function AccueilTab() {
         },
       )
       const data = await res.json()
-      if (!res.ok) { setMatchError(data.error ?? 'Erreur Riot API'); return }
+      if (!res.ok) { setMatchError(data.error ?? tr.errorRiot); return }
       const newMatches: MatchInfo[] = data.matches ?? []
 
       if (append) {
@@ -326,7 +330,7 @@ export default function AccueilTab() {
       if (data.puuid) setViewedPuuid(data.puuid)
 
     } catch {
-      setMatchError('Impossible de joindre l\'API Riot.')
+      setMatchError(tr.errorUnreachable)
     } finally {
       inFlightRef.current = false
       if (append) setLoadingMore(false); else setLoadingMatches(false)
@@ -340,7 +344,7 @@ export default function AccueilTab() {
   function saveRiotId() {
     const raw = sanitize(riotInput)
     const match = raw.match(/^(.+)#(.+)$/)
-    if (!match) { setRiotError('Format invalide — utilise GameName#TAG'); return }
+    if (!match) { setRiotError(tr.errorFormat); return }
 
     const gameName = sanitize(match[1])
     const tagLine  = sanitize(match[2])
@@ -376,8 +380,8 @@ export default function AccueilTab() {
       <section>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA' }}>Rotation gratuite</div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>Champions disponibles cette semaine</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA' }}>{tr.rotationTitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>{tr.rotationSubtitle}</div>
           </div>
           {/* Sélecteur de serveur */}
           <select
@@ -396,11 +400,11 @@ export default function AccueilTab() {
 
         {loadingRot ? (
           <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-            Chargement de la rotation…
+            {tr.rotationLoading}
           </div>
         ) : rotation.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-dim)', fontSize: 13 }}>
-            Rotation indisponible — clé API non configurée ou expirée.
+            {tr.rotationUnavailable}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
@@ -446,7 +450,7 @@ export default function AccueilTab() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F2FA' }}>
-              Mes dernières parties{matches.length > 0 ? ` (${matches.length})` : ''}
+              {tr.matchesTitle}{matches.length > 0 ? ` (${matches.length})` : ''}
             </div>
             {savedRiot && !editMode && (
               <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
@@ -461,7 +465,7 @@ export default function AccueilTab() {
               padding: '5px 12px', borderRadius: 6, fontSize: 12,
               background: 'transparent', border: `1px solid ${border}`,
               color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit',
-            }}>Changer</button>
+            }}>{tr.change}</button>
           )}
         </div>
 
@@ -473,7 +477,7 @@ export default function AccueilTab() {
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Saisis ton Riot ID pour voir ton historique de parties.
+              {tr.riotPrompt}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
               <input
@@ -506,20 +510,20 @@ export default function AccueilTab() {
                 border: 'none', color: 'white', fontSize: 13, fontWeight: 600,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>
-                Valider
+                {tr.riotSubmit}
               </button>
               {editMode && (
                 <button onClick={() => { setEditMode(false); setRiotError('') }} style={{
                   padding: '9px 12px', borderRadius: 6, fontSize: 13,
                   background: 'transparent', border: `1px solid ${border}`,
                   color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit',
-                }}>Annuler</button>
+                }}>{dico.common.cancel}</button>
               )}
             </div>
             {riotError && <div style={{ fontSize: 12, color: '#E24B4A' }}>{riotError}</div>}
             {!userId && (
               <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                Connecte-toi pour que ton Riot ID soit sauvegardé.
+                {tr.riotNotLogged}
               </div>
             )}
           </div>
@@ -529,11 +533,11 @@ export default function AccueilTab() {
         {matches.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
             {[
-              { label: 'Parties', value: String(matches.length) },
-              { label: 'Victoires', value: `${wins}W ${losses}L`, color: wins > losses ? '#5DCAA5' : wins < losses ? '#E24B4A' : undefined },
-              { label: 'Winrate', value: `${winrate}%`, color: (winrate ?? 0) >= 50 ? '#5DCAA5' : '#E24B4A' },
-              { label: 'KDA moy.', value: avgKda ?? '-' },
-              { label: 'CS moy.', value: avgCs ? String(avgCs) : '-' },
+              { label: tr.kpiGames, value: String(matches.length) },
+              { label: tr.kpiWins, value: `${wins}W ${losses}L`, color: wins > losses ? '#5DCAA5' : wins < losses ? '#E24B4A' : undefined },
+              { label: tr.kpiWinrate, value: `${winrate}%`, color: (winrate ?? 0) >= 50 ? '#5DCAA5' : '#E24B4A' },
+              { label: tr.kpiKda, value: avgKda ?? '-' },
+              { label: tr.kpiCs, value: avgCs ? String(avgCs) : '-' },
             ].map((s, i) => (
               <div key={i} style={{
                 padding: '12px 16px', borderRadius: 8, background: bg, border: `1px solid ${border}`,
@@ -552,7 +556,7 @@ export default function AccueilTab() {
         {/* ── Loading / error ── */}
         {loadingMatches && (
           <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-            Chargement des parties…
+            {tr.listLoading}
           </div>
         )}
         {matchError && (
@@ -702,7 +706,7 @@ export default function AccueilTab() {
                       fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
                       color: winColor,
                     }}>
-                      {m.win ? 'Victoire' : 'Défaite'}
+                      {m.win ? dico.common.win : dico.common.loss}
                       {multiKill && (
                         <span style={{
                           marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9,
@@ -711,7 +715,7 @@ export default function AccueilTab() {
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                      {fmt(m.duration)} · {timeAgo(m.gameCreation)}
+                      {fmt(m.duration)} · {timeAgo(m.gameCreation, tr)}
                     </div>
                   </div>
                 </div>
@@ -725,7 +729,7 @@ export default function AccueilTab() {
           <div ref={sentinelRef} style={{ textAlign: 'center', marginTop: 12, minHeight: 40 }}>
             {loadingMore && (
               <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '10px 0' }}>
-                Chargement des parties suivantes…
+                {tr.listLoadingMore}
               </div>
             )}
             {!loadingMore && !reachedEnd && matches.length < MAX_TOTAL && (
@@ -740,17 +744,17 @@ export default function AccueilTab() {
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.2)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.08)' }}
               >
-                Charger {PAGE_SIZE} parties de plus
+                {tr.listLoadMore.replace('{count}', String(PAGE_SIZE))}
               </button>
             )}
             {!loadingMore && reachedEnd && (
               <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                Fin de l&apos;historique — {matches.length} parties affichées
+                {tr.listEnd.replace('{count}', String(matches.length))}
               </div>
             )}
             {!loadingMore && !reachedEnd && matches.length >= MAX_TOTAL && (
               <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                Limite atteinte ({MAX_TOTAL} parties affichées)
+                {tr.listLimit.replace('{count}', String(MAX_TOTAL))}
               </div>
             )}
           </div>
@@ -759,7 +763,7 @@ export default function AccueilTab() {
         {/* ── Aucun match sans erreur ── */}
         {!loadingMatches && !matchError && savedRiot && matches.length === 0 && (
           <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-dim)', fontSize: 13 }}>
-            Aucune partie trouvée récemment.
+            {tr.listEmpty}
           </div>
         )}
       </section>

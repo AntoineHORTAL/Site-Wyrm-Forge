@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useDashboard } from '@/locales/dashboard'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 interface TodoList {
@@ -19,6 +20,8 @@ export default function TodoTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const d = useDashboard()
+  const tr = d.accueil.todo
 
   const [lists, setLists]       = useState<TodoList[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -102,17 +105,17 @@ export default function TodoTab() {
       {/* ── Colonne gauche : liste + actions ── */}
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#F5F2FA', marginBottom: 14 }}>
-          Mes listes
+          {tr.myLists}
         </div>
 
         {loading ? (
-          <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>Chargement…</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>{d.common.loading}</div>
         ) : lists.length === 0 ? (
           <div style={{
             padding: '20px 16px', borderRadius: 8, textAlign: 'center',
             border: `1px dashed ${border}`, color: 'var(--text-dim)', fontSize: 13,
           }}>
-            Aucune liste — crée-en une à droite.
+            {tr.empty}
           </div>
         ) : (
           lists.map(list => (
@@ -131,10 +134,12 @@ export default function TodoTab() {
                   <span style={{
                     marginLeft: 8, fontSize: 10, color: '#5DCAA5',
                     border: '1px solid rgba(93,202,165,0.4)', borderRadius: 4, padding: '1px 6px',
-                  }}>Actif</span>
+                  }}>{tr.active}</span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{list.items.length} élément{list.items.length !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {(list.items.length === 1 ? tr.itemCountOne : tr.itemCountOther).replace('{count}', String(list.items.length))}
+              </div>
             </div>
           ))
         )}
@@ -150,13 +155,13 @@ export default function TodoTab() {
                 borderColor: currentList.active ? 'rgba(226,75,74,0.4)' : 'rgba(93,202,165,0.4)',
               }}
             >
-              {currentList.active ? 'Désactiver' : 'Définir active'}
+              {currentList.active ? tr.deactivate : tr.setActive}
             </button>
             <button
               onClick={() => deleteList(currentList.id)}
               style={{ ...btnStyle, color: '#E24B4A', borderColor: 'rgba(226,75,74,0.4)' }}
             >
-              Supprimer
+              {d.common.delete}
             </button>
           </div>
         )}
@@ -170,34 +175,34 @@ export default function TodoTab() {
             width: 6, height: 6, borderRadius: '50%', background: '#5DCAA5',
             boxShadow: '0 0 6px #5DCAA5', flexShrink: 0,
           }} />
-          Synchronisé en temps réel
+          {tr.realtime}
         </div>
       </div>
 
       {/* ── Colonne droite : formulaire de création ── */}
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#F5F2FA', marginBottom: 14 }}>
-          Nouvelle liste
+          {tr.newList}
         </div>
 
-        <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Titre</label>
+        <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>{tr.fieldTitle}</label>
         <input
           style={inputStyle}
           value={form.title}
           onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-          placeholder="Nom de la liste..."
+          placeholder={tr.placeholderTitle}
         />
 
-        <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6, marginTop: 8 }}>Description</label>
+        <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6, marginTop: 8 }}>{tr.fieldDescription}</label>
         <textarea
           style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }}
           value={form.description}
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-          placeholder="Description optionnelle..."
+          placeholder={tr.placeholderDescription}
         />
 
         <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6, marginTop: 8 }}>
-          Éléments (max 5)
+          {tr.fieldItems}
         </label>
         {form.items.map((item, i) => (
           <input
@@ -207,7 +212,7 @@ export default function TodoTab() {
             onChange={e => setForm(f => {
               const items = [...f.items]; items[i] = e.target.value; return { ...f, items }
             })}
-            placeholder={`Élément ${i + 1}...`}
+            placeholder={tr.placeholderItem.replace('{n}', String(i + 1))}
           />
         ))}
 
@@ -224,7 +229,7 @@ export default function TodoTab() {
             fontFamily: 'inherit', transition: 'opacity 0.15s',
           }}
         >
-          {saving ? 'Création…' : 'Créer la liste'}
+          {saving ? tr.creating : tr.create}
         </button>
       </div>
     </div>

@@ -15,6 +15,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import { useDashboard } from '@/locales/dashboard'
+import type { DashboardDict } from '@/locales/dashboard'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -40,15 +42,27 @@ const ROLES = [
   { riot: 'UTILITY', label: 'SUPPORT',color: '#3A8AC9' },
 ]
 
+/**
+ * Erreur d'écran. On mémorise un CODE, pas un message : l'effet de chargement ne
+ * tourne qu'une fois, un message capturé à ce moment-là resterait figé dans la langue
+ * d'alors si l'utilisateur bascule FR/EN pendant que l'erreur est affichée. Le cas
+ * `raw` porte le message renvoyé par l'Edge Function, qui n'est pas traduisible ici.
+ */
+type StatsError =
+  | { kind: 'auth' | 'session' | 'riot' | 'load' }
+  | { kind: 'raw'; text: string }
+
 export default function StatsTab() {
   const { theme } = useTheme()
   const router = useRouter()
   const c = theme === 'mythic'
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
   const bg = c ? 'rgba(42,21,71,0.4)' : '#18181B'
+  const d = useDashboard()
+  const st = d.accueil.stats
 
   const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState('')
+  const [error,    setError]    = useState<StatsError | null>(null)
   const [noRiot,   setNoRiot]   = useState(false)
   const [matches,  setMatches]  = useState<MatchInfo[]>([])
   const [champMap, setChampMap] = useState<Record<number, ChampInfo>>({})
@@ -57,10 +71,10 @@ export default function StatsTab() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError('')
+      setLoading(true); setError(null)
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Tu dois être connecté.'); return }
+        if (!user) { setError({ kind: 'auth' }); return }
 
         // Profil pour le Riot ID + DDragon en parallèle
         const [profRes, vRes] = await Promise.all([
@@ -91,7 +105,7 @@ export default function StatsTab() {
 
         // Matchs Riot (20 dernières parties via Edge Function)
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) { setError('Session expirée.'); return }
+        if (!session) { setError({ kind: 'session' }); return }
         const res = await fetch(
           `${SUPA_URL}/functions/v1/riot-matches?${new URLSearchParams({
             gameName: prof.riot_gamename,
@@ -104,13 +118,14 @@ export default function StatsTab() {
         if (cancelled) return
         if (!res.ok) {
           const data = await res.json()
-          setError(data.error ?? 'Erreur Riot API.')
+          // Message de l'Edge Function s'il existe — sinon repli traduisible.
+          setError(data.error ? { kind: 'raw', text: data.error } : { kind: 'riot' })
           return
         }
         const data = await res.json()
         setMatches(data.matches ?? [])
       } catch {
-        if (!cancelled) setError('Erreur lors du chargement des stats.')
+        if (!cancelled) setError({ kind: 'load' })
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -119,11 +134,18 @@ export default function StatsTab() {
     return () => { cancelled = true }
   }, [])
 
-  if (loading) return <Loader text="Chargement des statistiques…" />
-  if (noRiot)  return <NoRiotPrompt onSettings={() => router.push('/profil')} />
-  if (error)   return <ErrorBox text={error} />
+  if (loading) return <Loader text={st.loading} />
+  if (noRiot)  return <NoRiotPrompt d={d} onSettings={() => router.push('/profil')} />
+  if (error) {
+    const text = error.kind === 'raw'     ? error.text
+      : error.kind === 'auth'    ? st.errorAuth
+      : error.kind === 'session' ? st.errorSession
+      : error.kind === 'riot'    ? st.errorRiot
+      :                            st.errorLoad
+    return <ErrorBox text={text} />
+  }
   if (matches.length === 0) {
-    return <ErrorBox text="Aucune partie trouvée. Lance quelques games puis reviens !" />
+    return <ErrorBox text={st.empty} />
   }
 
   // ── Agrégations ──
@@ -172,7 +194,8 @@ export default function StatsTab() {
   // Distribution par queue
   const queueDist: Record<string, { played: number; wins: number }> = {}
   matches.forEach(m => {
-    const k = m.queueName || 'Inconnu'
+    // `queueName` est résolu côté serveur (riot-matches) : il reste dans sa langue.
+    const k = m.queueName || st.queueUnknown
     if (!queueDist[k]) queueDist[k] = { played: 0, wins: 0 }
     queueDist[k].played++; if (m.win) queueDist[k].wins++
   })
@@ -182,25 +205,25 @@ export default function StatsTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ── KPI cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-        <KpiCard label="Parties analysées" value={String(total)} bg={bg} border={border} />
-        <KpiCard label="Winrate"      value={`${winrate.toFixed(1)}%`}
+        <KpiCard label={st.kpiAnalysed} value={String(total)} bg={bg} border={border} />
+        <KpiCard label={st.kpiWinrate} value={`${winrate.toFixed(1)}%`}
           color={winrate >= 50 ? '#5DCAA5' : '#E24B4A'} bg={bg} border={border} />
-        <KpiCard label="Victoires"    value={`${wins}W ${total - wins}L`} bg={bg} border={border} />
-        <KpiCard label="KDA moyen"    value={avgKda.toFixed(2)} bg={bg} border={border} />
-        <KpiCard label="CS / min"     value={csPerMin.toFixed(1)} bg={bg} border={border} />
-        <KpiCard label="Score vision" value={Math.round(avgVision).toString()} bg={bg} border={border} />
-        <KpiCard label="Dégâts/partie" value={`${(avgDmg / 1000).toFixed(1)}K`} bg={bg} border={border} />
+        <KpiCard label={st.kpiWins}    value={`${wins}W ${total - wins}L`} bg={bg} border={border} />
+        <KpiCard label={st.kpiKda}     value={avgKda.toFixed(2)} bg={bg} border={border} />
+        <KpiCard label={st.kpiCsPerMin} value={csPerMin.toFixed(1)} bg={bg} border={border} />
+        <KpiCard label={st.kpiVision}  value={Math.round(avgVision).toString()} bg={bg} border={border} />
+        <KpiCard label={st.kpiDamage}  value={`${(avgDmg / 1000).toFixed(1)}K`} bg={bg} border={border} />
       </div>
 
       {/* ── Tendance W/L par partie ── */}
       <div style={{ padding: 18, borderRadius: 10, background: bg, border: `1px solid ${border}` }}>
         <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-          Tendance — partie la + récente à gauche
+          {st.trendTitle}
         </div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {matches.map((m, i) => (
             <div key={m.matchId}
-              title={`${m.win ? 'Victoire' : 'Défaite'} · ${m.championName} · ${m.kills}/${m.deaths}/${m.assists}`}
+              title={`${m.win ? d.common.win : d.common.loss} · ${m.championName} · ${m.kills}/${m.deaths}/${m.assists}`}
               style={{
                 width: 28, height: 28, borderRadius: 4,
                 background: m.win ? 'rgba(93,202,165,0.6)' : 'rgba(226,75,74,0.6)',
@@ -208,7 +231,7 @@ export default function StatsTab() {
                 fontSize: 11, fontWeight: 700, color: '#fff',
                 border: i === 0 ? '2px solid #EF9F27' : 'none',
               }}>
-              {m.win ? 'V' : 'D'}
+              {m.win ? d.common.winInitial : d.common.lossInitial}
             </div>
           ))}
         </div>
@@ -218,14 +241,14 @@ export default function StatsTab() {
       <div style={{ borderRadius: 10, background: bg, border: `1px solid ${border}`, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: `1px solid ${border}` }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F2FA' }}>
-            Champions joués ({champsSorted.length} différents)
+            {st.champsTitle.replace('{count}', String(champsSorted.length))}
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: c ? 'rgba(20,10,35,0.4)' : '#0F0F11' }}>
-                {['Champion', 'Parties', 'Winrate', 'KDA', 'CS/min'].map(h => (
+                {st.champsColumns.map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>
                     {h}
                   </th>
@@ -283,7 +306,7 @@ export default function StatsTab() {
         {/* Distribution par rôle */}
         <div style={{ padding: 18, borderRadius: 10, background: bg, border: `1px solid ${border}` }}>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            Distribution par rôle
+            {st.roleTitle}
           </div>
           {ROLES.map(role => {
             const r = roleDist[role.riot]
@@ -297,7 +320,7 @@ export default function StatsTab() {
                 }}>
                   <span style={{ color: role.color, fontWeight: 700 }}>{role.label}</span>
                   <span>
-                    {r.played} {r.played > 1 ? 'parties' : 'partie'}
+                    {r.played} {r.played > 1 ? st.gameOther : st.gameOne}
                     {wr !== null && <> · <span style={{ color: wr >= 50 ? '#5DCAA5' : '#E24B4A' }}>{wr.toFixed(0)}% WR</span></>}
                   </span>
                 </div>
@@ -315,7 +338,7 @@ export default function StatsTab() {
         {/* Distribution par mode de jeu */}
         <div style={{ padding: 18, borderRadius: 10, background: bg, border: `1px solid ${border}` }}>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            Modes de jeu
+            {st.queueTitle}
           </div>
           {queueList.map(([name, q]) => {
             const pct = (q.played / total) * 100
@@ -374,7 +397,8 @@ function ErrorBox({ text }: { text: string }) {
   )
 }
 
-function NoRiotPrompt({ onSettings }: { onSettings: () => void }) {
+function NoRiotPrompt({ d, onSettings }: { d: DashboardDict; onSettings: () => void }) {
+  const st = d.accueil.stats
   return (
     <div style={{
       padding: 24, borderRadius: 10, textAlign: 'center',
@@ -382,16 +406,16 @@ function NoRiotPrompt({ onSettings }: { onSettings: () => void }) {
       border: '1px solid rgba(127,119,221,0.2)',
     }}>
       <div style={{ fontSize: 16, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>
-        Aucun compte Riot lié
+        {st.noRiotTitle}
       </div>
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
-        Lie ton Riot ID (GameName#TAG) depuis l&apos;onglet Accueil ou la page profil pour voir tes stats.
+        {st.noRiotText}
       </div>
       <button onClick={onSettings} style={{
         padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
         cursor: 'pointer', background: 'rgba(127,119,221,0.2)',
         border: '1px solid #7F77DD', color: '#F5F2FA',
-      }}>Aller à mon profil</button>
+      }}>{st.noRiotCta}</button>
     </div>
   )
 }

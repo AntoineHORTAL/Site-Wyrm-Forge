@@ -39,7 +39,9 @@ const INVARIANTS = new Set<string>([
   'To-Do Lists', 'To-Do', 'Stats', 'Patch Notes', 'Champions',
   'Jungle Path', 'Jungle', 'Builder',
   'Workshop Builds', 'W. Builds', 'Workshop Jungle', 'W. Jungle',
-  'Match Up', 'Post Game',
+  'Match Up', 'Post Game', 'Overlay Workshop',
+  // Lot 2 — sigles d'esport, unités et formats de fichier.
+  'Description', 'Champion', 'KDA', 'CS/min', 'CS / min', 'Image (PNG)', 'PDF',
 ])
 
 interface Anomalies {
@@ -47,13 +49,20 @@ interface Anomalies {
   longueurs: string[]
   identiques: string[]
   clés: string[]
+  marqueurs: string[]
 }
+
+/** Marqueurs d'interpolation d'un gabarit : `{count}`, `{n}`, `{date}`, `{author}`… */
+const marqueursDe = (s: string) => (s.match(/\{[a-z]+\}/gi) ?? []).sort().join(',')
 
 function parcourir(fr: unknown, en: unknown, chemin: string, out: Anomalies): void {
   if (typeof fr === 'string' && typeof en === 'string') {
     if (!fr.trim()) out.vides.push(`fr.${chemin}`)
     if (!en.trim()) out.vides.push(`en.${chemin}`)
     if (fr === en && !INVARIANTS.has(fr)) out.identiques.push(`${chemin} = "${fr}"`)
+    if (marqueursDe(fr) !== marqueursDe(en)) {
+      out.marqueurs.push(`${chemin} (fr "${marqueursDe(fr)}" ≠ en "${marqueursDe(en)}")`)
+    }
     return
   }
 
@@ -85,7 +94,7 @@ function parcourir(fr: unknown, en: unknown, chemin: string, out: Anomalies): vo
   }
 }
 
-const anomalies: Anomalies = { vides: [], longueurs: [], identiques: [], clés: [] }
+const anomalies: Anomalies = { vides: [], longueurs: [], identiques: [], clés: [], marqueurs: [] }
 parcourir(dashboardFr, dashboardEn, '', anomalies)
 
 describe('dico dashboard — parité FR / EN', () => {
@@ -115,6 +124,13 @@ describe('dico dashboard — parité FR / EN', () => {
 
   it('ne laisse aucune chaîne identique entre FR et EN (hors invariants)', () => {
     expect(anomalies.identiques).toEqual([])
+  })
+
+  it('conserve les mêmes marqueurs d\'interpolation dans les deux langues', () => {
+    // Les composants font `.replace('{count}', …)` : un marqueur absent ou renommé
+    // côté EN ne casse rien à la compilation, il fait juste disparaître le nombre.
+    // Même garde que le `{price}` de la vitrine, appliquée à tout le dico.
+    expect(anomalies.marqueurs).toEqual([])
   })
 })
 
@@ -160,6 +176,24 @@ describe('dico dashboard — libellés d\'onglets appariés à la structure', ()
   it('n\'a pas d\'intitulé de groupe orphelin', () => {
     const idsGroupes = tabGroups.map(g => g.id).filter(Boolean).sort()
     expect(Object.keys(dashboardFr.nav.groups).sort()).toEqual(idsGroupes)
+  })
+
+  /**
+   * Lot 2 — en-têtes de contenu. La couverture de `DashTab` est déjà prouvée à la
+   * compilation par l'annotation `PageTitles` de Dashboard.tsx ; ce qu'on vérifie ici
+   * est l'autre bout : chaque onglet ATTEIGNABLE depuis une barre a bien un en-tête.
+   */
+  it('chaque onglet de la navigation a un en-tête de page', () => {
+    dashTabs
+      // `champions` est une route externe (`href`) : elle a sa propre page et son
+      // propre titre, pas d'en-tête de dashboard.
+      .filter(tab => !tab.href)
+      .forEach(tab => {
+        const titre = dashboardFr.nav.pageTitles[tab.id as keyof typeof dashboardFr.nav.pageTitles]
+        expect(titre, `aucun en-tête pour l'onglet « ${tab.id} »`).toBeTruthy()
+        expect(titre.title.trim()).not.toBe('')
+        expect(titre.subtitle.trim()).not.toBe('')
+      })
   })
 })
 

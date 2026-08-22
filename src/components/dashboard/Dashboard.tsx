@@ -130,25 +130,16 @@ export const tabGroups: TabGroup[] = [
 /* Flat list for drawer in Nav */
 export const dashTabs: TabDef[] = tabGroups.flatMap(g => g.tabs)
 
-const tabTitles: Record<DashTab, { title: string; subtitle: string }> = {
-  admin:            { title: 'Administration',   subtitle: 'Gestion des utilisateurs et abonnements' },
-  accueil:          { title: 'Accueil',          subtitle: 'Tes 5 dernières parties' },
-  todo:             { title: 'To-Do Lists',       subtitle: 'Tes listes de progression' },
-  stats:            { title: 'Stats',             subtitle: 'Analyse tes performances' },
-  overlay:          { title: 'Overlay Workshop',  subtitle: 'Gère et importe tes overlays' },
-  jungle:           { title: 'Jungle Path',       subtitle: 'Crée et partage tes jungle paths' },
-  builds:           { title: 'Builder',           subtitle: 'Construis tes builds : items, runes, ordre de sorts' },
-  scenarios:        { title: 'Scénarios',         subtitle: 'Planifie ta macro : wards, rotations, zones de fight' },
-  'workshop-builds':{ title: 'Workshop Builds',   subtitle: 'Builds de la communauté' },
-  'workshop-jungle':{ title: 'Workshop Jungle',   subtitle: 'Jungle paths de la communauté' },
-  matchup:          { title: 'Match Up',          subtitle: 'Analyse tes matchups en temps réel' },
-  postgame:         { title: 'Post Game',         subtitle: 'Analyse détaillée après la partie' },
-  tournois:         { title: 'Tournois',          subtitle: 'Bientôt disponible' },
-  patchnotes:       { title: 'Patch Notes',       subtitle: 'Résumés des mises à jour League of Legends' },
-  ecailles:         { title: 'La Forge',           subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
-  // Onglet caché (absent de la nav) — en-tête standard non affiché : Pricing a le sien.
-  tarifs:           { title: 'Tarifs',            subtitle: 'Choisis ou renouvelle ton abonnement' },
-}
+/**
+ * En-têtes de la zone de contenu — le CONTENU vit dans le dico
+ * (`nav.pageTitles`), cette annotation en prouve la couverture : un `DashTab`
+ * ajouté sans son en-tête devient une erreur de compilation ICI, à l'endroit qui
+ * connaît l'union, sans que le dico ait à importer `DashTab` (ce qui créerait un
+ * cycle page → Dashboard → dico → page).
+ *
+ * L'onglet caché `tarifs` y figure sans être affiché : Pricing a son propre titre.
+ */
+type PageTitles = Record<DashTab, { title: string; subtitle: string }>
 
 interface DashboardProps {
   activeTab: DashTab
@@ -169,6 +160,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
   const c = theme === 'mythic'
   const router = useRouter()
   const d = useDashboard()
+  const tabTitles: PageTitles = d.nav.pageTitles
 
   // Clic sur un onglet : si href, navigation externe — sinon changement d'activeTab
   const handleTabClick = (tab: TabDef) => {

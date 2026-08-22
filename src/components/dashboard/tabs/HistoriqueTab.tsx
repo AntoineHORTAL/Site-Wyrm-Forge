@@ -1,12 +1,16 @@
 'use client'
 
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useDashboard } from '@/locales/dashboard'
+import type { AccueilDict } from '@/locales/dashboard/accueil'
 
-const stats = [
-  { label: 'Parties jouées', value: '142' },
-  { label: 'Winrate', value: '54%', positive: true },
-  { label: 'KDA moyen', value: '3.8' },
-  { label: 'CS/min', value: '7.2' },
+/* ⚠️ Données de MAQUETTE : seules les étiquettes sont traduites, les valeurs sont
+   fictives et le resteront tant que cet écran n'est pas branché sur de vraies données. */
+const stats: { label: (h: AccueilDict['historique']) => string; value: string; positive?: boolean }[] = [
+  { label: h => h.statGames,    value: '142' },
+  { label: h => h.statWinrate,  value: '54%', positive: true },
+  { label: h => h.statKda,      value: '3.8' },
+  { label: h => h.statCsPerMin, value: '7.2' },
 ]
 
 const matches = [
@@ -20,6 +24,7 @@ const matches = [
 export default function HistoriqueTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const d = useDashboard()
 
   return (
     <div>
@@ -31,7 +36,7 @@ export default function HistoriqueTab() {
             border: `1px solid ${c ? 'rgba(186,117,23,0.2)' : '#27272A'}`,
           }}>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
-              {s.label}
+              {s.label(d.accueil.historique)}
             </div>
             <div style={{
               fontSize: 22, fontWeight: 600,
@@ -67,7 +72,7 @@ export default function HistoriqueTab() {
               fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1,
               color: m.result === 'win' ? '#5DCAA5' : '#E24B4A',
             }}>
-              {m.result === 'win' ? 'Victoire' : 'Défaite'}
+              {m.result === 'win' ? d.common.win : d.common.loss}
             </div>
           </div>
         ))}

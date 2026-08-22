@@ -129,9 +129,59 @@ const tiersEn: Record<TierKey, string> = {
   'architecte+':'Architect+',
 }
 
+/**
+ * En-tête de la zone de contenu (titre + sous-titre), indexé par `DashTab`.
+ *
+ * ⚠️ Ce n'est PAS la même liste que `tabs` ci-dessus : ici la clé est un onglet de
+ * CONTENU (`overlay` et `tarifs` en font partie, `champions` non — c'est une route
+ * externe qui a son propre en-tête). C'est `Dashboard.tsx` qui prouve la couverture,
+ * en assignant cet objet à un `Record<DashTab, PageTitle>` : une clé manquante y
+ * devient une erreur de compilation.
+ */
+const pageTitlesFr = {
+  admin:             { title: 'Administration',   subtitle: 'Gestion des utilisateurs et abonnements' },
+  accueil:           { title: 'Accueil',          subtitle: 'Tes 5 dernières parties' },
+  todo:              { title: 'To-Do Lists',      subtitle: 'Tes listes de progression' },
+  stats:             { title: 'Stats',            subtitle: 'Analyse tes performances' },
+  overlay:           { title: 'Overlay Workshop', subtitle: 'Gère et importe tes overlays' },
+  jungle:            { title: 'Jungle Path',      subtitle: 'Crée et partage tes jungle paths' },
+  builds:            { title: 'Builder',          subtitle: 'Construis tes builds : items, runes, ordre de sorts' },
+  scenarios:         { title: 'Scénarios',        subtitle: 'Planifie ta macro : wards, rotations, zones de fight' },
+  'workshop-builds': { title: 'Workshop Builds',  subtitle: 'Builds de la communauté' },
+  'workshop-jungle': { title: 'Workshop Jungle',  subtitle: 'Jungle paths de la communauté' },
+  matchup:           { title: 'Match Up',         subtitle: 'Analyse tes matchups en temps réel' },
+  postgame:          { title: 'Post Game',        subtitle: 'Analyse détaillée après la partie' },
+  tournois:          { title: 'Tournois',         subtitle: 'Bientôt disponible' },
+  patchnotes:        { title: 'Patch Notes',      subtitle: 'Résumés des mises à jour League of Legends' },
+  ecailles:          { title: 'La Forge',         subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
+  tarifs:            { title: 'Tarifs',           subtitle: 'Choisis ou renouvelle ton abonnement' },
+}
+
+export type PageTitleId = keyof typeof pageTitlesFr
+
+const pageTitlesEn: Record<PageTitleId, { title: string; subtitle: string }> = {
+  admin:             { title: 'Administration',   subtitle: 'User and subscription management' },
+  accueil:           { title: 'Home',             subtitle: 'Your last 5 games' },
+  todo:              { title: 'To-Do Lists',      subtitle: 'Your progress lists' },
+  stats:             { title: 'Stats',            subtitle: 'Analyse your performance' },
+  overlay:           { title: 'Overlay Workshop', subtitle: 'Manage and import your overlays' },
+  jungle:            { title: 'Jungle Path',      subtitle: 'Create and share your jungle paths' },
+  builds:            { title: 'Builder',          subtitle: 'Build your setups: items, runes, skill order' },
+  scenarios:         { title: 'Scenarios',        subtitle: 'Plan your macro: wards, rotations, fight zones' },
+  'workshop-builds': { title: 'Workshop Builds',  subtitle: 'Community builds' },
+  'workshop-jungle': { title: 'Workshop Jungle',  subtitle: 'Community jungle paths' },
+  matchup:           { title: 'Match Up',         subtitle: 'Analyse your matchups in real time' },
+  postgame:          { title: 'Post Game',        subtitle: 'Detailed post-game analysis' },
+  tournois:          { title: 'Tournaments',      subtitle: 'Coming soon' },
+  patchnotes:        { title: 'Patch Notes',      subtitle: 'League of Legends update summaries' },
+  ecailles:          { title: 'The Forge',        subtitle: 'Scales, daily quests and cosmetics shop' },
+  tarifs:            { title: 'Pricing',          subtitle: 'Choose or renew your subscription' },
+}
+
 export const navFr = {
   tabs:   tabsFr,
   groups: groupsFr,
+  pageTitles: pageTitlesFr,
   /* Badges de fin de ligne, alimentés par les drapeaux `locked` / `soon` de la structure. */
   badges: {
     pro:  'Pro',
@@ -153,6 +203,7 @@ export type NavDict = typeof navFr
 export const navEn: NavDict = {
   tabs:   tabsEn,
   groups: groupsEn,
+  pageTitles: pageTitlesEn,
   badges: {
     pro:  'Pro',
     soon: 'Soon',
