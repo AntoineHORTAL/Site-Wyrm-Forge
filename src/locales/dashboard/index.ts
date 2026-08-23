@@ -78,3 +78,14 @@ export const dashboardDicts: Record<Lang, DashboardDict> = {
  * dico embarquerait ses chaînes dans le bundle des visiteurs qui ne les verront jamais.
  */
 export const useDashboard = (): DashboardDict => dashboardDicts[useLanguage().lang]
+
+/**
+ * Langue courante, pour les helpers de FORMATAGE qui la prennent en paramètre
+ * (`lib/intl.ts` : dates, heures, nombres ; `ddragonLocale` : locale des données Riot).
+ *
+ * Volontairement séparé de `useDashboard` : ces helpers sont des fonctions PURES,
+ * testables sans React, et n'ont aucune raison de recevoir tout un dictionnaire pour
+ * choisir entre « 1 234 » et « 1,234 ». Même patron que `formatPrice(amount, lang)`
+ * sur la vitrine.
+ */
+export const useLang = (): Lang => useLanguage().lang

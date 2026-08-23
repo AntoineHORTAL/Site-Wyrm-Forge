@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { callEF } from '@/lib/ecailles'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatNumber } from '@/lib/intl'
 
 interface Cosmetic {
   id: number
@@ -37,6 +38,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
   const c = theme === 'mythic'
   const supabase = createClient()
   const d = useDashboard()
+  const lang = useLang()
   const sh = d.ecailles.shop
 
   const [cosmetics, setCosmetics] = useState<Cosmetic[]>([])
@@ -176,7 +178,7 @@ export default function ShopPanel({ shopEnabled, onBalanceChange }: Props) {
                 {/* Prix + bouton */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: accent, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                    {item.price_scales.toLocaleString('fr-FR')}
+                    {formatNumber(item.price_scales, lang)}
                     <img src="/icons/ecaille.png" alt={d.ecailles.scalesAlt} width={15} height={15} />
                   </span>
                   <button

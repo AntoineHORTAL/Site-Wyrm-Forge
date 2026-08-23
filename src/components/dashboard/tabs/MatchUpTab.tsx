@@ -12,8 +12,9 @@ import {
 } from '@/lib/matchup/types'
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
-import { analyzeMatchup, getQuota, formatResetFr, canAfford, analysisErrorText, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
-import { useDashboard } from '@/locales/dashboard'
+import { analyzeMatchup, getQuota, formatReset, canAfford, analysisErrorText, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
+import { formatNumber } from '@/lib/intl'
+import { useDashboard, useLang } from '@/locales/dashboard'
 import { balanceLabel, needLabel, type AnalyseDict } from '@/locales/dashboard/analyse'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
@@ -61,6 +62,7 @@ interface BuildSummary {
 export default function MatchUpTab() {
   const { theme } = useTheme()
   const A = useDashboard().analyse
+  const lang = useLang()
   const M = A.matchup
   const c = theme === 'mythic'
   const supabase = useMemo(() => createClient(), [])
@@ -278,10 +280,8 @@ export default function MatchUpTab() {
           {quota && (
             <span style={{ fontSize: 12, color: quotaExhausted ? '#E5484D' : 'var(--text-muted)' }}>
               {A.quota.potName} — {balanceLabel(A, quota.remaining, quota.limit)}
-              {/* ⚠️ `formatResetFr` reste en `fr-FR` : locale de DONNÉE (Lot 8).
-                  Seule la phrase autour vient du dico. */}
               {quota.resetsAt && quotaExhausted
-                ? ` · ${A.quota.resetShort.replace('{date}', formatResetFr(quota.resetsAt))}`
+                ? ` · ${A.quota.resetShort.replace('{date}', formatReset(quota.resetsAt, A, lang))}`
                 : ''}
             </span>
           )}
@@ -342,7 +342,7 @@ export default function MatchUpTab() {
                 le message est composé MAINTENANT depuis le code mémorisé, donc il
                 suit une bascule de langue. */}
             <div style={{ fontSize: 13, lineHeight: 1.55, color: analysis.success ? 'var(--text)' : '#E5484D', whiteSpace: 'pre-wrap' }}>
-              {analysis.success ? analysis.text : analysisErrorText(A, analysis)}
+              {analysis.success ? analysis.text : analysisErrorText(A, analysis, lang)}
             </div>
           </div>
         )}
@@ -451,6 +451,7 @@ function FilledSlot({
   onRole: (role: MatchUpRole) => void
   onBuild: () => void
 }) {
+  const lang = useLang()
   const name = champ.champ!.name
   const border = c ? 'rgba(186,117,23,0.25)' : '#27272A'
   // Cap dérivé du rôle : 20 pour Top (Role Quest S16), 18 partout ailleurs et
@@ -544,8 +545,7 @@ function FilledSlot({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{build.label}</div>
-              {/* ⚠️ `toLocaleString('fr-FR')` : locale de DONNÉE, traitée au Lot 8. */}
-              {build.gold > 0 && <div style={{ fontSize: 10, color: c ? '#FAC775' : '#EF9F27' }}>{build.gold.toLocaleString('fr-FR')} {m.goldSuffix}</div>}
+              {build.gold > 0 && <div style={{ fontSize: 10, color: c ? '#FAC775' : '#EF9F27' }}>{formatNumber(build.gold, lang)} {m.goldSuffix}</div>}
             </div>
           </>
         ) : (

@@ -6,7 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { IconMaximize, IconX } from '@tabler/icons-react'
 import PatchCard, { type PatchData, type PatchNote as PatchCardNote } from '@/components/patch-notes/PatchCard'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import type { Lang } from '@/locales/landing'
+import { formatDate } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import {
   profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
@@ -94,18 +96,21 @@ function addDays(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** Format de date partagé par la colonne Expiration et la liste des patch notes. */
+const FMT_DATE: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }
+
 /**
  * Colonne Expiration : « À vie », « ⚠ Expiré », ou la date.
  *
- * Les deux libellés viennent du dico ; la DATE reste en `fr-FR` — c'est la catégorie
- * « locale de données », traitée au Lot 8, pas une chaîne d'interface.
+ * Les deux libellés viennent du dico ; la DATE est formatée dans la langue affichée
+ * depuis le Lot 8 (`lib/intl`), d'où le paramètre `lang`.
  */
-function formatDate(iso: string | null, labels: AdminDict['expiry']): string {
+function expiryLabel(iso: string | null, labels: AdminDict['expiry'], lang: Lang): string {
   if (!iso) return labels.lifetime
   const d = new Date(iso)
   const now = new Date()
   if (d < now) return labels.expired
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+  return formatDate(d, lang, FMT_DATE)
 }
 
 // Composant réutilisable pour un toggle de feature flag app_settings.
@@ -171,6 +176,7 @@ export default function AdminTab() {
   const c = theme === 'mythic'
   const supabase = createClient()
   const dico = useDashboard()
+  const lang = useLang()
   const A = dico.admin
 
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -581,7 +587,7 @@ export default function AdminTab() {
                           color: !p.tier_expires_at ? '#5DCAA5'
                             : new Date(p.tier_expires_at) < new Date() ? '#E24B4A'
                             : 'var(--text-muted)',
-                        }}>{formatDate(p.tier_expires_at, A.expiry)}</span>
+                        }}>{expiryLabel(p.tier_expires_at, A.expiry, lang)}</span>
                       </td>
 
                       {/* Role — la BRANCHE reste sur la valeur métier (c'est elle qui
@@ -883,7 +889,7 @@ export default function AdminTab() {
 
                   {/* Date */}
                   <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>
-                    {new Date(p.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {formatDate(p.created_at, lang, FMT_DATE)}
                   </span>
 
                   {/* Actions */}

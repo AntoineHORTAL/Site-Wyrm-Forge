@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildScenarioPayload, buildItemNames, formatResetFr, overQuotaMessage, readQuota, canAfford,
+  buildScenarioPayload, buildItemNames, formatReset, overQuotaMessage, readQuota, canAfford,
   analysisErrorText,
   type BuildNameContext, type QuotaState, type MatchUpAnalysisResult,
 } from './payload'
@@ -156,33 +156,51 @@ describe('canAfford — barème Haiku (Apprenti / Forgeron)', () => {
   })
 })
 
-describe('formatResetFr / overQuotaMessage', () => {
+describe('formatReset / overQuotaMessage', () => {
   const base = { model: '', resetsAt: null, costs: { quick: 17, detailed: 33 } }
   it('null / date invalide → chaîne vide', () => {
-    expect(formatResetFr(null)).toBe('')
-    expect(formatResetFr('pas une date')).toBe('')
+    // Le résultat est concaténé dans une phrase : « Invalid Date » y serait pire que rien.
+    expect(formatReset(null, analyseFr, 'fr')).toBe('')
+    expect(formatReset('pas une date', analyseFr, 'fr')).toBe('')
+    expect(formatReset('pas une date', analyseEn, 'en')).toBe('')
   })
-  // ⚠️ La date de réinitialisation reste en `fr-FR` dans les DEUX langues : c'est
-  // une locale de DONNÉE, traitée au Lot 8. Seule la phrase autour est traduite.
-  it('produit une date FR avec heure au format HHhMM', () => {
-    expect(formatResetFr('2026-07-27T00:00:00.000Z')).toMatch(/ à \d{2}h\d{2}$/)
+  // Lot 8 : le JOUR suit la langue affichée, et la jointure jour/heure vient du
+  // dico (`quota.resetFormat`) — « à 14h05 » en français, « at 14:05 » en anglais.
+  it('joint le jour et l\'heure selon la convention de chaque langue', () => {
+    expect(formatReset('2026-07-27T12:00:00.000Z', analyseFr, 'fr')).toMatch(/ à \d{2}h\d{2}$/)
+    expect(formatReset('2026-07-27T12:00:00.000Z', analyseEn, 'en')).toMatch(/ at \d{2}:\d{2}$/)
+  })
+  it('produit le jour dans la langue affichée', () => {
+    // C'est LE changement visible du Lot 8 sur ce message : avant, l'anglais
+    // affichait « lundi 27 juillet ».
+    expect(formatReset('2026-07-27T12:00:00.000Z', analyseFr, 'fr')).toContain('juillet')
+    expect(formatReset('2026-07-27T12:00:00.000Z', analyseEn, 'en')).toContain('July')
+  })
+  it('ajoute la phrase de réinitialisation quand la date est connue', () => {
+    const avec = overQuotaMessage(
+      analyseEn,
+      { ...base, resetsAt: '2026-07-27T12:00:00.000Z', used: 135, limit: 135, remaining: 0 },
+      'en',
+    )
+    expect(avec).toContain('Resets on')
+    expect(avec).toContain('July')
   })
   it('solde à zéro → message « épuisée » avec used/limit', () => {
-    expect(overQuotaMessage(analyseFr, { ...base, used: 135, limit: 135, remaining: 0 }))
+    expect(overQuotaMessage(analyseFr, { ...base, used: 135, limit: 135, remaining: 0 }, 'fr'))
       .toBe('Chaleur de la Forge épuisée pour cette semaine (135/135 braises).')
-    expect(overQuotaMessage(analyseEn, { ...base, used: 135, limit: 135, remaining: 0 }))
+    expect(overQuotaMessage(analyseEn, { ...base, used: 135, limit: 135, remaining: 0 }, 'en'))
       .toBe('Forge Heat used up for this week (135/135 embers).')
   })
   // Distinction impossible dans l'ancien modèle « N analyses ».
   it('solde restant mais insuffisant → message ciblé sur l\'action', () => {
-    expect(overQuotaMessage(analyseFr, { ...base, used: 115, limit: 135, remaining: 20 }, true))
+    expect(overQuotaMessage(analyseFr, { ...base, used: 115, limit: 135, remaining: 20 }, 'fr', true))
       .toBe('Il te reste 20 braises, il en faut 33 pour une analyse détaillée.')
-    expect(overQuotaMessage(analyseEn, { ...base, used: 115, limit: 135, remaining: 20 }, true))
+    expect(overQuotaMessage(analyseEn, { ...base, used: 115, limit: 135, remaining: 20 }, 'en', true))
       .toBe('You have 20 embers left, 33 are needed for a detailed analysis.')
   })
   // Le singulier a son propre gabarit : « 1 braises » serait fautif.
   it('accorde le singulier à une seule braise restante', () => {
-    expect(overQuotaMessage(analyseFr, { ...base, used: 134, limit: 135, remaining: 1 }, false))
+    expect(overQuotaMessage(analyseFr, { ...base, used: 134, limit: 135, remaining: 1 }, 'fr', false))
       .toBe('Il te reste 1 braise, il en faut 17 pour une analyse rapide.')
   })
 })
@@ -200,14 +218,14 @@ describe('analysisErrorText — code → message, dans les deux langues', () => 
   }
 
   it('un succès n\'a pas de message d\'erreur', () => {
-    expect(analysisErrorText(analyseFr, { ...base, success: true, text: 'analyse' })).toBe('')
+    expect(analysisErrorText(analyseFr, { ...base, success: true, text: 'analyse' }, 'fr')).toBe('')
   })
 
   it.each(['signedOut', 'network', 'service', 'unexpected', 'empty'] as const)(
     'résout le code « %s » dans les deux langues', code => {
-      expect(analysisErrorText(analyseFr, { ...base, error: code })).toBe(analyseFr.errors[code])
-      expect(analysisErrorText(analyseEn, { ...base, error: code })).toBe(analyseEn.errors[code])
-      expect(analysisErrorText(analyseEn, { ...base, error: code }).trim()).not.toBe('')
+      expect(analysisErrorText(analyseFr, { ...base, error: code }, 'fr')).toBe(analyseFr.errors[code])
+      expect(analysisErrorText(analyseEn, { ...base, error: code }, 'en')).toBe(analyseEn.errors[code])
+      expect(analysisErrorText(analyseEn, { ...base, error: code }, 'en').trim()).not.toBe('')
     },
   )
 
@@ -216,16 +234,16 @@ describe('analysisErrorText — code → message, dans les deux langues', () => 
       ...base, error: 'overQuota', overQuota: true, advanced: true,
       used: 115, limit: 135, remaining: 20, costs: { quick: 17, detailed: 33 },
     }
-    expect(analysisErrorText(analyseFr, r)).toContain('33')
-    expect(analysisErrorText(analyseFr, r)).toContain('une analyse détaillée')
-    expect(analysisErrorText(analyseEn, r)).toContain('a detailed analysis')
+    expect(analysisErrorText(analyseFr, r, 'fr')).toContain('33')
+    expect(analysisErrorText(analyseFr, r, 'fr')).toContain('une analyse détaillée')
+    expect(analysisErrorText(analyseEn, r, 'en')).toContain('a detailed analysis')
   })
 
   // C'est la raison d'être du code : le même résultat, relu après une bascule de
   // langue, doit changer de langue. Un message figé à l'appel ne le pourrait pas.
   it('le même résultat rend un message différent selon la langue', () => {
     const r = { ...base, error: 'network' as const }
-    expect(analysisErrorText(analyseFr, r)).not.toBe(analysisErrorText(analyseEn, r))
+    expect(analysisErrorText(analyseFr, r, 'fr')).not.toBe(analysisErrorText(analyseEn, r, 'en'))
   })
 })
 

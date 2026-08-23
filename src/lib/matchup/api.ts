@@ -24,7 +24,7 @@ import {
 import type { MatchUpScenario } from './types'
 
 export type { BuildNameContext, MatchUpAnalysisResult, AnalysisErrorCode, QuotaState, AnalysisCosts, ApiScenario } from './payload'
-export { buildScenarioPayload, formatResetFr, canAfford, analysisErrorText } from './payload'
+export { buildScenarioPayload, formatReset, canAfford, analysisErrorText } from './payload'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

@@ -25,7 +25,9 @@ import {
   num, matchKda, csPerMin, queueLabel,
   type PlayerStats, type TrackedMatchRow,
 } from '@/lib/prac'
-import { useDashboard, type DashboardDict } from '@/locales/dashboard'
+import { useDashboard, useLang, type DashboardDict } from '@/locales/dashboard'
+import type { Lang } from '@/locales/landing'
+import { formatNumber, formatDate, formatDateTime } from '@/lib/intl'
 import { consentRpcError, consentOkMessage, gamesLabel } from '@/locales/dashboard/profil'
 
 const supabase = createClient()
@@ -55,6 +57,7 @@ export const CONSENT_RPC_ERRORS = ['no_consent_request', 'invalid_transition', '
 
 export default function ConsentPage() {
   const dico = useDashboard()
+  const lang = useLang()
   const P = dico.profil
   const C = P.consent
   const [authReady, setAuthReady] = useState(false)
@@ -213,14 +216,15 @@ export default function ConsentPage() {
       </Card>
 
       {/* Vue self (4D) : ce que le suivi a enregistré, en toute transparence. */}
-      {row?.status === 'accepted' && <SelfTracking dico={dico} stats={stats} matches={matches} />}
+      {row?.status === 'accepted' && <SelfTracking dico={dico} lang={lang} stats={stats} matches={matches} />}
     </Shell>
   )
 }
 
 // ── Bloc « Ton suivi » (vue self, palette /consent) ───────────────────────────
-function SelfTracking({ dico, stats, matches }: {
+function SelfTracking({ dico, lang, stats, matches }: {
   dico: DashboardDict
+  lang: Lang
   stats: PlayerStats | null; matches: TrackedMatchRow[] | null
 }) {
   const P = dico.profil
@@ -251,8 +255,8 @@ function SelfTracking({ dico, stats, matches }: {
               <Tile label={C.kda} value={num(stats.avg_kda).toFixed(2)} />
               <Tile label={C.csPerMin} value={num(stats.avg_cs_per_min).toFixed(2)} />
               <Tile label={C.vision} value={num(stats.avg_vision_score).toFixed(1)} />
-              <Tile label={C.damage} value={num(stats.avg_damage_dealt).toLocaleString('fr-FR')} />
-              <Tile label={C.gold} value={num(stats.avg_gold_earned).toLocaleString('fr-FR')} />
+              <Tile label={C.damage} value={formatNumber(num(stats.avg_damage_dealt), lang)} />
+              <Tile label={C.gold} value={formatNumber(num(stats.avg_gold_earned), lang)} />
             </div>
           )}
 
@@ -298,7 +302,7 @@ function SelfTracking({ dico, stats, matches }: {
                         périmètre) : ses libellés restent français — voir Lot 8. */}
                     {m.queue_id != null ? queueLabel(m.queue_id) : C.queueFallback}
                     {' · '}{csPerMin(m.cs, m.duration_s).toFixed(1)} cs/min
-                    {' · '}{new Date(m.game_creation).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {' · '}{formatDateTime(m.game_creation, lang, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: m.win ? '#5DCAA5' : '#E24B4A' }}>{m.win ? dico.common.winInitial : dico.common.lossInitial}</span>
@@ -384,10 +388,8 @@ function StatusPill({ color, children }: { color: string; children: React.ReactN
 
 function Meta({ requestedAt, respondedAt }: { requestedAt: string; respondedAt?: string | null }) {
   const C = useDashboard().profil.consent
-  // Les DATES restent formatées en fr-FR — catégorie « locale de données », Lot 8.
-  const fmt = (d: string) => new Date(d).toLocaleDateString('fr-FR', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
+  const lang = useLang()
+  const fmt = (d: string) => formatDate(d, lang, { day: 'numeric', month: 'long', year: 'numeric' })
   return (
     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 14 }}>
       {C.metaRequested.replace('{date}', fmt(requestedAt))}

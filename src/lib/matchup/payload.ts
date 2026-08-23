@@ -16,6 +16,8 @@ import type { MatchUpScenario, MatchUpChampion, BuildRef, MatchUpRole } from './
 // Import RELATIF (pas l'alias `@/`) : ce module est testé sans configuration
 // d'alias vitest, et le dico est un module de données pur, sans dépendance.
 import { needLabel, type AnalyseDict } from '../../locales/dashboard/analyse'
+import type { Lang } from '../../locales/landing'
+import { formatDate } from '../intl'
 
 export interface ApiChampStat { label: string; value: string }
 export interface ApiChamp {
@@ -98,9 +100,9 @@ export interface MatchUpAnalysisResult extends QuotaState {
  * Message affiché pour un résultat en échec. PUR : le dico entre en paramètre, rien
  * n'est lu d'un contexte React ici (la couche réseau reste testable sans rendu).
  */
-export function analysisErrorText(d: AnalyseDict, r: MatchUpAnalysisResult): string {
+export function analysisErrorText(d: AnalyseDict, r: MatchUpAnalysisResult, lang: Lang): string {
   if (!r.error) return ''
-  if (r.error === 'overQuota') return overQuotaMessage(d, r, r.advanced)
+  if (r.error === 'overQuota') return overQuotaMessage(d, r, lang, r.advanced)
   return d.errors[r.error]
 }
 
@@ -171,26 +173,34 @@ export function readQuota(body: any): QuotaState {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// Date de reset au format FR local (miroir "dddd d MMMM à HH'h'mm" du WPF).
-export function formatResetFr(iso: string | null): string {
+/**
+ * Date de réinitialisation du pot, en heure LOCALE du visiteur.
+ *
+ * Le miroir WPF ("dddd d MMMM à HH'h'mm") n'existait qu'en français. Depuis le Lot 8,
+ * le jour est formaté par `Intl` dans la langue affichée et la jointure jour/heure
+ * vient du dico (`quota.resetFormat`) : « lundi 3 février à 14h05 » d'un côté,
+ * « Monday 3 February at 14:05 » de l'autre.
+ *
+ * Une date absente ou invalide rend une chaîne VIDE — les appelants concatènent le
+ * résultat dans une phrase, un « Invalid Date » y serait pire que rien.
+ */
+export function formatReset(iso: string | null, d: AnalyseDict, lang: Lang): string {
   if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const date = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${date} à ${hh}h${mm}`
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return d.quota.resetFormat
+    .replace('{date}', formatDate(date, lang, { weekday: 'long', day: 'numeric', month: 'long' }))
+    .replace('{hh}', String(date.getHours()).padStart(2, '0'))
+    .replace('{mm}', String(date.getMinutes()).padStart(2, '0'))
 }
 
 // Message du solde insuffisant (429) — miroir de ClaudeService.
 // Distingue « plus rien du tout » de « pas assez pour CETTE analyse », que le
 // pot fongible rend possible : il peut rester des braises suffisantes pour une
 // rapide mais pas pour une détaillée.
-export function overQuotaMessage(d: AnalyseDict, q: QuotaState, advanced?: boolean): string {
-  // ⚠️ `formatResetFr` reste en `fr-FR` : c'est une locale de DONNÉE (Lot 8). Seule
-  // la phrase qui l'entoure vient du dico, la date arrive par `{date}`.
+export function overQuotaMessage(d: AnalyseDict, q: QuotaState, lang: Lang, advanced?: boolean): string {
   const suffix = q.resetsAt
-    ? ' ' + d.quota.resetSentence.replace('{date}', formatResetFr(q.resetsAt))
+    ? ' ' + d.quota.resetSentence.replace('{date}', formatReset(q.resetsAt, d, lang))
     : ''
   if (advanced !== undefined && q.remaining > 0) {
     const need = advanced ? q.costs.detailed : q.costs.quick

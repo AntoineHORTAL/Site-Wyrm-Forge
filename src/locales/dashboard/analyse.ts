@@ -13,12 +13,13 @@
  *  - `errors.server` n'existe pas : quand l'Edge Function renvoie son propre
  *    `error`, il est affiché TEL QUEL (variante `{ kind: 'server' }`). Un message
  *    écrit par le serveur n'est pas traduisible côté client ;
- *  - `formatResetFr` (`matchup/payload.ts`) formate la date de réinitialisation en
- *    `fr-FR` : c'est une locale de DONNÉE, traitée au Lot 8. Seule la phrase qui
- *    l'entoure vit ici, la date arrive par `{date}` ;
+ *  - le JOUR de la date de réinitialisation est produit par `Intl` (`formatReset`,
+ *    `matchup/payload.ts`) dans la langue affichée depuis le Lot 8 ; seuls la phrase
+ *    qui l'entoure et le gabarit `resetFormat` vivent ici ;
  *  - le texte de l'analyse elle-même vient d'Anthropic, dans la langue du prompt
  *    serveur — il ne passe pas par ce dico ;
- *  - les noms de champions et d'items viennent de DDragon `fr_FR` (Lot 8) ;
+ *  - les noms de champions et d'items viennent de DDragon, chargé dans la locale de
+ *    la langue affichée depuis le Lot 8 — ils ne passent donc pas par ce dico ;
  *  - `ROLE_SHORT` (TOP/JGL/MID/ADC/SUP) et `ROLE_LABEL` (TOP/JGL/MID/ADC/SUP côté
  *    Post Game) restent dans leurs composants : ce sont des abréviations identiques
  *    dans les deux langues, et les clés qu'elles indexent partent dans le payload.
@@ -106,9 +107,14 @@ export const analyseFr = {
     potName: 'Chaleur de la Forge',
     balanceOne: '{count} braise sur {limit}',
     balanceOther: '{count} braises sur {limit}',
-    /* `{date}` reçoit `formatResetFr` — voir l'avertissement en tête de fichier. */
+    /* `{date}` reçoit `formatReset`. */
     resetShort: 'réinit. {date}',
     resetSentence: 'Réinitialisation le {date}.',
+    /* Gabarit de la date de réinitialisation elle-même : `{date}` est le jour formaté
+       par `Intl` dans la langue affichée, `{hh}`/`{mm}` l'heure sur 24 h. La façon de
+       joindre les deux est une CONVENTION DE LANGUE (« à 14h05 », « at 14:05 ») et
+       n'a donc rien à faire en dur dans `formatReset`. */
+    resetFormat: '{date} à {hh}h{mm}',
     exhausted: 'Chaleur de la Forge épuisée pour cette semaine.',
     exhaustedWithCount: 'Chaleur de la Forge épuisée pour cette semaine ({used}/{limit} braises).',
     /* `{action}` reçoit `matchup.actionQuick` / `actionDetailed`, ou la combinaison
@@ -299,6 +305,7 @@ export const analyseEn: AnalyseDict = {
     balanceOther: '{count} embers out of {limit}',
     resetShort: 'resets {date}',
     resetSentence: 'Resets on {date}.',
+    resetFormat: '{date} at {hh}:{mm}',
     exhausted: 'Forge Heat used up for this week.',
     exhaustedWithCount: 'Forge Heat used up for this week ({used}/{limit} embers).',
     needOne: 'You have {remaining} ember left, {need} are needed for {action}.',

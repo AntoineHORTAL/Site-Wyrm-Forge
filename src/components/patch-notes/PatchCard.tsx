@@ -6,6 +6,8 @@ import {
   IconArrowUp, IconArrowDown, IconRefresh, IconAdjustments,
   IconSword, IconSettings,
 } from '@tabler/icons-react'
+import { useLang } from '@/locales/dashboard'
+import { formatDate } from '@/lib/intl'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
 
@@ -69,11 +71,12 @@ export interface PatchCardProps {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  }).format(new Date(iso))
-}
+/**
+ * ⚠️ Ce composant est rendu par l'onglet Patch Notes du dashboard ET par la page
+ * publique /patch-notes. La date suit la langue CHOISIE par le visiteur, qui est
+ * globale au site : un visiteur qui n'a jamais basculé reste en français.
+ */
+const FMT_DATE: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }
 
 function initials(name: string): string { return name.slice(0, 2) }
 
@@ -287,6 +290,7 @@ function TypeGroup({
 
 export default function PatchCard({ patch, ddragonVersion, forceExpandDesc }: PatchCardProps) {
   const d = patch.summary_jsonb
+  const lang = useLang()
 
   const [itemNameMap, setItemNameMap] = useState<Record<string, string>>({})
   const [runeNameMap, setRuneNameMap] = useState<Record<string, string>>({})
@@ -389,7 +393,7 @@ export default function PatchCard({ patch, ddragonVersion, forceExpandDesc }: Pa
             <IconFlame size={13} />Patch {patch.version}
           </span>
           <span className="pn-chip date">
-            <IconCalendar size={13} />{formatDate(patch.published_at)}
+            <IconCalendar size={13} />{formatDate(patch.published_at, lang, FMT_DATE)}
           </span>
         </div>
       </header>

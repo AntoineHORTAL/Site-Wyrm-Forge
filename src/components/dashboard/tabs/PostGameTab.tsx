@@ -20,7 +20,8 @@ import {
   POSTGAME_DEPTHS, POSTGAME_MODES,
   type PostGameQuota, type PostGameResult, type PostGameDepth, type PostGameMode,
 } from '@/lib/postgame/api'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatDate, formatTime } from '@/lib/intl'
 import { balanceLabel, needLabel } from '@/locales/dashboard/analyse'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -102,11 +103,9 @@ function PillRow({ label, options, value, onChange, c }: {
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
-const dayFr = (ms: number) =>
-  new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+const FMT_DAY: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
 /** Heure de début, pour distinguer deux parties du même jour sur le même champion. */
-const timeFr = (ms: number) =>
-  new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const FMT_TIME: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 
 /**
  * Échec du chargement de l'historique. Comme les erreurs d'analyse, on mémorise un
@@ -119,6 +118,7 @@ type HistoryError = { kind: 'unavailable' | 'network' } | { kind: 'server'; text
 export default function PostGameTab({ profile }: { profile?: UserProfile | null }) {
   const { theme } = useTheme()
   const A = useDashboard().analyse
+  const lang = useLang()
   const P = A.postgame
   const c = theme === 'mythic'
 
@@ -292,12 +292,12 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
                   color: 'var(--text-dim)', marginLeft: 'auto', fontSize: 12,
                   textAlign: 'right', flexShrink: 0,
                 }}>
-                  {/* ⚠️ `queueName` est résolu par l'Edge Function et `dayFr`/`timeFr`
-                      formatent en `fr-FR` : locale de DONNÉE, traitée au Lot 8. */}
                   {[
                     m.queueName,
                     m.duration ? mmss(m.duration) : null,
-                    m.gameCreation ? `${dayFr(m.gameCreation)} ${timeFr(m.gameCreation)}` : null,
+                    m.gameCreation
+                      ? `${formatDate(m.gameCreation, lang, FMT_DAY)} ${formatTime(m.gameCreation, lang, FMT_TIME)}`
+                      : null,
                   ].filter(Boolean).join(' · ')}
                 </span>
               </button>

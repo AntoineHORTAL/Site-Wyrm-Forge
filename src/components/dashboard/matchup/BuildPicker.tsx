@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { itemImgUrl, type DDItemFull } from '@/lib/matchup/ddragon'
 import type { BuildRef, MatchUpBuildItem } from '@/lib/matchup/types'
 import type { AnalyseDict } from '@/locales/dashboard/analyse'
+import { useLang } from '@/locales/dashboard'
+import { formatNumber } from '@/lib/intl'
 
 // Libellés injectés par le parent plutôt que lus d'un hook : ce composant est une
 // pure vue d'overlay, il n'a pas d'autre raison de dépendre du contexte de langue.
@@ -47,6 +49,7 @@ export default function BuildPicker({
   onClose: () => void
   c: boolean
 }) {
+  const lang = useLang()
   const accent = c ? '#BA7517' : '#7F77DD'
   const border = c ? 'rgba(186,117,23,0.25)' : '#27272A'
 
@@ -163,8 +166,7 @@ export default function BuildPicker({
                       {b.name}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {/* ⚠️ `toLocaleString('fr-FR')` : locale de DONNÉE (Lot 8). */}
-                      {b.champName ?? labels.freeChampion} · {b.totalGold.toLocaleString('fr-FR')} g
+                      {b.champName ?? labels.freeChampion} · {formatNumber(b.totalGold, lang)} g
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
@@ -229,7 +231,7 @@ export default function BuildPicker({
             <div style={{ padding: 12, borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {(tempItems.length === 1 ? labels.countOne : labels.countOther)
-                  .replace('{count}', String(tempItems.length))} · {tempGold.toLocaleString('fr-FR')} g
+                  .replace('{count}', String(tempItems.length))} · {formatNumber(tempGold, lang)} g
               </span>
               <div style={{ flex: 1 }} />
               <button

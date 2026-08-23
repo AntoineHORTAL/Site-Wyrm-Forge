@@ -6,13 +6,12 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { IconMaximize, IconX, IconDownload, IconPhoto, IconFileText } from '@tabler/icons-react'
 import PatchCard, { type PatchNote } from '@/components/patch-notes/PatchCard'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatDate } from '@/lib/intl'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
-}
+const FMT_DATE: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }
 
 export default function PatchNotesTab() {
   console.log('PatchNotesTab rendu')
@@ -21,6 +20,7 @@ export default function PatchNotesTab() {
   const c = theme === 'mythic'
   const supabase = createClient()
   const pn = useDashboard().accueil.patchnotes
+  const lang = useLang()
 
   const [patches, setPatches]               = useState<PatchNote[]>([])
   const [loading, setLoading]               = useState(true)
@@ -204,7 +204,7 @@ export default function PatchNotesTab() {
                       {patch.title}
                     </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>
-                      {pn.publishedOn.replace('{date}', formatDate(patch.published_at))}
+                      {pn.publishedOn.replace('{date}', formatDate(patch.published_at, lang, FMT_DATE))}
                     </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"

@@ -15,7 +15,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatDate, formatDateTime } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import { riotRankLabel, gamesLabel, type RiotRankKey } from '@/locales/dashboard/profil'
 
@@ -68,6 +69,7 @@ const TIER_COLORS: Record<string, string> = {
 export default function ProfilePage() {
   const router = useRouter()
   const dico = useDashboard()
+  const lang = useLang()
   const P = dico.profil
   const G = P.page
   const [profile, setProfile]   = useState<UserProfile | null>(null)
@@ -195,7 +197,7 @@ export default function ProfilePage() {
     .slice(0, 5)
 
   const tierColor = TIER_COLORS[profile.tier] ?? '#A1A1AA'
-  const memberSince = new Date(profile.created_at).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })
+  const memberSince = formatDate(profile.created_at, lang, { year: 'numeric', month: 'long' })
 
   return (
     <main style={{
@@ -242,7 +244,7 @@ export default function ProfilePage() {
               background: `${tierColor}22`, color: tierColor, fontWeight: 700, letterSpacing: 1,
             }}>{subscriptionTierLabel(dico.nav, profile.tier).toUpperCase()}</span>
             {profile.tier_expires_at && (
-              <span>{G.until.replace('{date}', new Date(profile.tier_expires_at).toLocaleDateString('fr-FR'))}</span>
+              <span>{G.until.replace('{date}', formatDate(profile.tier_expires_at, lang))}</span>
             )}
             {!profile.tier_expires_at && profile.tier !== 'apprenti' && (
               <span style={{ color: '#EF9F27', fontWeight: 700 }}>{G.lifetime}</span>
@@ -632,6 +634,7 @@ function isProtectedAccount(profile: UserProfile): boolean {
 
 function DeletionRequest({ profile }: { profile: UserProfile }) {
   const P = useDashboard().profil
+  const lang = useLang()
   const D = P.deletion
   // Même gabarit « Échec : {message} » que les paramètres du compte : le message
   // interpolé vient de Supabase et n'est pas traduisible.
@@ -752,8 +755,9 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
           }}>
             <strong>{D.pendingTitle}</strong>
             <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-              {/* La DATE reste formatée en fr-FR — catégorie « locale de données », Lot 8. */}
-              {D.pendingDate.replace('{date}', new Date(pending.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}
+              {D.pendingDate.replace('{date}', formatDateTime(pending.requested_at, lang, {
+                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+              }))}
               <br />{D.pendingDelay}
             </div>
           </div>

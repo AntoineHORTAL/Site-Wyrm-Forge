@@ -10,7 +10,8 @@ import {
   publishWorkshopBuild, removeWorkshopBuild,
   type WorkshopBlock,
 } from '@/lib/workshop-builds'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatNumber, formatDate } from '@/lib/intl'
 import type { BuildFilterKey, BuildStatKey } from '@/locales/dashboard/builds'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ export default function BuildsTab() {
   const c = theme === 'mythic'
   const supabase = createClient()
   const dico = useDashboard()
+  const lang = useLang()
   const B = dico.builds
 
   // Navigation
@@ -759,10 +761,10 @@ export default function BuildsTab() {
                 {/* Footer */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
                   <span style={{ fontSize: 12, color: c ? '#FAC775' : '#EF9F27', fontWeight: 600 }}>
-                    {build.totalGold.toLocaleString('fr-FR')} g
+                    {formatNumber(build.totalGold, lang)} g
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                    {new Date(build.createdAt).toLocaleDateString('fr-FR')}
+                    {formatDate(build.createdAt, lang)}
                   </span>
                 </div>
 
@@ -1238,7 +1240,7 @@ export default function BuildsTab() {
 
                         {/* Gold */}
                         <div style={{ fontSize: 10, color: gold, fontWeight: 600, marginBottom: itemStats.length > 0 ? 4 : 0 }}>
-                          {item.gold.total === 0 ? B.editor.free : `${(item.gold.total * count).toLocaleString('fr-FR')}g`}
+                          {item.gold.total === 0 ? B.editor.free : `${formatNumber(item.gold.total * count, lang)}g`}
                         </div>
 
                         {/* Stats */}
@@ -1269,7 +1271,7 @@ export default function BuildsTab() {
                 {/* Block total */}
                 {blockGold > 0 && (
                   <div style={{ marginTop: 6, textAlign: 'right', fontSize: 11, color: gold, fontWeight: 600 }}>
-                    {blockGold.toLocaleString('fr-FR')}g
+                    {formatNumber(blockGold, lang)}g
                   </div>
                 )}
               </div>
@@ -1295,7 +1297,7 @@ export default function BuildsTab() {
             }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{B.editor.totalBuild}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: gold }}>
-                {totalGold.toLocaleString('fr-FR')} g
+                {formatNumber(totalGold, lang)} g
               </span>
             </div>
           )}
@@ -1353,7 +1355,7 @@ export default function BuildsTab() {
           }}>
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{B.detail.totalCost}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: gold }}>
-              {totalGold.toLocaleString('fr-FR')} g
+              {formatNumber(totalGold, lang)} g
             </span>
           </div>
 
@@ -1407,7 +1409,7 @@ export default function BuildsTab() {
                 <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{b.name}</span>
                   <span style={{ fontSize: 12, color: gold, fontWeight: 600 }}>
-                    {b.items.reduce((s, bi) => s + bi.item.gold.total * bi.count, 0).toLocaleString('fr-FR')}g
+                    {formatNumber(b.items.reduce((s, bi) => s + bi.item.gold.total * bi.count, 0), lang)}g
                   </span>
                 </div>
               ))}
@@ -1475,7 +1477,7 @@ export default function BuildsTab() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#F5F2FA', marginBottom: 4 }}>{si.name}</div>
                 <div style={{ fontSize: 13, color: gold, fontWeight: 600, marginBottom: 8 }}>
-                  {si.gold.total === 0 ? B.editor.free : `${si.gold.total.toLocaleString('fr-FR')} g`}
+                  {si.gold.total === 0 ? B.editor.free : `${formatNumber(si.gold.total, lang)} g`}
                 </div>
                 {siStats.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>

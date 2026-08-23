@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { formatNumber, formatDateTime } from '@/lib/intl'
 
 const PAGE_SIZE = 10
 
@@ -20,11 +21,9 @@ interface Props {
   balanceLoading: boolean
 }
 
-function fmtDate(iso: string) {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  }).format(new Date(iso))
+const FMT_DATE: Intl.DateTimeFormatOptions = {
+  day: 'numeric', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit',
 }
 
 export default function BalanceHistory({ balance, balanceLoading }: Props) {
@@ -32,6 +31,7 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
   const c = theme === 'mythic'
   const supabase = createClient()
   const d = useDashboard()
+  const lang = useLang()
   const e = d.ecailles
 
   const [rows, setRows] = useState<LedgerRow[]>([])
@@ -79,7 +79,7 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
             fontFamily: c ? 'Cinzel, serif' : 'inherit',
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
-            {balanceLoading ? '…' : balance.toLocaleString('fr-FR')}
+            {balanceLoading ? '…' : formatNumber(balance, lang)}
             <img src="/icons/ecaille.png" alt={e.scalesAlt} width={44} height={44} />
           </div>
         </div>
@@ -116,14 +116,14 @@ export default function BalanceHistory({ balance, balanceLoading }: Props) {
                       {e.balance.sources[row.source as keyof typeof e.balance.sources] ?? row.source}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                      {fmtDate(row.created_at)}
+                      {formatDateTime(row.created_at, lang, FMT_DATE)}
                     </div>
                   </div>
                   <span style={{
                     fontSize: 15, fontWeight: 700,
                     color: row.delta > 0 ? '#5DCAA5' : '#E24B4A',
                   }}>
-                    {row.delta > 0 ? '+' : ''}{row.delta.toLocaleString('fr-FR')}
+                    {row.delta > 0 ? '+' : ''}{formatNumber(row.delta, lang)}
                   </span>
                 </div>
               ))}
