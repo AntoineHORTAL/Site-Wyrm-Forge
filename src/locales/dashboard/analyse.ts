@@ -26,7 +26,8 @@
  * ⚠️ DÉCISION DE VOCABULAIRE : « Chaleur de la Forge » et « braises » sont le nom et
  * l'unité du pot de crédits IA. Ce n'est pas une marque (contrairement à « Wyrm
  * Forge ») mais du vocabulaire d'univers, donc ils SE TRADUISENT — « Forge Heat »,
- * « embers ». À rebasculer en invariant si la décision produit est de figer le nom.
+ * « embers ». Décision produit ACTÉE avant le Lot 6 : le nom n'est pas figé, la
+ * traduction reste. AdminTab (Lot 6) n'affiche pas ce vocabulaire — rien à répercuter.
  */
 
 /**

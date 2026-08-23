@@ -14,6 +14,10 @@ import {
   type PostGameError, type PostGameResult,
 } from '@/lib/postgame/api'
 import { balanceLabel, needLabel } from './analyse'
+import { profileRoleLabel, patchStatusLabel, patchGenReasonLabel } from './admin'
+import {
+  TIERS, PROFILE_ROLES, PATCH_STATUSES, PATCH_GEN_REASONS, ADMIN_SETTING_KEYS, QUICK_DATES,
+} from '@/components/dashboard/tabs/AdminTab'
 
 /**
  * Mêmes invariants que `landing.test.ts`, mais écrits de façon GÉNÉRIQUE : la suite
@@ -81,6 +85,9 @@ const INVARIANTS = new Set<string>([
   '{name} — {gold} g', '{count} item', '{champion} vs {opponent}',
   // Infobulle d'un item du Workshop : nom + quantité, aucun mot à traduire.
   '{name} (×{count})',
+  // Lot 6 — en-têtes de colonnes et libellés du panneau admin dont l'orthographe est
+  // la même dans les deux langues (« Admin » et « Patch Notes » sont déjà plus haut).
+  'Tier', 'Expiration', 'Actions', '📅 Date', '✕', 'https://...',
 ])
 
 interface Anomalies {
@@ -612,5 +619,135 @@ describe('libellé de tier d\'abonnement', () => {
   it('retombe sur le tier de base si la valeur est absente', () => {
     expect(subscriptionTierLabel(dashboardFr.nav, undefined)).toBe('Apprenti')
     expect(subscriptionTierLabel(dashboardEn.nav, null)).toBe('Apprentice')
+  })
+})
+
+/**
+ * Lot 6 — panneau Admin. C'est l'onglet qui affiche le PLUS de valeurs métier brutes :
+ * `profiles.role`, `profiles.tier`, `patch_notes.status`, le `reason` de l'Edge
+ * Function et les clés `app_settings`. Chacune a une table d'affichage indexée par la
+ * VALEUR, jamais par un libellé.
+ *
+ * Ces tests couvrent ce que ni le type ni le parcours générique ne voient : que la
+ * table est complète pour TOUTES les valeurs possibles — pas seulement celles qui
+ * apparaissent dans les données du moment. Les jeux de valeurs sont donc importés
+ * depuis `AdminTab`, où ils sont recopiés du schéma (contraintes CHECK, DEFAULT).
+ */
+describe('dico admin — tables d\'affichage des valeurs métier', () => {
+  it('a un libellé pour chaque valeur de profiles.role, et aucun orphelin', () => {
+    expect(Object.keys(dashboardFr.admin.roles).sort()).toEqual([...PROFILE_ROLES].sort())
+    expect(Object.keys(dashboardEn.admin.roles).sort()).toEqual([...PROFILE_ROLES].sort())
+  })
+
+  it('a un libellé pour chaque valeur de patch_notes.status, et aucun orphelin', () => {
+    // Le CHECK en base n'accepte que ces deux valeurs : un statut ajouté côté SQL sans
+    // entrée ici s'afficherait brut dans le badge, ce test le signale d'abord.
+    expect(Object.keys(dashboardFr.admin.patches.statuses).sort()).toEqual([...PATCH_STATUSES].sort())
+  })
+
+  it('a un libellé pour chaque motif renvoyé par patch-notes-generator', () => {
+    expect(Object.keys(dashboardFr.admin.patches.reasons).sort()).toEqual([...PATCH_GEN_REASONS].sort())
+  })
+
+  /**
+   * ⚠️ FRONTIÈRE MÉTIER : `TIERS` pilote à la fois les boutons de l'éditeur, le
+   * comptage par tier et la valeur ÉCRITE dans `profiles.tier`. Le panneau admin rend
+   * la liste ENTIÈRE, y compris les tiers que personne n'a encore — un tier sans
+   * libellé y serait donc visible tout de suite, contrairement aux autres écrans.
+   */
+  it('traduit chacun des tiers proposés par l\'éditeur', () => {
+    TIERS.forEach(tier => {
+      expect(subscriptionTierLabel(dashboardFr.nav, tier), `tier FR manquant : ${tier}`).not.toBe(tier)
+      expect(subscriptionTierLabel(dashboardEn.nav, tier), `tier EN manquant : ${tier}`).not.toBe(tier)
+    })
+  })
+
+  it('a un libellé et une description pour chaque feature flag géré', () => {
+    // `ADMIN_SETTING_KEYS` pilote AUSSI le `.in()` de chargement : une clé chargée sans
+    // entrée de dico afficherait un interrupteur sans texte.
+    expect(Object.keys(dashboardFr.admin.settings).sort()).toEqual([...ADMIN_SETTING_KEYS].sort())
+    ADMIN_SETTING_KEYS.forEach(key => {
+      expect(dashboardFr.admin.settings[key].label.trim(), `libellé FR vide : ${key}`).not.toBe('')
+      expect(dashboardFr.admin.settings[key].description.trim(), `desc FR vide : ${key}`).not.toBe('')
+      expect(dashboardEn.admin.settings[key].label.trim(), `libellé EN vide : ${key}`).not.toBe('')
+      expect(dashboardEn.admin.settings[key].description.trim(), `desc EN vide : ${key}`).not.toBe('')
+    })
+  })
+
+  it('a un libellé pour chaque raccourci de date, et aucun orphelin', () => {
+    // La clé est interne (`m1`…), la durée en jours reste dans AdminTab : un libellé
+    // traduit ne doit jamais servir de clé de rendu.
+    expect(Object.keys(dashboardFr.admin.quickDates).sort())
+      .toEqual(QUICK_DATES.map(q => q.key).sort())
+  })
+})
+
+/**
+ * Lot 6 — les trois tables du panneau sont lues par un helper, jamais indexées à la
+ * main. Le contrat est celui de `subscriptionTierLabel` : une valeur inconnue reste
+ * LISIBLE (affichée brute) plutôt que de laisser un vide dans le tableau.
+ */
+describe('dico admin — replis des tables d\'affichage', () => {
+  it('traduit les valeurs connues de profiles.role', () => {
+    expect(profileRoleLabel(dashboardFr.admin, 'admin')).toBe('Admin')
+    expect(profileRoleLabel(dashboardFr.admin, 'user')).toBe('Utilisateur')
+    expect(profileRoleLabel(dashboardEn.admin, 'user')).toBe('User')
+  })
+
+  it('renvoie un rôle inconnu TEL QUEL, et retombe sur « user » s\'il est absent', () => {
+    expect(profileRoleLabel(dashboardEn.admin, 'moderator')).toBe('moderator')
+    expect(profileRoleLabel(dashboardFr.admin, null)).toBe('Utilisateur')
+    expect(profileRoleLabel(dashboardEn.admin, undefined)).toBe('User')
+  })
+
+  it('traduit les deux statuts de patch, et rend brut un statut inconnu', () => {
+    expect(patchStatusLabel(dashboardFr.admin, 'draft')).toBe('Brouillon')
+    expect(patchStatusLabel(dashboardEn.admin, 'published')).toBe('Published')
+    expect(patchStatusLabel(dashboardEn.admin, 'archived')).toBe('archived')
+  })
+
+  it('traduit les motifs de non-génération connus', () => {
+    // Avant ce lot, le code brut « already_generated » s'affichait dans la phrase.
+    expect(patchGenReasonLabel(dashboardFr.admin, 'already_generated')).toBe('déjà généré')
+    expect(patchGenReasonLabel(dashboardEn.admin, 'race_condition')).toBe('concurrent generation')
+  })
+
+  it('conserve le comportement d\'avant le lot quand le motif est absent', () => {
+    // L'ancien repli en dur était « déjà généré » : un `skipped` sans `reason` doit
+    // toujours produire cette phrase, et un motif INCONNU rester lisible.
+    expect(patchGenReasonLabel(dashboardFr.admin, undefined)).toBe('déjà généré')
+    expect(patchGenReasonLabel(dashboardEn.admin, 'quota_exceeded')).toBe('quota_exceeded')
+  })
+})
+
+/**
+ * Lot 6 — gabarits du panneau. Le parcours générique vérifie la PARITÉ des marqueurs
+ * entre FR et EN ; si un marqueur disparaissait des DEUX côtés, la phrase resterait
+ * grammaticale mais perdrait son information (le pseudo à certifier, la version créée).
+ */
+describe('dico admin — marqueurs des gabarits', () => {
+  it('nomme le compte visé par les deux confirmations de certification', () => {
+    expect(dashboardFr.admin.actions.confirmCertify).toContain('{name}')
+    expect(dashboardFr.admin.actions.confirmUncertify).toContain('{name}')
+    expect(dashboardEn.admin.actions.confirmCertify).toContain('{name}')
+    expect(dashboardEn.admin.actions.confirmUncertify).toContain('{name}')
+  })
+
+  it('conserve les marqueurs des messages de la section Patch Notes', () => {
+    expect(dashboardFr.admin.patches.genCreated).toContain('{version}')
+    expect(dashboardFr.admin.patches.genSkipped).toContain('{reason}')
+    expect(dashboardFr.admin.patches.errorPrefix).toContain('{message}')
+  })
+
+  it('ne laisse aucun marqueur non substitué dans une phrase composée', () => {
+    const composées = [
+      dashboardFr.admin.actions.confirmCertify.replace('{name}', 'Faker'),
+      dashboardEn.admin.patches.genCreated.replace('{version}', '15.10.1'),
+      dashboardEn.admin.patches.genSkipped.replace(
+        '{reason}', patchGenReasonLabel(dashboardEn.admin, 'already_generated'),
+      ),
+      dashboardFr.admin.patches.errorPrefix.replace('{message}', 'permission denied'),
+    ]
+    composées.forEach(t => expect(t).not.toMatch(/\{[a-z]+\}/i))
   })
 })

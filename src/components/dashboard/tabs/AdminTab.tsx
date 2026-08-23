@@ -6,13 +6,24 @@ import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { IconMaximize, IconX } from '@tabler/icons-react'
 import PatchCard, { type PatchData, type PatchNote as PatchCardNote } from '@/components/patch-notes/PatchCard'
+import { useDashboard } from '@/locales/dashboard'
+import { subscriptionTierLabel } from '@/locales/dashboard/nav'
+import {
+  profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
+  type AdminDict, type AdminSettingKey,
+} from '@/locales/dashboard/admin'
 
-const CertifiedBadge = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label="Certifié" style={{ flexShrink: 0, display: 'block' }}>
-    <circle cx="12" cy="12" r="10" fill="#3B82F6"/>
-    <path d="M8 12.5l2.5 2.5 5.5-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
+// Le badge est rendu seul (icône sans texte) dans la colonne Utilisateur : son
+// `aria-label` EST sa seule sortie pour un lecteur d'écran, il se traduit donc.
+const CertifiedBadge = ({ size = 14 }: { size?: number }) => {
+  const label = useDashboard().admin.actions.certifiedAlt
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label={label} style={{ flexShrink: 0, display: 'block' }}>
+      <circle cx="12" cy="12" r="10" fill="#3B82F6"/>
+      <path d="M8 12.5l2.5 2.5 5.5-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
 
 interface Profile {
   id: string
@@ -25,18 +36,32 @@ interface Profile {
   created_at?: string
 }
 
+/** Valeurs acceptées par `CHECK (status IN ('draft', 'published'))` sur `patch_notes`. */
+export const PATCH_STATUSES = ['draft', 'published'] as const
+type PatchStatus = typeof PATCH_STATUSES[number]
+
+/** Valeurs de `profiles.role` (`text NOT NULL DEFAULT 'user'`). */
+export const PROFILE_ROLES = ['user', 'admin'] as const
+
+/**
+ * Motifs de `{ skipped: true, reason }` renvoyés par l'Edge Function
+ * `patch-notes-generator`. Recopiés depuis son `index.ts` : le client ne peut pas les
+ * importer (code Deno), mais un motif inconnu reste affiché brut.
+ */
+export const PATCH_GEN_REASONS = ['already_generated', 'race_condition'] as const
+
 interface PatchNote {
   id: number
   version: string
   title: string
   summary_jsonb: PatchData
   image_url: string | null
-  status: 'draft' | 'published'
+  status: PatchStatus
   created_at: string
   published_at: string | null
 }
 
-const TIERS = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
+export const TIERS = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
 
 const TIER_COLORS: Record<string, string> = {
   'apprenti':    '#A1A1AA',
@@ -47,12 +72,21 @@ const TIER_COLORS: Record<string, string> = {
   'architecte+': '#EF9F27',
 }
 
-const QUICK_DATES = [
-  { label: '1 mois',  days: 30 },
-  { label: '3 mois',  days: 90 },
-  { label: '6 mois',  days: 180 },
-  { label: '1 an',    days: 365 },
-]
+/**
+ * Raccourcis d'expiration. `key` indexe le libellé dans le dico ; `days` est la seule
+ * donnée métier, elle reste ici — un libellé traduit ne doit jamais servir de clé.
+ */
+export const QUICK_DATES = [
+  { key: 'm1', days: 30 },
+  { key: 'm3', days: 90 },
+  { key: 'm6', days: 180 },
+  { key: 'y1', days: 365 },
+] as const satisfies readonly { key: keyof AdminDict['quickDates']; days: number }[]
+
+/** Clés `app_settings.key` gérées par ce panneau — pilotent le `.in()` ET l'état initial. */
+export const ADMIN_SETTING_KEYS = [
+  'patch_auto_publish', 'ecailles_enabled', 'shop_enabled', 'quests_enabled',
+] as const satisfies readonly AdminSettingKey[]
 
 function addDays(n: number): string {
   const d = new Date()
@@ -60,11 +94,17 @@ function addDays(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return 'À vie'
+/**
+ * Colonne Expiration : « À vie », « ⚠ Expiré », ou la date.
+ *
+ * Les deux libellés viennent du dico ; la DATE reste en `fr-FR` — c'est la catégorie
+ * « locale de données », traitée au Lot 8, pas une chaîne d'interface.
+ */
+function formatDate(iso: string | null, labels: AdminDict['expiry']): string {
+  if (!iso) return labels.lifetime
   const d = new Date(iso)
   const now = new Date()
-  if (d < now) return '⚠ Expiré'
+  if (d < now) return labels.expired
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
@@ -130,6 +170,8 @@ export default function AdminTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const supabase = createClient()
+  const dico = useDashboard()
+  const A = dico.admin
 
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading]   = useState(true)
@@ -169,12 +211,9 @@ export default function AdminTab() {
 
   // Réglages globaux (app_settings) — feature flags
   // Objet plat : clé = key DB, valeur = booléen parsé depuis le TEXT 'true'/'false'
-  const [settings, setSettings] = useState<Record<string, boolean>>({
-    patch_auto_publish: false,
-    ecailles_enabled:   false,
-    shop_enabled:       false,
-    quests_enabled:     false,
-  })
+  const [settings, setSettings] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(ADMIN_SETTING_KEYS.map(k => [k, false])),
+  )
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving]   = useState<string | null>(null)
 
@@ -189,7 +228,7 @@ export default function AdminTab() {
     const { data } = await supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['patch_auto_publish', 'ecailles_enabled', 'shop_enabled', 'quests_enabled'])
+      .in('key', [...ADMIN_SETTING_KEYS])
     if (data) {
       const mapped: Record<string, boolean> = {}
       for (const row of data) mapped[row.key] = row.value === 'true'
@@ -284,10 +323,10 @@ export default function AdminTab() {
   }
 
   async function savePatchEdit(id: number) {
-    if (editJsonError) { setPatchError('JSON invalide — corrige les erreurs avant de sauvegarder.'); return }
+    if (editJsonError) { setPatchError(A.patches.invalidJsonFix); return }
     let parsedJson: PatchData
     try { parsedJson = JSON.parse(editJsonRaw) as PatchData }
-    catch { setPatchError('JSON invalide.'); return }
+    catch { setPatchError(A.patches.invalidJson); return }
     setSavingPatch(true)
     setPatchError(null)
     const { error } = await supabase.from('patch_notes')
@@ -343,7 +382,7 @@ export default function AdminTab() {
     }).eq('id', id).select()
     if (error || !data || data.length === 0) {
       setSaving(false)
-      setSaveError(error?.message ?? 'Aucune ligne modifiée — droits insuffisants ?')
+      setSaveError(error?.message ?? A.edit.noRows)
       return
     }
     await load()
@@ -393,10 +432,10 @@ export default function AdminTab() {
         <span style={{ fontSize: 18 }}>🛡️</span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: c ? '#FAC775' : '#F5F2FA' }}>
-            Panneau d'administration
+            {A.banner.title}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-            Accès réservé aux comptes admin — gestion des utilisateurs et abonnements.
+            {A.banner.subtitle}
           </div>
         </div>
       </div>
@@ -404,12 +443,12 @@ export default function AdminTab() {
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
         {[
-          { label: 'Comptes total',    value: stats.total,              color: '#F5F2FA' },
-          { label: 'Certifiés',        value: stats.certified,          color: '#3B82F6' },
-          { label: 'Abonnés actifs',   value: stats.activeSubscribers,  color: '#5DCAA5' },
-          { label: 'Expire < 14j',     value: stats.expiring,           color: stats.expiring > 0 ? '#E24B4A' : 'var(--text-dim)' },
-        ].map((k, i) => (
-          <div key={i} style={{ padding: '14px 16px', borderRadius: 8, background: bg, border: `1px solid ${border}` }}>
+          { key: 'total',     label: A.kpis.total,             value: stats.total,             color: '#F5F2FA' },
+          { key: 'certified', label: A.kpis.certified,         value: stats.certified,         color: '#3B82F6' },
+          { key: 'active',    label: A.kpis.activeSubscribers, value: stats.activeSubscribers, color: '#5DCAA5' },
+          { key: 'expiring',  label: A.kpis.expiring,          value: stats.expiring,          color: stats.expiring > 0 ? '#E24B4A' : 'var(--text-dim)' },
+        ].map(k => (
+          <div key={k.key} style={{ padding: '14px 16px', borderRadius: 8, background: bg, border: `1px solid ${border}` }}>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{k.label}</div>
             <div style={{ fontSize: 24, fontWeight: 700, color: k.color }}>{k.value}</div>
           </div>
@@ -419,7 +458,7 @@ export default function AdminTab() {
       {/* Répartition par tier (hors comptes à vie) */}
       <div style={{ padding: '16px 18px', borderRadius: 10, background: bg, border: `1px solid ${border}` }}>
         <div style={{ fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, fontWeight: 600 }}>
-          Abonnés actifs par tier <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(hors comptes à vie)</span>
+          {A.breakdown.title} <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{A.breakdown.hint}</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {tierCounts.map(({ tier, count }) => (
@@ -434,8 +473,10 @@ export default function AdminTab() {
                 background: TIER_COLORS[tier],
                 opacity: count > 0 ? 1 : 0.3,
               }} />
+              {/* `tier` reste la VALEUR métier (clé de couleur, clé de comptage) ;
+                  seul son libellé passe par le dico — le même que la carte d'abonnement. */}
               <span style={{ fontSize: 12, color: count > 0 ? TIER_COLORS[tier] : 'var(--text-dim)', textTransform: 'capitalize', fontWeight: 500 }}>
-                {tier}
+                {subscriptionTierLabel(dico.nav, tier)}
               </span>
               <span style={{ fontSize: 14, fontWeight: 700, color: count > 0 ? '#F5F2FA' : 'var(--text-dim)' }}>
                 {count}
@@ -448,7 +489,7 @@ export default function AdminTab() {
       {/* Search */}
       <input
         value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="🔍 Rechercher par pseudo ou email..."
+        placeholder={A.searchPlaceholder}
         style={{
           padding: '10px 14px', borderRadius: 8, fontSize: 13,
           background: c ? 'rgba(20,10,35,0.6)' : '#18181B',
@@ -461,7 +502,7 @@ export default function AdminTab() {
       <div style={{ borderRadius: 10, background: bg, border: `1px solid ${border}`, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 14 }}>
-            Chargement…
+            {dico.common.loading}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -479,12 +520,14 @@ export default function AdminTab() {
               </colgroup>
               <thead>
                 <tr style={{ background: c ? 'rgba(20,10,35,0.5)' : '#0F0F11' }}>
-                  {['Utilisateur', 'Tier', 'Expiration', 'Rôle', 'Actions'].map(h => (
-                    <th key={h} style={{
+                  {/* `key` = clé de colonne, pas le libellé : un `key` qui change avec la
+                      langue remonterait chaque `th` à chaque bascule FR/EN. */}
+                  {(['user', 'tier', 'expiry', 'role', 'actions'] as const).map(col => (
+                    <th key={col} style={{
                       padding: '10px 16px', textAlign: 'left',
                       color: 'var(--text-dim)', fontSize: 11,
                       textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600,
-                    }}>{h}</th>
+                    }}>{A.columns[col]}</th>
                   ))}
                 </tr>
               </thead>
@@ -517,7 +560,7 @@ export default function AdminTab() {
                             )}
                           </div>
                           {successId === p.id && (
-                            <span style={{ fontSize: 11, color: '#5DCAA5' }}>✓ Sauvegardé</span>
+                            <span style={{ fontSize: 11, color: '#5DCAA5' }}>{A.actions.saved}</span>
                           )}
                         </div>
                       </td>
@@ -528,7 +571,7 @@ export default function AdminTab() {
                           fontSize: 12, fontWeight: 600,
                           color: TIER_COLORS[p.tier] ?? '#A1A1AA',
                           textTransform: 'capitalize',
-                        }}>{p.tier}</span>
+                        }}>{subscriptionTierLabel(dico.nav, p.tier)}</span>
                       </td>
 
                       {/* Expiration */}
@@ -538,10 +581,11 @@ export default function AdminTab() {
                           color: !p.tier_expires_at ? '#5DCAA5'
                             : new Date(p.tier_expires_at) < new Date() ? '#E24B4A'
                             : 'var(--text-muted)',
-                        }}>{formatDate(p.tier_expires_at)}</span>
+                        }}>{formatDate(p.tier_expires_at, A.expiry)}</span>
                       </td>
 
-                      {/* Role */}
+                      {/* Role — la BRANCHE reste sur la valeur métier (c'est elle qui
+                          choisit le style du badge), seul le libellé vient du dico. */}
                       <td style={{ padding: '12px 16px' }}>
                         {p.role === 'admin' ? (
                           <span style={{
@@ -549,9 +593,9 @@ export default function AdminTab() {
                             background: c ? 'rgba(186,117,23,0.15)' : 'rgba(226,75,74,0.1)',
                             border: `1px solid ${c ? 'rgba(186,117,23,0.4)' : 'rgba(226,75,74,0.3)'}`,
                             color: c ? '#FAC775' : '#E24B4A', textTransform: 'uppercase', letterSpacing: 1,
-                          }}>Admin</span>
+                          }}>{profileRoleLabel(A, p.role)}</span>
                         ) : (
-                          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Utilisateur</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{profileRoleLabel(A, p.role)}</span>
                         )}
                       </td>
 
@@ -569,7 +613,7 @@ export default function AdminTab() {
                                 color: editId === p.id ? 'var(--text-dim)' : (c ? '#FAFAFA' : '#7F77DD'),
                                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                               }}
-                            >{editId === p.id ? 'Annuler' : 'Modifier'}</button>
+                            >{editId === p.id ? dico.common.cancel : A.actions.edit}</button>
                           )}
 
                           {/* Certifier / Retirer */}
@@ -585,7 +629,7 @@ export default function AdminTab() {
                                 border: `1px solid ${p.certified ? 'rgba(226,75,74,0.3)' : 'rgba(59,130,246,0.3)'}`,
                               }}>
                                 <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                  {p.certified ? `Retirer à ${p.username} ?` : `Certifier ${p.username} ?`}
+                                  {(p.certified ? A.actions.confirmUncertify : A.actions.confirmCertify).replace('{name}', p.username)}
                                 </span>
                                 <button
                                   onClick={() => toggleCertify(p)}
@@ -597,7 +641,7 @@ export default function AdminTab() {
                                     cursor: saving ? 'not-allowed' : 'pointer',
                                     opacity: saving ? 0.7 : 1, fontFamily: 'inherit',
                                   }}
-                                >{saving ? '…' : 'Confirmer'}</button>
+                                >{saving ? '…' : A.actions.confirm}</button>
                                 <button
                                   onClick={() => setConfirmCertifyId(null)}
                                   style={{
@@ -605,7 +649,7 @@ export default function AdminTab() {
                                     background: 'transparent', border: `1px solid ${border}`,
                                     color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'inherit',
                                   }}
-                                >✕</button>
+                                >{A.actions.dismiss}</button>
                               </div>
                             ) : (
                               <button
@@ -622,8 +666,8 @@ export default function AdminTab() {
                                 }}
                               >
                                 {p.certified
-                                  ? <><CertifiedBadge size={12} /> Certifié</>
-                                  : '◦ Certifier'
+                                  ? <><CertifiedBadge size={12} /> {A.actions.certified}</>
+                                  : A.actions.certify
                                 }
                               </button>
                             )
@@ -639,7 +683,7 @@ export default function AdminTab() {
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
                             {/* Tier selector */}
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Tier</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{A.edit.tierLabel}</div>
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 {TIERS.map(t => (
                                   <button key={t} onClick={() => setETier(t)} style={{
@@ -649,14 +693,14 @@ export default function AdminTab() {
                                     color: eTier === t ? (TIER_COLORS[t] ?? '#F5F2FA') : 'var(--text-muted)',
                                     cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                                     textTransform: 'capitalize',
-                                  }}>{t}</button>
+                                  }}>{subscriptionTierLabel(dico.nav, t)}</button>
                                 ))}
                               </div>
                             </div>
 
                             {/* Expiration */}
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Expiration</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{A.edit.expiryLabel}</div>
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <button onClick={() => setELifetime(true)} style={{
                                   padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
@@ -664,7 +708,7 @@ export default function AdminTab() {
                                   background: eLifetime ? 'rgba(93,202,165,0.12)' : 'transparent',
                                   color: eLifetime ? '#5DCAA5' : 'var(--text-muted)',
                                   cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                                }}>♾ À vie</button>
+                                }}>{A.edit.lifetime}</button>
 
                                 <button onClick={() => setELifetime(false)} style={{
                                   padding: '6px 14px', borderRadius: 6, fontSize: 12,
@@ -672,17 +716,17 @@ export default function AdminTab() {
                                   background: eLifetime === false ? (c ? 'rgba(186,117,23,0.12)' : 'rgba(127,119,221,0.12)') : 'transparent',
                                   color: eLifetime === false ? (c ? '#FAC775' : '#FAFAFA') : 'var(--text-muted)',
                                   cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                                }}>📅 Date</button>
+                                }}>{A.edit.date}</button>
 
                                 {eLifetime === false && (
                                   <>
                                     {QUICK_DATES.map(q => (
-                                      <button key={q.label} onClick={() => setEDate(addDays(q.days))} style={{
+                                      <button key={q.key} onClick={() => setEDate(addDays(q.days))} style={{
                                         padding: '5px 10px', borderRadius: 6, fontSize: 11,
                                         border: `1px solid ${border}`,
                                         background: 'transparent', color: 'var(--text-muted)',
                                         cursor: 'pointer', fontFamily: 'inherit',
-                                      }}>{q.label}</button>
+                                      }}>{A.quickDates[q.key]}</button>
                                     ))}
                                     <input
                                       type="date" value={eDate}
@@ -713,9 +757,9 @@ export default function AdminTab() {
                                   opacity: (saving || eLifetime === null) ? 0.7 : 1,
                                   fontFamily: 'inherit',
                                 }}
-                              >{saving ? '…' : 'Sauvegarder'}</button>
+                              >{saving ? '…' : A.edit.save}</button>
                               {eLifetime === null && (
-                                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Choisis « À vie » ou « Date »</span>
+                                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{A.edit.chooseExpiry}</span>
                               )}
                               {saveError && (
                                 <span style={{ fontSize: 11, color: '#E24B4A' }}>✗ {saveError}</span>
@@ -737,12 +781,12 @@ export default function AdminTab() {
         <div style={{
           fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase',
           letterSpacing: 1, fontWeight: 600, marginBottom: 12,
-        }}>Patch Notes</div>
+        }}>{A.patches.title}</div>
 
         {/* Toggle publication automatique */}
         <SettingToggle
-          label="Publication automatique"
-          description="Publie directement le patch généré sans passer par le statut brouillon."
+          label={A.settings.patch_auto_publish.label}
+          description={A.settings.patch_auto_publish.description}
           settingKey="patch_auto_publish"
           value={settings.patch_auto_publish}
           saving={settingsSaving === 'patch_auto_publish'}
@@ -767,16 +811,18 @@ export default function AdminTab() {
               cursor: generating ? 'wait' : 'pointer',
               fontFamily: 'inherit', transition: 'opacity 0.15s',
             }}
-          >{generating ? '⏳ Génération en cours…' : '⚡ Générer le dernier patch'}</button>
+          >{generating ? A.patches.generating : A.patches.generate}</button>
 
           {genResult?.created && (
             <span style={{ fontSize: 12, color: '#5DCAA5' }}>
-              ✓ Draft créé — Patch {genResult.version}
+              {A.patches.genCreated.replace('{version}', genResult.version ?? '')}
             </span>
           )}
           {genResult?.skipped && (
             <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              Aucun nouveau patch ({genResult.reason ?? 'déjà généré'})
+              {/* `reason` est un CODE renvoyé par l'Edge Function ; un code inconnu
+                  reste affiché tel quel, un `reason` absent retombe sur « déjà généré ». */}
+              {A.patches.genSkipped.replace('{reason}', patchGenReasonLabel(A, genResult.reason))}
             </span>
           )}
           {genError && (
@@ -793,19 +839,21 @@ export default function AdminTab() {
             background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.3)',
             color: '#E24B4A',
           }}>
-            Erreur : {patchError}
+            {/* `patchError` est soit un message Supabase (non traduisible), soit un
+                refus de JSON invalide déjà pris dans le dico. */}
+            {A.patches.errorPrefix.replace('{message}', patchError)}
           </div>
         )}
 
         {/* Liste des patch notes */}
         {patchesLoading ? (
-          <div style={{ fontSize: 13, color: 'var(--text-dim)', padding: '12px 0' }}>Chargement…</div>
+          <div style={{ fontSize: 13, color: 'var(--text-dim)', padding: '12px 0' }}>{dico.common.loading}</div>
         ) : patches.length === 0 ? (
           <div style={{
             padding: '20px', borderRadius: 8, textAlign: 'center',
             background: bg, border: `1px dashed ${border}`,
             fontSize: 13, color: 'var(--text-dim)',
-          }}>Aucun patch note — clique sur &quot;Générer&quot; pour créer le premier.</div>
+          }}>{A.patches.empty}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {patches.map(p => (
@@ -825,7 +873,7 @@ export default function AdminTab() {
                     border: `1px solid ${p.status === 'published' ? 'rgba(93,202,165,0.4)' : 'rgba(239,159,39,0.4)'}`,
                     color: p.status === 'published' ? '#5DCAA5' : '#EF9F27',
                     textTransform: 'uppercase', letterSpacing: 1,
-                  }}>{p.status === 'published' ? 'Publié' : 'Brouillon'}</span>
+                  }}>{patchStatusLabel(A, p.status)}</span>
 
                   {/* Titre + version */}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -858,7 +906,7 @@ export default function AdminTab() {
                         color: editPatchId === p.id ? 'var(--text-dim)' : '#7F77DD',
                         cursor: 'pointer', fontFamily: 'inherit',
                       }}
-                    >{editPatchId === p.id ? 'Fermer' : '✏ Éditer'}</button>
+                    >{editPatchId === p.id ? A.patches.close : A.patches.edit}</button>
 
                     {p.status === 'draft' ? (
                       <button
@@ -873,7 +921,7 @@ export default function AdminTab() {
                           opacity: publishingId === p.id ? 0.6 : 1,
                           fontFamily: 'inherit',
                         }}
-                      >{publishingId === p.id ? '…' : '✓ Publier'}</button>
+                      >{publishingId === p.id ? '…' : A.patches.publish}</button>
                     ) : (
                       <button
                         onClick={() => unpublishPatch(p.id)}
@@ -887,7 +935,7 @@ export default function AdminTab() {
                           opacity: publishingId === p.id ? 0.6 : 1,
                           fontFamily: 'inherit',
                         }}
-                      >{publishingId === p.id ? '…' : '↩ Dépublier'}</button>
+                      >{publishingId === p.id ? '…' : A.patches.unpublish}</button>
                     )}
 
                     {/* Supprimer (brouillons uniquement) */}
@@ -906,7 +954,7 @@ export default function AdminTab() {
                               opacity: deletingId === p.id ? 0.6 : 1,
                               fontFamily: 'inherit',
                             }}
-                          >{deletingId === p.id ? '…' : 'Confirmer'}</button>
+                          >{deletingId === p.id ? '…' : A.patches.confirm}</button>
                           <button
                             onClick={() => setConfirmDeleteId(null)}
                             style={{
@@ -914,7 +962,7 @@ export default function AdminTab() {
                               background: 'transparent', border: `1px solid ${border}`,
                               color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'inherit',
                             }}
-                          >Annuler</button>
+                          >{dico.common.cancel}</button>
                         </>
                       ) : (
                         <button
@@ -924,7 +972,7 @@ export default function AdminTab() {
                             background: 'transparent', border: `1px solid ${border}`,
                             color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'inherit',
                           }}
-                        >🗑 Supprimer</button>
+                        >{A.patches.delete}</button>
                       )
                     )}
                   </div>
@@ -947,16 +995,16 @@ export default function AdminTab() {
                       {/* Champs titre + image */}
                       <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <div>
-                          <div style={labelStyle}>Titre</div>
+                          <div style={labelStyle}>{A.patches.fieldTitle}</div>
                           <input value={editTitle} onChange={e => setEditTitle(e.target.value)} style={inputStyle} />
                         </div>
                         <div>
-                          <div style={labelStyle}>URL Bannière (optionnelle)</div>
+                          <div style={labelStyle}>{A.patches.fieldImage}</div>
                           <input
                             type="url"
                             value={editImageUrl}
                             onChange={e => setEditImageUrl(e.target.value)}
-                            placeholder="https://..."
+                            placeholder={A.patches.imagePlaceholder}
                             style={inputStyle}
                           />
                         </div>
@@ -964,7 +1012,7 @@ export default function AdminTab() {
 
                       {/* Textarea JSON */}
                       <div style={{ padding: '0 14px 10px' }}>
-                        <div style={{ ...labelStyle, marginBottom: 6 }}>Contenu JSON</div>
+                        <div style={{ ...labelStyle, marginBottom: 6 }}>{A.patches.fieldJson}</div>
                         <textarea
                           value={editJsonRaw}
                           onChange={e => {
@@ -984,6 +1032,8 @@ export default function AdminTab() {
                           }}
                         />
                         {editJsonError && (
+                          /* Message écrit par `JSON.parse` : c'est le moteur JS qui le
+                             produit, dans la langue du navigateur — non traduisible ici. */
                           <div style={{ fontSize: 11, color: '#EE7C6F', marginTop: 4 }}>
                             ⚠ {editJsonError}
                           </div>
@@ -1002,7 +1052,7 @@ export default function AdminTab() {
                             cursor: savingPatch || editJsonError ? 'not-allowed' : 'pointer',
                             opacity: savingPatch || editJsonError ? 0.5 : 1, fontFamily: 'inherit',
                           }}
-                        >{savingPatch ? 'Sauvegarde…' : 'Sauvegarder'}</button>
+                        >{savingPatch ? A.patches.saving : A.patches.save}</button>
                         {p.status === 'draft' && (
                           <button
                             onClick={async () => { await savePatchEdit(p.id); await publishPatch(p.id) }}
@@ -1016,7 +1066,7 @@ export default function AdminTab() {
                               opacity: editJsonError ? 0.5 : 1,
                               fontFamily: 'inherit',
                             }}
-                          >Sauvegarder &amp; Publier</button>
+                          >{A.patches.saveAndPublish}</button>
                         )}
                         <button
                           onClick={() => setPreviewFullscreen({
@@ -1037,7 +1087,7 @@ export default function AdminTab() {
                           }}
                         >
                           <IconMaximize size={13} />
-                          Prévisualiser en plein écran
+                          {A.patches.preview}
                         </button>
                       </div>
 
@@ -1073,12 +1123,12 @@ export default function AdminTab() {
         <div style={{
           fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase',
           letterSpacing: 1, fontWeight: 600, marginBottom: 12,
-        }}>Économie Écailles</div>
+        }}>{A.economy.title}</div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <SettingToggle
-            label="Activer les Écailles"
-            description="Active la monnaie virtuelle — gain, affichage du solde et transactions."
+            label={A.settings.ecailles_enabled.label}
+            description={A.settings.ecailles_enabled.description}
             settingKey="ecailles_enabled"
             value={settings.ecailles_enabled}
             saving={settingsSaving === 'ecailles_enabled'}
@@ -1088,8 +1138,8 @@ export default function AdminTab() {
             bg={bg}
           />
           <SettingToggle
-            label="Boutique"
-            description="Rend la boutique accessible aux utilisateurs pour dépenser leurs Écailles."
+            label={A.settings.shop_enabled.label}
+            description={A.settings.shop_enabled.description}
             settingKey="shop_enabled"
             value={settings.shop_enabled}
             saving={settingsSaving === 'shop_enabled'}
@@ -1099,8 +1149,8 @@ export default function AdminTab() {
             bg={bg}
           />
           <SettingToggle
-            label="Quêtes journalières"
-            description="Active les quêtes quotidiennes qui récompensent des Écailles."
+            label={A.settings.quests_enabled.label}
+            description={A.settings.quests_enabled.description}
             settingKey="quests_enabled"
             value={settings.quests_enabled}
             saving={settingsSaving === 'quests_enabled'}
@@ -1119,7 +1169,7 @@ export default function AdminTab() {
             <button
               className="pn-modal-close"
               onClick={() => setPreviewFullscreen(null)}
-              aria-label="Fermer"
+              aria-label={A.patches.closePreview}
             >
               <IconX size={18} />
             </button>
