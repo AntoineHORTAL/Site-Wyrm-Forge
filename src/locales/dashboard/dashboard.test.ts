@@ -97,10 +97,11 @@ const INVARIANTS = new Set<string>([
   // Lot 7 — rangs LoL et libellés de /profil, /consent et AuthModal identiques dans
   // les deux langues.
   'Bronze', 'KDA', 'Vision',
-  // Bilan chiffré : W/L dans les DEUX langues, sur /profil comme sur /consent
-  // (décision produit du Lot 8). La pastille d'UNE partie, elle, reste traduite —
-  // `common.winInitial` vaut « V » en français, et un test le verrouille.
-  '{wins}W {losses}L', ' · {wins}W {losses}L',
+  // Résultat d'une partie : W/L dans les DEUX langues, aussi bien pour le bilan
+  // chiffré (/profil, /consent) que pour les pastilles d'une lettre (timeline Stats,
+  // liste /consent, ligne Post Game). Les MOTS « Victoire » / « Défaite » restent
+  // traduits, eux — un test dédié verrouille la distinction.
+  '{wins}W {losses}L', ' · {wins}W {losses}L', 'W', 'L',
   // Gabarits sans mot traduisible.
   '{rate}% WR', 'Champ #{id}',
   // Message natif de Supabase : côté EN, la valeur EST la clé. C'est précisément le
@@ -952,14 +953,16 @@ describe('phrases coupées — ponctuation portée par le bon fragment', () => {
 })
 
 /**
- * Deux notions se ressemblent et ne doivent PAS être confondues :
- *  - le BILAN chiffré (« 8W 4L ») — décision produit : W/L dans les deux langues,
- *    sur /profil comme sur /consent, qui divergeaient jusqu'au Lot 8 ;
- *  - la PASTILLE d'une partie (« V » / « D ») — une seule lettre dans une pastille
- *    de 20 px, qui reste traduite.
- * Ce test empêche l'harmonisation de l'un de déteindre sur l'autre.
+ * Deux notions distinctes, désormais alignées sur la MÊME convention :
+ *  - le BILAN chiffré (« 8W 4L »), sur /profil comme sur /consent ;
+ *  - la PASTILLE d'une partie (« W » / « L »), une seule lettre dans un rond de 20 px,
+ *    servie par `common` (timeline de Stats, liste de /consent) et redéclarée dans
+ *    `analyse.postgame` pour la ligne de match Post Game.
+ * Décision produit de clôture du chantier : W/L PARTOUT, y compris en français. Ces
+ * tests verrouillent l'absence de V/D résiduel, et le fait que les quatre pastilles
+ * tiennent toujours sur un seul caractère.
  */
-describe('initiales de résultat — bilan chiffré vs pastille d\'une partie', () => {
+describe("initiales de résultat — W/L partout, dans les deux langues", () => {
   it('écrit le bilan en W/L dans les deux langues', () => {
     expect(dashboardFr.profil.page.winLoss).toBe('{wins}W {losses}L')
     expect(dashboardEn.profil.page.winLoss).toBe('{wins}W {losses}L')
@@ -968,18 +971,36 @@ describe('initiales de résultat — bilan chiffré vs pastille d\'une partie', 
     expect(dashboardFr.profil.consent.record).not.toContain('D')
   })
 
-  it('garde la pastille d\'une partie TRADUITE', () => {
-    // `common` sert la timeline de Stats et la liste de /consent ; `analyse.postgame`
-    // redéclare les siennes pour la contrainte d'une seule lettre.
-    expect(dashboardFr.common.winInitial).toBe('V')
-    expect(dashboardFr.common.lossInitial).toBe('D')
+  it('écrit les pastilles en W/L dans les deux langues', () => {
+    expect(dashboardFr.common.winInitial).toBe('W')
+    expect(dashboardFr.common.lossInitial).toBe('L')
     expect(dashboardEn.common.winInitial).toBe('W')
     expect(dashboardEn.common.lossInitial).toBe('L')
-    expect(dashboardFr.analyse.postgame.win).toBe('V')
+    expect(dashboardFr.analyse.postgame.win).toBe('W')
+    expect(dashboardFr.analyse.postgame.loss).toBe('L')
     expect(dashboardEn.analyse.postgame.win).toBe('W')
+    expect(dashboardEn.analyse.postgame.loss).toBe('L')
   })
 
-  it('tient les deux pastilles sur un seul caractère', () => {
+  it('ne laisse aucun V/D résiduel sur les pastilles', () => {
+    // La garde qui compte : c'est précisément l'incohérence relevée au Lot 7, puis
+    // corrigée en deux temps — bilan chiffré, puis pastilles.
+    const pastillesFr = [
+      dashboardFr.common.winInitial, dashboardFr.common.lossInitial,
+      dashboardFr.analyse.postgame.win, dashboardFr.analyse.postgame.loss,
+    ]
+    pastillesFr.forEach(p => expect(['V', 'D']).not.toContain(p))
+  })
+
+  it('garde les MOTS de résultat traduits — autre notion', () => {
+    // « Victoire » / « Défaite » sont des libellés pleins (infobulle de la timeline,
+    // liste des matchs d'Accueil) : eux se traduisent, contrairement aux pastilles.
+    expect(dashboardFr.common.win).toBe('Victoire')
+    expect(dashboardEn.common.win).toBe('Victory')
+    expect(dashboardFr.common.loss).not.toBe(dashboardEn.common.loss)
+  })
+
+  it('tient les quatre pastilles sur un seul caractère', () => {
     const pastilles = [
       dashboardFr.common.winInitial, dashboardFr.common.lossInitial,
       dashboardEn.common.winInitial, dashboardEn.common.lossInitial,

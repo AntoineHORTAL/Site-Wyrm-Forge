@@ -202,9 +202,10 @@ export const analyseFr = {
     historyNetwork: 'Erreur réseau — historique indisponible.',
     /* Initiales de résultat de la ligne de match — pendant de `common.winInitial`,
        redéclarées ici parce que la ligne les rend dans une pastille de 20 px : elles
-       doivent tenir sur UN caractère, contrainte que le libellé partagé n'a pas. */
-    win: 'V',
-    loss: 'D',
+       doivent tenir sur UN caractère, contrainte que le libellé partagé n'a pas.
+       W/L dans les deux langues, comme `common.winInitial` (Lot 8). */
+    win: 'W',
+    loss: 'L',
     /* Repli quand `championName` manque dans la réponse de `riot-matches`. */
     unknownChampion: '—',
 

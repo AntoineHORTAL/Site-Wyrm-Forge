@@ -66,9 +66,12 @@ export const commonFr = {
   /* Résultat d'une partie — affiché par Accueil et Stats. */
   win: 'Victoire',
   loss: 'Défaite',
-  /* Initiales du même résultat, pour les cases compactes de la timeline Stats. */
-  winInitial: 'V',
-  lossInitial: 'D',
+  /* Initiales du même résultat, pour les cases compactes de la timeline Stats et la
+     liste de /consent. W/L dans LES DEUX langues : décision produit du Lot 8, alignée
+     sur le bilan chiffré (`profil.page.winLoss`, `profil.consent.record`). Les MOTS
+     ci-dessus (`win` / `loss`), eux, restent traduits — c'est une notion différente. */
+  winInitial: 'W',
+  lossInitial: 'L',
   /* Indexé par `queueId` (API Riot) — voir `queueLabel`. */
   queues: queuesFr,
   /* Repli pour un `queueId` absent de la table : l'id reste affiché, c'est la seule

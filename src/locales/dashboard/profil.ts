@@ -380,10 +380,10 @@ export const profilFr = {
        manquent — d'où la parenthèse fermante portée par la phrase elle-même. */
     selfIntroOne: 'Voici les données enregistrées sur tes performances ({count} partie{record}).',
     selfIntroOther: 'Voici les données enregistrées sur tes performances ({count} parties{record}).',
-    /* Bilan V/D — W/L dans LES DEUX langues, comme `page.winLoss` de /profil.
-       Décision produit : le bilan chiffré s'écrit W/L partout, y compris en français.
-       À ne pas confondre avec `common.winInitial` / `analyse.postgame.win`, qui sont
-       la pastille d'UNE partie et restent, elles, traduites (« V » / « D »). */
+    /* Bilan chiffré — W/L dans LES DEUX langues, comme `page.winLoss` de /profil.
+       Décision produit : tout résultat de partie s'écrit W/L, y compris en français,
+       du bilan chiffré aux pastilles d'une lettre (`common.winInitial`,
+       `analyse.postgame.win`). Seuls les MOTS « Victoire » / « Défaite » se traduisent. */
     record: ' · {wins}W {losses}L',
 
     kda: 'KDA',
