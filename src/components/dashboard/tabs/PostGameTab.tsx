@@ -22,6 +22,7 @@ import {
 } from '@/lib/postgame/api'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { formatDate, formatTime } from '@/lib/intl'
+import { queueLabel } from '@/locales/dashboard/common'
 import { balanceLabel, needLabel } from '@/locales/dashboard/analyse'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -43,8 +44,10 @@ interface SlimMatch {
    *  toujours `undefined`, donc une durée jamais affichée. */
   duration?: number
   queueId?: number
-  /** Libellé de file déjà résolu par l'EF (`QUEUES[queueId] ?? 'Partie'`) — on
-   *  le réutilise plutôt que d'ajouter une 4ᵉ table de libellés au repo. */
+  /** Libellé de file résolu par l'EF, en FRANÇAIS uniquement (`QUEUES[queueId] ??
+   *  'Partie'`). Plus affiché depuis le Lot 8 : le libellé est résolu côté client
+   *  depuis `queueId`, ce qui le rend traduisible sans toucher à l'Edge Function.
+   *  Le champ reste ici parce qu'il fait partie du contrat de la réponse. */
   queueName?: string
   /** `teamPosition || individualPosition` — vide sur ARAM/Arena. */
   position?: string
@@ -117,7 +120,8 @@ type HistoryError = { kind: 'unavailable' | 'network' } | { kind: 'server'; text
 
 export default function PostGameTab({ profile }: { profile?: UserProfile | null }) {
   const { theme } = useTheme()
-  const A = useDashboard().analyse
+  const dico = useDashboard()
+  const A = dico.analyse
   const lang = useLang()
   const P = A.postgame
   const c = theme === 'mythic'
@@ -293,7 +297,7 @@ export default function PostGameTab({ profile }: { profile?: UserProfile | null 
                   textAlign: 'right', flexShrink: 0,
                 }}>
                   {[
-                    m.queueName,
+                    queueLabel(dico.common, m.queueId),
                     m.duration ? mmss(m.duration) : null,
                     m.gameCreation
                       ? `${formatDate(m.gameCreation, lang, FMT_DAY)} ${formatTime(m.gameCreation, lang, FMT_TIME)}`

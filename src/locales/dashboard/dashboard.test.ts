@@ -15,6 +15,7 @@ import {
 } from '@/lib/postgame/api'
 import { balanceLabel, needLabel } from './analyse'
 import { profileRoleLabel, patchStatusLabel, patchGenReasonLabel } from './admin'
+import { queueLabel } from './common'
 import {
   riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,
 } from './profil'
@@ -111,6 +112,9 @@ const INVARIANTS = new Set<string>([
   // Fragment de fin d'une phrase coupée par un lien mailto : il ne porte QUE la
   // ponctuation, dans les deux langues. Verrouillé par un test dédié plus bas.
   '.',
+  // Lot 8 — noms de files que Riot n'a jamais traduits en français : ce sont les
+  // libellés officiels tels quels dans les deux clients du jeu.
+  'ARAM', 'Clash', 'URF', 'Arena', 'URF (pick)',
 ])
 
 interface Anomalies {
@@ -983,5 +987,90 @@ describe('initiales de résultat — bilan chiffré vs pastille d\'une partie', 
       dashboardEn.analyse.postgame.win, dashboardEn.analyse.postgame.loss,
     ]
     pastilles.forEach(p => expect(p, `« ${p} » dépasse un caractère`).toHaveLength(1))
+  })
+})
+
+/**
+ * Lot 8 — libellés de file. La table remplace DEUX copies divergentes :
+ * `QUEUE_LABELS_LIVE` (`lib/live-game.ts`, la liste normative d'AGENTS.md §D) et le
+ * `QUEUES` de l'Edge Function `riot-matches`, qui ne connaît qu'une langue.
+ *
+ * Le client reçoit `queueId` À CÔTÉ de `queueName` dans chaque match : c'est ce qui
+ * permet d'afficher un libellé traduit SANS aucun changement d'API serveur.
+ */
+describe('dico common — libellés de file', () => {
+  /* Les 12 `queue_id` normatifs, recopiés depuis AGENTS.md §D. */
+  const QUEUE_IDS = [0, 400, 420, 430, 440, 450, 700, 900, 1020, 1400, 1700, 1900]
+
+  it('couvre les 12 queue_id normatifs, sans orphelin', () => {
+    expect(Object.keys(dashboardFr.common.queues).map(Number).sort((a, b) => a - b))
+      .toEqual(QUEUE_IDS)
+    expect(Object.keys(dashboardEn.common.queues).map(Number).sort((a, b) => a - b))
+      .toEqual(QUEUE_IDS)
+  })
+
+  it('garde les libellés FR de la liste normative, à l\'identique', () => {
+    // Le Lot 8 déplace la table, il ne réécrit pas le français : ces valeurs sont
+    // celles qui vivaient dans `QUEUE_LABELS_LIVE`.
+    expect(dashboardFr.common.queues[420]).toBe('Classée Solo/Duo')
+    expect(dashboardFr.common.queues[1020]).toBe('Légendes Uniques')
+    expect(dashboardFr.common.queues[0]).toBe('Personnalisée')
+  })
+
+  it('traduit les files dont le nom Riot diffère', () => {
+    expect(dashboardEn.common.queues[420]).toBe('Ranked Solo/Duo')
+    expect(dashboardEn.common.queues[1020]).toBe('One for All')
+    expect(dashboardEn.common.queues[1400]).toBe('Ultimate Spellbook')
+  })
+
+  it('résout un id connu dans les deux langues', () => {
+    expect(queueLabel(dashboardFr.common, 450)).toBe('ARAM')
+    expect(queueLabel(dashboardEn.common, 440)).toBe('Ranked Flex')
+  })
+
+  it('garde l\'id visible pour une file inconnue', () => {
+    // Comportement historique de `lib/live-game.ts`, conservé et désormais traduit :
+    // l'id est la seule information disponible, elle vaut mieux qu'un « Inconnu ».
+    expect(queueLabel(dashboardFr.common, 1234)).toBe('File #1234')
+    expect(queueLabel(dashboardEn.common, 1234)).toBe('Queue #1234')
+  })
+
+  it('ne rend jamais « undefined » ni un vide', () => {
+    const cas = [0, 420, 490, 1234, undefined, null]
+    cas.forEach(id => {
+      ;[dashboardFr.common, dashboardEn.common].forEach(dict => {
+        const libelle = queueLabel(dict, id)
+        expect(libelle).not.toContain('undefined')
+        expect(libelle.trim()).not.toBe('')
+      })
+    })
+  })
+
+  it('conserve le marqueur d\'id dans le repli des deux langues', () => {
+    // Sans `{id}`, le repli dirait « File # » — la substitution serait silencieuse.
+    expect(dashboardFr.common.queueUnknown).toContain('{id}')
+    expect(dashboardEn.common.queueUnknown).toContain('{id}')
+  })
+})
+
+/**
+ * Lot 8 — le gabarit de la date de réinitialisation du pot IA. Le JOUR est produit
+ * par `Intl`, mais la façon de le joindre à l'heure est une convention de langue
+ * (« à 14h05 » / « at 14:05 ») : elle vit donc dans le dico, pas dans `formatReset`.
+ */
+describe('dico analyse — gabarit de la date de réinitialisation', () => {
+  it('porte les trois marqueurs dans les deux langues', () => {
+    ;[dashboardFr.analyse.quota.resetFormat, dashboardEn.analyse.quota.resetFormat]
+      .forEach(gabarit => {
+        expect(gabarit).toContain('{date}')
+        expect(gabarit).toContain('{hh}')
+        expect(gabarit).toContain('{mm}')
+      })
+  })
+
+  it('joint le jour et l\'heure différemment selon la langue', () => {
+    // C'est tout l'intérêt de sortir le gabarit du code : « à 14h05 » n'a aucun sens
+    // en anglais, et une locale Intl seule n'aurait pas suffi à le corriger.
+    expect(dashboardFr.analyse.quota.resetFormat).not.toBe(dashboardEn.analyse.quota.resetFormat)
   })
 })

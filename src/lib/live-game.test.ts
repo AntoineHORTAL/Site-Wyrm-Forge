@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   TEAM_ORDER, TEAM_CHAOS, teamSide, splitTeams,
-  QUEUE_LABELS_LIVE, queueLabel,
   normalizePlatform, isKnownPlatform, KNOWN_PLATFORMS,
   isValidPuuid, parseRiotId,
   elapsedSeconds, formatElapsed, formatResetsIn,
@@ -126,17 +125,12 @@ describe('splitTeams — STOP D3 : partie miroir', () => {
   })
 })
 
-describe('libellés de file §D', () => {
-  it('couvre les 12 queue_id normatifs', () => {
-    expect(Object.keys(QUEUE_LABELS_LIVE).map(Number).sort((a, b) => a - b))
-      .toEqual([0, 400, 420, 430, 440, 450, 700, 900, 1020, 1400, 1700, 1900])
-    expect(queueLabel(420)).toBe('Classée Solo/Duo')
-    expect(queueLabel(450)).toBe('ARAM')
-  })
-  it('file inconnue → libellé neutre, jamais undefined', () => {
-    expect(queueLabel(1234)).toBe('File #1234')
-  })
-})
+/**
+ * Lot 8 — la liste normative des 12 `queue_id` (AGENTS.md §D) a déménagé dans le
+ * dictionnaire (`locales/dashboard/common.ts`), où elle existe dans les deux langues
+ * au lieu d'être recopiée une deuxième fois ici. Sa couverture est vérifiée dans
+ * `dashboard.test.ts` ; ce fichier n'a plus de table de files à tester.
+ */
 
 describe('plateforme', () => {
   it('accepte libellés et codes, insensible à la casse', () => {

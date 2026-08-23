@@ -27,14 +27,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   fetchLiveGame, fetchParticipantRanks, normalizePlatform, isKnownPlatform,
-  parseRiotId, isValidPuuid, queueLabel, elapsedSeconds, formatElapsed,
+  parseRiotId, isValidPuuid, elapsedSeconds, formatElapsed,
   stateMessage, cooldownFor,
   type LiveGameState, type RanksByPuuid,
 } from '@/lib/live-game'
+// ⚠️ Cette page est PUBLIQUE et reste en français (hors périmètre du chantier i18n).
+// Seul le libellé de file en vient : sa table a déménagé dans le dico au Lot 8 pour
+// ne plus exister en double avec le dashboard. Il suit donc la langue choisie.
+import { useDashboard } from '@/locales/dashboard'
+import { queueLabel } from '@/locales/dashboard/common'
 import { loadDDragonMaps, type DDragonMaps } from '@/lib/ddragon'
 import LiveComposition from '@/components/live/LiveComposition'
 
 export default function LiveGamePage() {
+  const dico = useDashboard()
   const { region: rawRegion, riotId: riotIdEncoded } =
     useParams<{ region: string; riotId: string }>()
   const router = useRouter()
@@ -240,7 +246,7 @@ export default function LiveGamePage() {
               background: 'rgba(93,202,165,0.06)', border: '1px solid rgba(93,202,165,0.25)',
             }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#5DCAA5' }}>
-                {queueLabel(state.game.queue_id)}
+                {queueLabel(dico.common, state.game.queue_id)}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                 {elapsed === null ? 'En chargement' : formatElapsed(elapsed)}

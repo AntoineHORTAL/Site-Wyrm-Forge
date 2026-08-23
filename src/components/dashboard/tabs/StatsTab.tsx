@@ -17,6 +17,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { ddragonLocale } from '@/lib/intl'
+import { queueLabel } from '@/locales/dashboard/common'
 import type { DashboardDict } from '@/locales/dashboard'
 
 const supabase = createClient()
@@ -207,15 +208,17 @@ export default function StatsTab() {
     }
   })
 
-  // Distribution par queue
-  const queueDist: Record<string, { played: number; wins: number }> = {}
+  // Distribution par queue — regroupée par `queueId`, JAMAIS par le libellé : une clé
+  // traduite changerait de valeur à chaque bascule de langue, et deux files partageant
+  // un même nom fusionneraient.
+  const queueDist: Record<number, { played: number; wins: number }> = {}
   matches.forEach(m => {
-    // `queueName` est résolu côté serveur (riot-matches) : il reste dans sa langue.
-    const k = m.queueName || st.queueUnknown
-    if (!queueDist[k]) queueDist[k] = { played: 0, wins: 0 }
-    queueDist[k].played++; if (m.win) queueDist[k].wins++
+    if (!queueDist[m.queueId]) queueDist[m.queueId] = { played: 0, wins: 0 }
+    queueDist[m.queueId].played++; if (m.win) queueDist[m.queueId].wins++
   })
-  const queueList = Object.entries(queueDist).sort((a, b) => b[1].played - a[1].played)
+  const queueList = Object.entries(queueDist)
+    .map(([id, q]) => [Number(id), q] as const)
+    .sort((a, b) => b[1].played - a[1].played)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -356,16 +359,16 @@ export default function StatsTab() {
           <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
             {st.queueTitle}
           </div>
-          {queueList.map(([name, q]) => {
+          {queueList.map(([queueId, q]) => {
             const pct = (q.played / total) * 100
             const wr  = (q.wins / q.played) * 100
             return (
-              <div key={name} style={{ marginBottom: 8 }}>
+              <div key={queueId} style={{ marginBottom: 8 }}>
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', fontSize: 11,
                   color: 'var(--text-dim)', marginBottom: 3,
                 }}>
-                  <span style={{ color: '#F5F2FA', fontWeight: 600 }}>{name}</span>
+                  <span style={{ color: '#F5F2FA', fontWeight: 600 }}>{queueLabel(d.common, queueId)}</span>
                   <span>
                     {q.played} · <span style={{ color: wr >= 50 ? '#5DCAA5' : '#E24B4A' }}>{wr.toFixed(0)}%</span>
                   </span>

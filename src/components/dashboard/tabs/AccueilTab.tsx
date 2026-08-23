@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import RiotLinkBlock from '@/components/player/RiotLinkBlock'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { ddragonLocale } from '@/lib/intl'
+import { queueLabel } from '@/locales/dashboard/common'
 import type { AccueilDict } from '@/locales/dashboard/accueil'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -673,7 +674,9 @@ export default function AccueilTab() {
                       {champ?.name ?? m.championName}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span>{m.queueName}</span>
+                      {/* `queueId` est dans la réponse à côté de `queueName` : le
+                          libellé est résolu ICI, dans la langue affichée. */}
+                      <span>{queueLabel(dico.common, m.queueId)}</span>
                       {POS[m.position] && (
                         <>
                           <span>·</span>

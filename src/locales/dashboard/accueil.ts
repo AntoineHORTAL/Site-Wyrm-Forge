@@ -101,8 +101,6 @@ export const accueilFr = {
     queueTitle: 'Modes de jeu',
     gameOne: 'partie',
     gameOther: 'parties',
-    /* Repli quand `queueName` (résolu côté serveur) est absent. */
-    queueUnknown: 'Inconnu',
 
     noRiotTitle: 'Aucun compte Riot lié',
     noRiotText: "Lie ton Riot ID (GameName#TAG) depuis l'onglet Accueil ou la page profil pour voir tes stats.",
@@ -206,7 +204,6 @@ export const accueilEn: AccueilDict = {
     queueTitle: 'Game modes',
     gameOne: 'game',
     gameOther: 'games',
-    queueUnknown: 'Unknown',
 
     noRiotTitle: 'No Riot account linked',
     noRiotText: 'Link your Riot ID (GameName#TAG) from the Home tab or your profile page to see your stats.',

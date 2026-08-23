@@ -112,28 +112,13 @@ export function splitTeams<T extends { team_id: number }>(rows: T[]): SplitTeams
 // ─────────────────────────────────────────────────────────────────────────────
 // Libellés (AGENTS.md §D — « le site recopie cette liste UNE fois »)
 // ─────────────────────────────────────────────────────────────────────────────
-// Liste DÉDIÉE à Live Game. Ne pas la fusionner avec les trois `Record<number,
-// string>` déjà divergents du repo (/summoner, /match, lib/prac.ts) : cette
-// dette existante est documentée et volontairement laissée telle quelle.
-export const QUEUE_LABELS_LIVE: Record<number, string> = {
-  0: 'Personnalisée',
-  400: 'Normale Draft',
-  420: 'Classée Solo/Duo',
-  430: 'Normale Aveugle',
-  440: 'Classée Flex',
-  450: 'ARAM',
-  700: 'Clash',
-  900: 'URF',
-  1020: 'Légendes Uniques',
-  1400: 'Ultime Spellbook',
-  1700: 'Arena',
-  1900: 'URF (pick)',
-}
-
-/** File inconnue → libellé neutre plutôt qu'une ligne vide ou un `undefined`. */
-export function queueLabel(queueId: number): string {
-  return QUEUE_LABELS_LIVE[queueId] ?? `File #${queueId}`
-}
+// ⚠️ La liste normative des 12 `queue_id` a DÉMÉNAGÉ au Lot 8 : elle vit dans
+// `locales/dashboard/common.ts` (`queues` + `queueLabel`), où elle existe dans les
+// deux langues. Elle est toujours recopiée UNE fois, simplement ailleurs — les
+// libellés français y sont identiques à ceux qui étaient ici.
+//
+// `lib/prac.ts` garde sa propre table : `/prac/*` est hors périmètre du chantier
+// i18n, et cette dette-là reste documentée telle quelle.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entrées : plateforme, Riot ID, PUUID
