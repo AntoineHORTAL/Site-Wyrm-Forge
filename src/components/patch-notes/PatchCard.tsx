@@ -299,7 +299,19 @@ export default function PatchCard({ patch, ddragonVersion, forceExpandDesc }: Pa
   // Si la bannière échoue (CORS / hotlink Riot), repli sur le séparateur diamant
   const [bannerError, setBannerError] = useState(false)
 
-  // Chargement item.json + runesReforged.json
+  /**
+   * Chargement item.json + runesReforged.json.
+   *
+   * ⚠️ RESTE EN `fr_FR`, contrairement au reste du dashboard (Lot 8), et ce n'est pas
+   * un oubli : les deux cartes sont indexées par NOM NORMALISÉ (`norm(r.name)`) et
+   * servent de repli d'icône pour les entrées du patch note, dont le `name` est écrit
+   * EN FRANÇAIS par l'Edge Function `patch-notes-generator` (« Reformule en français »).
+   * Les charger en `en_US` remplacerait les clés françaises par des clés anglaises :
+   * plus aucune entrée ne matcherait, et toutes les icônes disparaîtraient en silence.
+   *
+   * Traduire cet écran suppose donc d'abord de générer les patch notes en anglais —
+   * changement côté serveur, hors périmètre de ce chantier front.
+   */
   useEffect(() => {
     if (!ddragonVersion) return
     let cancelled = false

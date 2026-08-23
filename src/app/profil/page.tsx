@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useDashboard, useLang } from '@/locales/dashboard'
-import { formatDate, formatDateTime } from '@/lib/intl'
+import { formatDate, formatDateTime, ddragonLocale } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import { riotRankLabel, gamesLabel, type RiotRankKey } from '@/locales/dashboard/profil'
 
@@ -117,17 +117,6 @@ export default function ProfilePage() {
         const v = vList[0]
         setVersion(v)
 
-        // Map champions DDragon
-        const cRes = await fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`)
-        const cData = await cRes.json()
-        if (cancelled) return
-        const map: Record<number, ChampInfo> = {}
-        Object.values(cData.data).forEach((ch: unknown) => {
-          const c = ch as { key: string; id: string; name: string; image: { full: string } }
-          map[Number(c.key)] = { id: c.id, name: c.name, image: c.image.full, numericId: Number(c.key) }
-        })
-        setChampMap(map)
-
         // Matchs Riot si user a un Riot ID
         if (prof.riot_gamename && prof.riot_tagline) {
           const { data: { session } } = await supabase.auth.getSession()
@@ -156,6 +145,31 @@ export default function ProfilePage() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  /**
+   * Carte des champions DDragon — effet SÉPARÉ, avec `lang` en dépendance.
+   *
+   * ⚠️ Le chargement vivait dans l'effet ci-dessus. L'y laisser en ajoutant `lang`
+   * aurait rappelé `riot-matches` à chaque bascule de langue, donc consommé du quota
+   * Riot pour un changement purement cosmétique.
+   */
+  useEffect(() => {
+    if (!version) return
+    let cancelled = false
+    fetch(`${DDN}/cdn/${version}/data/${ddragonLocale(lang)}/champion.json`)
+      .then(r => r.json())
+      .then((cData: { data: Record<string, unknown> }) => {
+        if (cancelled) return
+        const map: Record<number, ChampInfo> = {}
+        Object.values(cData.data).forEach((ch: unknown) => {
+          const c = ch as { key: string; id: string; name: string; image: { full: string } }
+          map[Number(c.key)] = { id: c.id, name: c.name, image: c.image.full, numericId: Number(c.key) }
+        })
+        setChampMap(map)
+      })
+      .catch(() => { /* icônes manquantes : la page reste lisible */ })
+    return () => { cancelled = true }
+  }, [version, lang])
 
   if (loading) {
     return (
@@ -349,8 +363,7 @@ export default function ProfilePage() {
                     : <div style={{ width: 48, height: 48, borderRadius: 6, background: '#222' }} />
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Le nom du champion vient de DDragon (chargé en `fr_FR`) : il reste
-                        français en mode EN — catégorie « locale de données », Lot 8. */}
+                    {/* Nom DDragon, chargé dans la locale de la langue affichée (Lot 8). */}
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{champ?.name ?? G.champFallback.replace('{id}', String(id))}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
                       {gamesLabel(P, count)} · <span style={{ color: winrateChamp >= 50 ? '#5DCAA5' : '#E24B4A', fontWeight: 600 }}>{G.champWinrate.replace('{rate}', String(winrateChamp))}</span>

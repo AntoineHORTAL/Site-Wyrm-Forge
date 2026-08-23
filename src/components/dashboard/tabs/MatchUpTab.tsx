@@ -13,7 +13,7 @@ import {
 import type { SavedBuildLite, ItemStatsIndex } from '@/lib/matchup/build-resolve'
 import { computeRadar } from '@/lib/matchup/stats-compare'
 import { analyzeMatchup, getQuota, formatReset, canAfford, analysisErrorText, type BuildNameContext, type MatchUpAnalysisResult, type QuotaState } from '@/lib/matchup/api'
-import { formatNumber } from '@/lib/intl'
+import { formatNumber, ddragonLocale } from '@/lib/intl'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { balanceLabel, needLabel, type AnalyseDict } from '@/locales/dashboard/analyse'
 import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
@@ -78,10 +78,25 @@ export default function MatchUpTab() {
   const [analysis, setAnalysis]   = useState<MatchUpAnalysisResult | null>(null)
   const [analyzing, setAnalyzing] = useState<false | 'quick' | 'detailed'>(false)
 
-  // Chargement DDragon + builds sauvegardés + restauration/création du scénario.
+  /**
+   * Chargement DDragon — effet SÉPARÉ, avec `lang` en dépendance.
+   *
+   * ⚠️ Il vivait dans l'effet d'initialisation ci-dessous jusqu'au Lot 8. L'y laisser
+   * en ajoutant `lang` aux dépendances aurait rejoué `setScenario(...)` à chaque
+   * bascule de langue, donc REMPLACÉ le scénario en cours d'édition par celui du
+   * localStorage. Les deux chargements n'ont pas le même cycle de vie.
+   */
   useEffect(() => {
     let alive = true
-    loadDDragon().then(d => { if (alive) setDd(d) }).catch(() => { if (alive) setDdError(true) })
+    loadDDragon(ddragonLocale(lang))
+      .then(d => { if (alive) setDd(d) })
+      .catch(() => { if (alive) setDdError(true) })
+    return () => { alive = false }
+  }, [lang])
+
+  // Builds sauvegardés + restauration/création du scénario.
+  useEffect(() => {
+    let alive = true
     const existing = listScenarios()
     setScenario(existing[0] ?? createScenario('1v1'))
 

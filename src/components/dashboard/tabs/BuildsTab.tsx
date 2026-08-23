@@ -11,7 +11,7 @@ import {
   type WorkshopBlock,
 } from '@/lib/workshop-builds'
 import { useDashboard, useLang } from '@/locales/dashboard'
-import { formatNumber, formatDate } from '@/lib/intl'
+import { formatNumber, formatDate, ddragonLocale } from '@/lib/intl'
 import type { BuildFilterKey, BuildStatKey } from '@/locales/dashboard/builds'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -220,8 +220,9 @@ export default function BuildsTab() {
         setUserId(user?.id ?? null)
 
         const [iRes, cRes, buildsRes, profileRes] = await Promise.all([
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/item.json`),
-          fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
+          // Locale DDragon = langue affichée : NOMS et DESCRIPTIONS d'items en viennent.
+          fetch(`${DDN}/cdn/${v}/data/${ddragonLocale(lang)}/item.json`),
+          fetch(`${DDN}/cdn/${v}/data/${ddragonLocale(lang)}/champion.json`),
           user
             ? supabase.from('item_builds').select('*').order('created_at', { ascending: false })
             : Promise.resolve({ data: [] }),
@@ -333,7 +334,10 @@ export default function BuildsTab() {
       }
     }
     load()
-  }, [])
+    // `lang` : le catalogue d'items est rechargé dans la nouvelle locale. L'effet ne
+    // fait que des LECTURES (builds sauvegardés, profil) — le rejouer ne touche pas au
+    // build en cours d'édition, qui vit dans un autre état.
+  }, [lang])
 
   // ── Sync targetBlockId quand les blocs changent ──────────────────────────
   useEffect(() => {

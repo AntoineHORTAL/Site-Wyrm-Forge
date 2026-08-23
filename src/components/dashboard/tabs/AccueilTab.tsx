@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import RiotLinkBlock from '@/components/player/RiotLinkBlock'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { ddragonLocale } from '@/lib/intl'
 import type { AccueilDict } from '@/locales/dashboard/accueil'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export default function AccueilTab() {
   const c = theme === 'mythic'
   const supabase = createClient()
   const dico = useDashboard()
+  const lang = useLang()
   const tr = dico.accueil.accueil
 
   // Router (pour ouvrir une partie sur sa page dédiée)
@@ -134,20 +136,29 @@ export default function AccueilTab() {
   const accent  = c ? '#BA7517'               : '#7F77DD'
   const gold    = c ? '#FAC775'               : '#EF9F27'
 
-  // ── Init : DDragon + user + rotation ─────────────────────────────────────
+  /**
+   * ── DDragon : version + cartes champions / sorts / runes ──────────────────
+   *
+   * ⚠️ Effet SÉPARÉ depuis le Lot 8, avec `lang` en dépendance. Les trois cartes
+   * portent des NOMS (champions, sorts d'invocateur, runes) qui viennent de DDragon
+   * et doivent suivre la langue. Les laisser dans l'init d'origine aurait rejoué, à
+   * chaque bascule, la lecture du compte Supabase ET le `setPlatform` qui écrase le
+   * choix de plateforme en cours.
+   */
   useEffect(() => {
-    async function init() {
-      // Version DDragon
+    let cancelled = false
+    async function loadDD() {
       const vRes = await fetch(`${DDN}/api/versions.json`)
       const versions: string[] = await vRes.json()
+      if (cancelled) return
       const v = versions[0]
       setVersion(v)
 
-      // Champion.json → map numericId → ChampInfo
+      const loc = ddragonLocale(lang)
       const [cRes, sRes, rRes] = await Promise.all([
-        fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`),
-        fetch(`${DDN}/cdn/${v}/data/fr_FR/summoner.json`),
-        fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`),
+        fetch(`${DDN}/cdn/${v}/data/${loc}/champion.json`),
+        fetch(`${DDN}/cdn/${v}/data/${loc}/summoner.json`),
+        fetch(`${DDN}/cdn/${v}/data/${loc}/runesReforged.json`),
       ])
       const cData = await cRes.json()
       const map: Record<number, ChampInfo> = {}
@@ -179,8 +190,14 @@ export default function AccueilTab() {
         })
       })
       setRuneMap(rm)
+    }
+    loadDD()
+    return () => { cancelled = true }
+  }, [lang])
 
-      // User Supabase + Riot ID sauvegardé
+  // ── Compte : user Supabase + Riot ID sauvegardé (une fois, au montage) ────
+  useEffect(() => {
+    async function init() {
       const { data: { user } } = await supabase.auth.getUser()
       setUserId(user?.id ?? null)
 
@@ -201,18 +218,22 @@ export default function AccueilTab() {
           setPlatform(saved.platform)
         }
       }
-
-      // Rotation (après avoir le map des champions)
-      loadRotation(v, map, platform)
     }
     init()
   }, [])
 
-  // ── Recharger la rotation si la platform change ───────────────────────────
+  /**
+   * ── Rotation ──────────────────────────────────────────────────────────────
+   *
+   * Dépend de la plateforme ET des données DDragon : `loadRotation` résout les ids
+   * renvoyés par l'Edge Function en `ChampInfo` COMPLETS (nom inclus) qu'il stocke
+   * dans l'état. Sans `champMap` en dépendance, la rotation garderait donc les noms
+   * de la langue précédente après une bascule.
+   */
   useEffect(() => {
     if (version && Object.keys(champMap).length > 0)
       loadRotation(version, champMap, platform)
-  }, [platform])
+  }, [platform, version, champMap])
 
   async function loadRotation(v: string, map: Record<number, ChampInfo>, plat: string) {
     setLoadingRot(true)

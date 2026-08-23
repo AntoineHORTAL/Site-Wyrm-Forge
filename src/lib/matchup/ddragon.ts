@@ -2,9 +2,12 @@
 //  matchup/ddragon — chargement des données DDragon pour l'éditeur MatchUp
 // ════════════════════════════════════════════════════════════════════════════
 // Loader dédié MatchUp (self-contained). Reprend la source DDragon de BuildsTab
-// (versions.json + champion.json + item.json en fr_FR) MAIS conserve en plus le
-// champ `stats` des champions (base + perlevel) requis pour le scaling par niveau.
-// Résultat mémoïsé au niveau module (une seule salve réseau par session).
+// (versions.json + champion.json + item.json) MAIS conserve en plus le champ
+// `stats` des champions (base + perlevel) requis pour le scaling par niveau.
+//
+// Résultat mémoïsé au niveau module, PAR LOCALE depuis le Lot 8 : les noms de
+// champions et d'items suivent la langue affichée, un cache à slot unique
+// resservirait donc les noms français après une bascule en anglais.
 
 import type { RawStats } from '../champion-stats'
 
@@ -32,22 +35,24 @@ export interface DDragonData {
   items: DDItemFull[]
 }
 
-let _cache: DDragonData | null = null
+const _cache: Record<string, DDragonData> = {}
 
 // Réinitialise le cache module (usage tests uniquement).
 export function clearDDragonCache(): void {
-  _cache = null
+  for (const k of Object.keys(_cache)) delete _cache[k]
 }
 
-export async function loadDDragon(): Promise<DDragonData> {
-  if (_cache) return _cache
+/** `locale` est une locale DDRAGON (`fr_FR` / `en_US`) — voir `ddragonLocale`. */
+export async function loadDDragon(locale: string): Promise<DDragonData> {
+  const hit = _cache[locale]
+  if (hit) return hit
 
   const versions: string[] = await (await fetch(`${DDN}/api/versions.json`)).json()
   const v = versions[0]
 
   const [cData, iData] = await Promise.all([
-    fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`).then(r => r.json()),
-    fetch(`${DDN}/cdn/${v}/data/fr_FR/item.json`).then(r => r.json()),
+    fetch(`${DDN}/cdn/${v}/data/${locale}/champion.json`).then(r => r.json()),
+    fetch(`${DDN}/cdn/${v}/data/${locale}/item.json`).then(r => r.json()),
   ])
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -67,8 +72,8 @@ export async function loadDDragon(): Promise<DDragonData> {
     }))
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  _cache = { version: v, champs, items }
-  return _cache
+  _cache[locale] = { version: v, champs, items }
+  return _cache[locale]
 }
 
 export const champImgUrl = (version: string, image: string) => `${DDN}/cdn/${version}/img/champion/${image}`

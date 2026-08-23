@@ -33,12 +33,12 @@ afterEach(()  => { clearDDragonCache(); vi.restoreAllMocks() })
 
 describe('loadDDragon', () => {
   it('prend la version la plus récente (versions[0])', async () => {
-    const d = await loadDDragon()
+    const d = await loadDDragon('fr_FR')
     expect(d.version).toBe('14.24.1')
   })
 
   it('mappe les champions avec leurs stats (base + perlevel), triés par nom', async () => {
-    const d = await loadDDragon()
+    const d = await loadDDragon('fr_FR')
     expect(d.champs.map(c => c.id)).toEqual(['Aatrox', 'Ahri'])   // tri alpha
     const ahri = d.champs.find(c => c.id === 'Ahri')!
     expect(ahri.image).toBe('Ahri.png')
@@ -47,7 +47,7 @@ describe('loadDDragon', () => {
   })
 
   it('ne garde que les items Faille (map 11) achetables', async () => {
-    const d = await loadDDragon()
+    const d = await loadDDragon('fr_FR')
     const ids = d.items.map(i => i.id)
     expect(ids).toContain('1001')
     expect(ids).toContain('3006')
@@ -56,9 +56,29 @@ describe('loadDDragon', () => {
   })
 
   it('mémoïse (2e appel = aucun fetch supplémentaire)', async () => {
-    await loadDDragon()
+    await loadDDragon('fr_FR')
     const callsAfterFirst = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length
-    await loadDDragon()
+    await loadDDragon('fr_FR')
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst)
+  })
+
+  /**
+   * Lot 8 — le cache est indexé PAR LOCALE. Avec un slot unique, une bascule FR → EN
+   * aurait resservi les noms français sans jamais rappeler DDragon : le bug aurait
+   * été invisible côté réseau et parfaitement visible à l'écran.
+   */
+  it("ne resert PAS le cache d'une autre locale", async () => {
+    await loadDDragon('fr_FR')
+    const apresFr = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length
+    await loadDDragon('en_US')
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(apresFr)
+  })
+
+  it('demande bien la locale reçue à DDragon', async () => {
+    await loadDDragon('en_US')
+    const urls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map(c => String(c[0]))
+    expect(urls.some(u => u.includes('/en_US/champion.json'))).toBe(true)
+    expect(urls.some(u => u.includes('/en_US/item.json'))).toBe(true)
+    expect(urls.some(u => u.includes('/fr_FR/'))).toBe(false)
   })
 })

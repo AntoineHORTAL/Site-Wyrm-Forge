@@ -15,7 +15,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { ddragonLocale } from '@/lib/intl'
 import type { DashboardDict } from '@/locales/dashboard'
 
 const supabase = createClient()
@@ -59,6 +60,7 @@ export default function StatsTab() {
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
   const bg = c ? 'rgba(42,21,71,0.4)' : '#18181B'
   const d = useDashboard()
+  const lang = useLang()
   const st = d.accueil.stats
 
   const [loading,  setLoading]  = useState(true)
@@ -92,17 +94,6 @@ export default function StatsTab() {
         const v = vList[0]
         setVersion(v)
 
-        // DDragon champion map
-        const cRes  = await fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`)
-        const cData = await cRes.json()
-        if (cancelled) return
-        const map: Record<number, ChampInfo> = {}
-        Object.values(cData.data).forEach((ch: unknown) => {
-          const cc = ch as { key: string; id: string; name: string; image: { full: string } }
-          map[Number(cc.key)] = { id: cc.id, name: cc.name, image: cc.image.full, numericId: Number(cc.key) }
-        })
-        setChampMap(map)
-
         // Matchs Riot (20 dernières parties via Edge Function)
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { setError({ kind: 'session' }); return }
@@ -133,6 +124,31 @@ export default function StatsTab() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  /**
+   * Carte des champions DDragon — effet SÉPARÉ, avec `lang` en dépendance.
+   *
+   * ⚠️ Il était dans l'effet ci-dessus jusqu'au Lot 8. L'y laisser en ajoutant `lang`
+   * aurait rappelé `riot-matches` à chaque bascule de langue : un appel Riot facturé
+   * au quota de l'utilisateur pour un changement purement cosmétique.
+   */
+  useEffect(() => {
+    if (!version) return
+    let cancelled = false
+    fetch(`${DDN}/cdn/${version}/data/${ddragonLocale(lang)}/champion.json`)
+      .then(r => r.json())
+      .then((cData: { data: Record<string, unknown> }) => {
+        if (cancelled) return
+        const map: Record<number, ChampInfo> = {}
+        Object.values(cData.data).forEach((ch: unknown) => {
+          const cc = ch as { key: string; id: string; name: string; image: { full: string } }
+          map[Number(cc.key)] = { id: cc.id, name: cc.name, image: cc.image.full, numericId: Number(cc.key) }
+        })
+        setChampMap(map)
+      })
+      .catch(() => { /* icônes manquantes : la page reste lisible */ })
+    return () => { cancelled = true }
+  }, [version, lang])
 
   if (loading) return <Loader text={st.loading} />
   if (noRiot)  return <NoRiotPrompt d={d} onSettings={() => router.push('/profil')} />

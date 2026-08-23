@@ -17,7 +17,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { ddragonLocale, intlLocale } from '@/lib/intl'
 import type { ScenarioToolKey } from '@/locales/dashboard/strategie'
 
 const supabase = createClient()
@@ -89,6 +90,7 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 export default function ScenariosTab() {
   const { theme } = useTheme()
   const S = useDashboard().strategie.scenarios
+  const lang = useLang()
   const c = theme === 'mythic'
   const bg = c ? 'rgba(42,21,71,0.4)' : '#18181B'
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
@@ -140,8 +142,8 @@ export default function ScenariosTab() {
         const v = vList[0]
         setVersion(v)
 
-        // Champions
-        const cRes = await fetch(`${DDN}/cdn/${v}/data/fr_FR/champion.json`)
+        // Champions — locale DDragon = langue affichée (les noms viennent de là).
+        const cRes = await fetch(`${DDN}/cdn/${v}/data/${ddragonLocale(lang)}/champion.json`)
         const cData = await cRes.json()
         if (cancelled) return
         const champs: DDChamp[] = Object.entries(cData.data)
@@ -149,7 +151,7 @@ export default function ScenariosTab() {
             const r = raw as { name: string; image: { full: string } }
             return { id, name: r.name, image: r.image.full }
           })
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+          .sort((a, b) => a.name.localeCompare(b.name, intlLocale(lang)))
         setAllChamps(champs)
 
         // Scénarios sauvegardés
@@ -175,7 +177,10 @@ export default function ScenariosTab() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+    // `lang` : la liste des champions est rechargée dans la nouvelle locale. Cet effet
+    // ne fait que des LECTURES (user, scénarios sauvegardés), le rejouer est sans effet
+    // de bord — contrairement à celui de MatchUp, qui restaure le scénario en cours.
+  }, [lang])
 
   // ── Actions liste ──
   function openNew() {

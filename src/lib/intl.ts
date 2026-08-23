@@ -52,6 +52,20 @@ export const formatTime = (
   value: Date | number | string, lang: Lang, opts?: Intl.DateTimeFormatOptions,
 ): string => new Date(value).toLocaleTimeString(intlLocale(lang), opts)
 
+/**
+ * Locale DDRAGON correspondant à la langue affichée.
+ *
+ * Rien à voir avec `intlLocale` : DDragon a son propre jeu de codes (`fr_FR`,
+ * `en_US`, avec un underscore) et sa propre liste de locales supportées. C'est ce
+ * qui décide de la langue des NOMS DE CHAMPIONS, D'ITEMS ET DE RUNES — le contenu
+ * le plus visible du dashboard, et le dernier resté français en mode anglais.
+ *
+ * ⚠️ Changer de locale change l'URL, donc invalide les caches mémoïsés par module :
+ * ceux-ci sont indexés PAR LOCALE (`Record<string, …>`) et non par un slot unique,
+ * sinon une bascule de langue servirait les données de la langue précédente.
+ */
+export const ddragonLocale = (lang: Lang): string => (lang === 'en' ? 'en_US' : 'fr_FR')
+
 /** Date + heure dans un seul appel (`toLocaleString`). */
 export const formatDateTime = (
   value: Date | number | string, lang: Lang, opts?: Intl.DateTimeFormatOptions,

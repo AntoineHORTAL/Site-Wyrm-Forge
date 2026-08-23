@@ -16,7 +16,8 @@
  * Les stat shards sont hardcodés (Riot ne les expose pas en API).
  */
 import { useEffect, useRef, useState } from 'react'
-import { useDashboard } from '@/locales/dashboard'
+import { useDashboard, useLang } from '@/locales/dashboard'
+import { ddragonLocale } from '@/lib/intl'
 import type { ShardId } from '@/locales/dashboard/builds'
 
 const DDN = 'https://ddragon.leagueoflegends.com'
@@ -104,8 +105,11 @@ export default function RunesEditor({ value, onChange }: Props) {
   const [version, setVersion] = useState('')
   const R = useDashboard().builds.runes
   const shardText = useDashboard().builds.shards
+  const lang = useLang()
 
-  // Charge runesReforged.json depuis DDragon
+  // Charge runesReforged.json depuis DDragon, dans la locale de la langue affichée :
+  // les noms et descriptions de runes en viennent, et c'est le seul texte de cet
+  // éditeur qui ne passe pas par le dico.
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -114,13 +118,13 @@ export default function RunesEditor({ value, onChange }: Props) {
       if (cancelled) return
       const v = vList[0]
       setVersion(v)
-      const rRes = await fetch(`${DDN}/cdn/${v}/data/fr_FR/runesReforged.json`)
+      const rRes = await fetch(`${DDN}/cdn/${v}/data/${ddragonLocale(lang)}/runesReforged.json`)
       const rData: RuneTree[] = await rRes.json()
       if (!cancelled) setTrees(rData)
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [lang])
 
   void version
   const treeById = (id: number) => trees.find(t => t.id === id)
@@ -413,8 +417,8 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
   const [hover, setHover] = useState(false)
   const [pos, setPos] = useState<{ left: number; top: number; placeBelow: boolean } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
-  // Le nom et la description de la rune viennent de DDragon (chargé en `fr_FR`) et
-  // restent donc français ; seul le REPLI d'infobulle est du texte d'interface.
+  // Le nom et la description de la rune viennent de DDragon, chargé dans la locale de
+  // la langue affichée (Lot 8) ; seul le REPLI d'infobulle est du texte d'interface.
   const R = useDashboard().builds.runes
 
   // Nettoie le HTML que Riot met dans les descriptions (balises Color, etc.)
