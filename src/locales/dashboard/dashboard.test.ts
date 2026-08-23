@@ -16,6 +16,11 @@ import {
 import { balanceLabel, needLabel } from './analyse'
 import { profileRoleLabel, patchStatusLabel, patchGenReasonLabel } from './admin'
 import {
+  riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,
+} from './profil'
+import { LOL_RANKS } from '@/app/profil/page'
+import { CONSENT_STATUSES, CONSENT_RPC_ERRORS } from '@/app/consent/page'
+import {
   TIERS, PROFILE_ROLES, PATCH_STATUSES, PATCH_GEN_REASONS, ADMIN_SETTING_KEYS, QUICK_DATES,
 } from '@/components/dashboard/tabs/AdminTab'
 
@@ -88,6 +93,23 @@ const INVARIANTS = new Set<string>([
   // Lot 6 — en-têtes de colonnes et libellés du panneau admin dont l'orthographe est
   // la même dans les deux langues (« Admin » et « Patch Notes » sont déjà plus haut).
   'Tier', 'Expiration', 'Actions', '📅 Date', '✕', 'https://...',
+  // Lot 7 — rangs LoL et libellés de /profil, /consent et AuthModal identiques dans
+  // les deux langues.
+  'Bronze', 'KDA', 'Vision',
+  // Bilan V/D de /profil : la page utilise déjà les initiales anglaises côté FR
+  // (contrairement à /consent, qui affiche « V/D » — cf. `consent.record`).
+  '{wins}W {losses}L',
+  // Gabarits sans mot traduisible.
+  '{rate}% WR', 'Champ #{id}',
+  // Message natif de Supabase : côté EN, la valeur EST la clé. C'est précisément le
+  // point du remappage — ne jamais « traduire » le texte français vers l'anglais.
+  'Invalid login credentials',
+  // Mots identiques dans les deux langues (« To-do lists » avec cette casse-ci est le
+  // libellé de /profil ; « To-Do Lists » plus haut est celui de l'onglet).
+  'Winrate', 'To-do lists', 'Email',
+  // Fragment de fin d'une phrase coupée par un lien mailto : il ne porte QUE la
+  // ponctuation, dans les deux langues. Verrouillé par un test dédié plus bas.
+  '.',
 ])
 
 interface Anomalies {
@@ -749,5 +771,171 @@ describe('dico admin — marqueurs des gabarits', () => {
       dashboardFr.admin.patches.errorPrefix.replace('{message}', 'permission denied'),
     ]
     composées.forEach(t => expect(t).not.toMatch(/\{[a-z]+\}/i))
+  })
+})
+
+/**
+ * Lot 7 — `/profil`, `/consent` et `AuthModal`. Trois tables indexées par une valeur
+ * métier, comme aux lots précédents ; les jeux de valeurs sont importés des pages, où
+ * ils sont recopiés du schéma (CHECK `chk_profiles_riot_rank`, CHECK sur
+ * `tracked_players.status`, `RAISE EXCEPTION` de `respond_consent`).
+ */
+describe('dico profil — tables d\'affichage des valeurs métier', () => {
+  it('a un libellé pour chaque rang proposé par le sélecteur, et aucun orphelin', () => {
+    // La migration 20260530000004 dit explicitement « Matches exactly the LOL_RANKS
+    // array » : le CHECK en base et cette liste sont le même jeu de 8 valeurs.
+    expect(Object.keys(dashboardFr.profil.riotRanks).sort())
+      .toEqual(LOL_RANKS.map(r => r.key).sort())
+    expect(Object.keys(dashboardEn.profil.riotRanks).sort())
+      .toEqual(LOL_RANKS.map(r => r.key).sort())
+  })
+
+  /**
+   * ⚠️ `pending` est ABSENT de `pills` volontairement : cet état affiche les boutons
+   * Accepter / Refuser, pas de pastille. Le test le formalise pour qu'un futur lot ne
+   * « complète » pas la table avec une entrée que rien ne rendrait.
+   */
+  it('a une pastille pour chaque statut qui en affiche une, et seulement ceux-là', () => {
+    const avecPastille = CONSENT_STATUSES.filter(s => s !== 'pending')
+    expect(Object.keys(dashboardFr.profil.consent.pills).sort()).toEqual([...avecPastille].sort())
+    expect(CONSENT_STATUSES).toContain('pending')
+  })
+
+  it('a un message pour chaque code levé par respond_consent', () => {
+    expect(Object.keys(dashboardFr.profil.consent.rpcErrors).sort())
+      .toEqual([...CONSENT_RPC_ERRORS].sort())
+  })
+})
+
+/**
+ * Lot 7 — LE point de vigilance du lot. `supabaseErrors` n'est PAS une table de
+ * traduction : sa clé est le message brut de Supabase, sa valeur FR est le message
+ * produit, et sa valeur EN doit être le message NATIF de Supabase — donc la clé
+ * elle-même. Traduire le français vers l'anglais y produirait un texte qui ne
+ * correspond à rien de ce que Supabase renvoie.
+ */
+describe('dico auth — remappage des erreurs Supabase', () => {
+  it('remplace le message natif par le texte produit en français', () => {
+    expect(supabaseAuthError(dashboardFr.profil, 'Invalid login credentials'))
+      .toBe('Email ou mot de passe incorrect.')
+  })
+
+  it('REDONNE le message natif de Supabase en anglais, jamais une traduction du FR', () => {
+    const en = dashboardEn.profil.auth.supabaseErrors
+    Object.entries(en).forEach(([natif, valeur]) => {
+      expect(valeur, `« ${natif} » a été traduit au lieu d'être redonné tel quel`).toBe(natif)
+    })
+    expect(supabaseAuthError(dashboardEn.profil, 'Invalid login credentials'))
+      .toBe('Invalid login credentials')
+  })
+
+  it('a exactement les mêmes clés des deux côtés — la clé est le contrat Supabase', () => {
+    expect(Object.keys(dashboardEn.profil.auth.supabaseErrors))
+      .toEqual(Object.keys(dashboardFr.profil.auth.supabaseErrors))
+  })
+
+  it('laisse passer TEL QUEL un message serveur non listé', () => {
+    // On n'invente pas de traduction pour un message qu'on n'a pas vérifié : mieux
+    // vaut le texte anglais de Supabase qu'un contresens en français.
+    const inconnu = 'Email rate limit exceeded'
+    expect(supabaseAuthError(dashboardFr.profil, inconnu)).toBe(inconnu)
+    expect(supabaseAuthError(dashboardEn.profil, inconnu)).toBe(inconnu)
+  })
+})
+
+/**
+ * Lot 7 — replis des helpers. Même contrat qu'aux lots 2, 5 et 6 : une valeur métier
+ * inconnue reste LISIBLE plutôt que de laisser un vide à l'écran.
+ */
+describe('dico profil — replis des helpers', () => {
+  it('traduit les rangs connus et rend brut un rang inconnu', () => {
+    expect(riotRankLabel(dashboardFr.profil, 'emerald')).toBe('Émeraude')
+    expect(riotRankLabel(dashboardEn.profil, 'master+')).toBe('Master +')
+    expect(riotRankLabel(dashboardEn.profil, 'challenger')).toBe('challenger')
+  })
+
+  it('affiche « Non renseigné » quand aucun rang n\'est enregistré', () => {
+    expect(riotRankLabel(dashboardFr.profil, null)).toBe('Non renseigné')
+    expect(riotRankLabel(dashboardEn.profil, undefined)).toBe('Not set')
+    // Chaîne vide = colonne jamais remplie : même cas que NULL, pas un rang inconnu.
+    expect(riotRankLabel(dashboardEn.profil, '')).toBe('Not set')
+  })
+
+  it('résout les trois codes de respond_consent, y compris enrobés par PostgREST', () => {
+    // La recherche est un `includes` : PostgREST enrobe le code levé par
+    // `RAISE EXCEPTION` dans un message plus large.
+    CONSENT_RPC_ERRORS.forEach(code => {
+      const brut = `invalid input: ${code} (SQLSTATE P0001)`
+      expect(consentRpcError(dashboardFr.profil, brut)).toBe(dashboardFr.profil.consent.rpcErrors[code])
+      expect(consentRpcError(dashboardEn.profil, brut)).not.toBe(dashboardEn.profil.consent.rpcFallback)
+    })
+  })
+
+  it('retombe sur le message générique pour une erreur sans code connu', () => {
+    // Erreur réseau ou permission : aucun code métier dedans.
+    expect(consentRpcError(dashboardFr.profil, 'TypeError: Failed to fetch'))
+      .toBe(dashboardFr.profil.consent.rpcFallback)
+  })
+
+  it('confirme chaque statut renvoyé par respond_consent', () => {
+    // La fonction ne renvoie jamais `pending` (aucune transition n'y mène) : les trois
+    // autres doivent avoir leur propre confirmation, distincte du repli.
+    CONSENT_STATUSES.filter(s => s !== 'pending').forEach(status => {
+      expect(consentOkMessage(dashboardFr.profil, status)).not.toBe(dashboardFr.profil.consent.okFallback)
+      expect(consentOkMessage(dashboardEn.profil, status)).not.toBe(dashboardEn.profil.consent.okFallback)
+    })
+    expect(consentOkMessage(dashboardFr.profil, null)).toBe(dashboardFr.profil.consent.okFallback)
+  })
+
+  it('accorde le singulier et le pluriel des parties', () => {
+    expect(gamesLabel(dashboardFr.profil, 1)).toBe('1 partie')
+    expect(gamesLabel(dashboardFr.profil, 12)).toBe('12 parties')
+    expect(gamesLabel(dashboardEn.profil, 1)).toBe('1 game')
+    expect(gamesLabel(dashboardEn.profil, 12)).toBe('12 games')
+    // 0 partie n'atteint pas ce libellé (`selfEmpty` prend la main), mais s'il y
+    // arrivait un jour, il ne doit pas afficher « 0 parties ».
+    expect(gamesLabel(dashboardFr.profil, 0)).toBe('0 partie')
+  })
+})
+
+/**
+ * Lot 7 — phrases COUPÉES autour d'un élément riche (un `<strong>`, un lien mailto).
+ * Le fragment de fin porte la ponctuation ; une traduction qui la déplacerait
+ * produirait une phrase sans point, ou une espace avant la ponctuation. Rien dans le
+ * type ne le voit.
+ */
+describe('phrases coupées — ponctuation portée par le bon fragment', () => {
+  it('clôt la phrase du compte protégé après le lien mailto', () => {
+    // Le lien est suivi du fragment SANS espace intercalaire (JSX supprime le saut de
+    // ligne) : un fragment EN commençant par un mot collerait « …com » et ce mot.
+    expect(dashboardFr.profil.deletion.protectedAfter).toBe('.')
+    expect(dashboardEn.profil.deletion.protectedAfter).toBe('.')
+  })
+
+  it('ne laisse aucun fragment coupé vide ni bordé d\'une espace', () => {
+    const fragments = [
+      dashboardFr.profil.deletion.introBefore,   dashboardEn.profil.deletion.introBefore,
+      dashboardFr.profil.deletion.introAfter,    dashboardEn.profil.deletion.introAfter,
+      dashboardFr.profil.deletion.confirmBefore, dashboardEn.profil.deletion.confirmBefore,
+      dashboardFr.profil.deletion.confirmAfter,  dashboardEn.profil.deletion.confirmAfter,
+      dashboardFr.profil.consent.pendingBefore,  dashboardEn.profil.consent.pendingBefore,
+      dashboardFr.profil.consent.pendingAfter,   dashboardEn.profil.consent.pendingAfter,
+    ]
+    // L'espace est déjà dans le JSX, entre les deux expressions : la porter AUSSI dans
+    // le dico produirait une double espace, invisible en relecture.
+    fragments.forEach(f => {
+      expect(f.trim(), 'fragment vide').not.toBe('')
+      expect(f, `« ${f} » commence ou finit par une espace`).toBe(f.trim())
+    })
+  })
+
+  it('compose la phrase de la vue self sans marqueur résiduel', () => {
+    const C = dashboardEn.profil.consent
+    const record = C.record.replace('{wins}', '8').replace('{losses}', '4')
+    const phrase = C.selfIntroOther.replace('{count}', '12').replace('{record}', record)
+    expect(phrase).toBe('Here is the data recorded about your performance (12 games · 8W 4L).')
+    // Sans agrégats, `{record}` est remplacé par du vide : la parenthèse doit rester.
+    expect(C.selfIntroOne.replace('{count}', '1').replace('{record}', ''))
+      .toBe('Here is the data recorded about your performance (1 game).')
   })
 })

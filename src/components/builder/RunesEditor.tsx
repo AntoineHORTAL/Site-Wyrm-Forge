@@ -413,6 +413,9 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
   const [hover, setHover] = useState(false)
   const [pos, setPos] = useState<{ left: number; top: number; placeBelow: boolean } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  // Le nom et la description de la rune viennent de DDragon (chargé en `fr_FR`) et
+  // restent donc français ; seul le REPLI d'infobulle est du texte d'interface.
+  const R = useDashboard().builds.runes
 
   // Nettoie le HTML que Riot met dans les descriptions (balises Color, etc.)
   const cleanHtml = (s?: string) => (s ?? '')
@@ -480,7 +483,7 @@ function RuneButton({ rune, active, disabled, onClick, size }: {
             {rune.name}
           </div>
           <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>
-            {cleanHtml(rune.longDesc || rune.shortDesc) || 'Description indisponible'}
+            {cleanHtml(rune.longDesc || rune.shortDesc) || R.descUnavailable}
           </div>
         </div>
       )}

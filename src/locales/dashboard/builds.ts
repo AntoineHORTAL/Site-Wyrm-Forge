@@ -205,6 +205,8 @@ export const buildsFr = {
     shardRowOffense: 'Offense',
     shardRowFlex: 'Flex',
     shardRowDefense: 'Defense',
+    /* Repli d'infobulle quand DDragon ne renvoie ni `longDesc` ni `shortDesc`. */
+    descUnavailable: 'Description indisponible',
   },
 }
 
@@ -373,5 +375,6 @@ export const buildsEn: BuildsDict = {
     shardRowOffense: 'Offense',
     shardRowFlex: 'Flex',
     shardRowDefense: 'Defense',
+    descUnavailable: 'Description unavailable',
   },
 }

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useDashboard } from '@/locales/dashboard'
+import { supabaseAuthError } from '@/locales/dashboard/profil'
 
 interface AuthModalProps {
   onClose: () => void
@@ -74,6 +76,8 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const P = useDashboard().profil
+  const A = P.auth
   const supabase = createClient()
 
   async function handleGoogle() {
@@ -84,7 +88,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
     if (oauthError) {
-      setError('Erreur lors de la connexion Google.')
+      setError(A.errGoogle)
       setLoading(false)
     }
     // Si succès → redirection automatique, pas besoin de setLoading(false)
@@ -101,15 +105,17 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
         redirectTo: `${window.location.origin}/auth/callback`,
       })
       setLoading(false)
-      if (resetError) setError(resetError.message)
-      else setSuccess('Un lien de réinitialisation a été envoyé à ton adresse email.')
+      // Même remappage que la connexion : un message listé est remplacé, tout
+      // autre message serveur passe tel quel (voir `supabaseErrors`).
+      if (resetError) setError(supabaseAuthError(P, resetError.message))
+      else setSuccess(A.successForgot)
       return
     }
 
     if (mode === 'signup') {
-      if (password !== confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return }
-      if (password.length < 6) { setError('Le mot de passe doit contenir au moins 6 caractères.'); return }
-      if (pseudo.trim().length < 2) { setError('Le pseudo doit contenir au moins 2 caractères.'); return }
+      if (password !== confirmPassword) { setError(A.errPasswordMismatch); return }
+      if (password.length < 6) { setError(A.errPasswordShort); return }
+      if (pseudo.trim().length < 2) { setError(A.errPseudoShort); return }
     }
 
     setLoading(true)
@@ -122,16 +128,16 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       })
-      if (signUpError) setError(signUpError.message)
+      if (signUpError) setError(supabaseAuthError(P, signUpError.message))
       else if (data.user) {
         // F6 — riot_platform: null explicite (defense in depth) : ne jamais laisser un
         // éventuel DEFAULT côté DB remplir un riot_* et déclencher fn_protect_riot_columns.
         await supabase.from('profiles').insert({ id: data.user.id, username: pseudo.trim(), tier: 'apprenti', email, riot_platform: null })
-        setSuccess('Compte créé ! Vérifie ton email pour confirmer ton inscription.')
+        setSuccess(A.successSignup)
       }
     } else {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInError) setError(signInError.message === 'Invalid login credentials' ? 'Email ou mot de passe incorrect.' : signInError.message)
+      if (signInError) setError(supabaseAuthError(P, signInError.message))
       else { onSuccess(); onClose() }
     }
 
@@ -183,10 +189,10 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
         </div>
 
         <h2 className="font-mythic" style={{ fontSize: 22, fontWeight: 600, color: '#F5F2FA', marginBottom: 4, textAlign: 'center' }}>
-          {mode === 'forgot' ? 'Mot de passe oublié' : mode === 'login' ? 'Connexion' : 'Créer un compte'}
+          {mode === 'forgot' ? A.titleForgot : mode === 'login' ? A.titleLogin : A.titleSignup}
         </h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', marginBottom: 24 }}>
-          {mode === 'forgot' ? 'On t\'envoie un lien de réinitialisation.' : mode === 'login' ? 'Content de te revoir, Invocateur.' : 'Rejoins la forge.'}
+          {mode === 'forgot' ? A.subtitleForgot : mode === 'login' ? A.subtitleLogin : A.subtitleSignup}
         </p>
 
         {/* Tabs (login / signup) */}
@@ -205,7 +211,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   color: mode === m ? '#F5F2FA' : 'var(--text-dim)', transition: 'all 0.15s',
                 }}
               >
-                {m === 'login' ? 'Connexion' : 'Inscription'}
+                {m === 'login' ? A.tabLogin : A.tabSignup}
               </button>
             ))}
           </div>
@@ -243,13 +249,13 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                 <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
                 <path fill="none" d="M0 0h48v48H0z"/>
               </svg>
-              Continuer avec Google
+              {A.google}
             </button>
 
             {/* Séparateur */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0' }}>
               <div style={{ flex: 1, height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#3F3F46' }}/>
-              <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>ou</span>
+              <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{A.or}</span>
               <div style={{ flex: 1, height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#3F3F46' }}/>
             </div>
           </>
@@ -260,43 +266,43 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>✉️</div>
             <p style={{ color: '#5DCAA5', fontWeight: 600, marginBottom: 8, fontSize: 15 }}>
-              {mode === 'forgot' ? 'Email envoyé !' : 'Compte créé avec succès !'}
+              {mode === 'forgot' ? A.successForgotTitle : A.successSignupTitle}
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>{success}</p>
             <button onClick={onClose} style={{
               marginTop: 20, padding: '10px 24px', background: 'transparent',
               border: `1px solid ${c ? 'rgba(186,117,23,0.4)' : '#3F3F46'}`,
               borderRadius: 8, color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14,
-            }}>Fermer</button>
+            }}>{A.close}</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
             {/* Pseudo (signup only) */}
             {mode === 'signup' && (
               <>
-                <label style={label}>Pseudo</label>
+                <label style={label}>{A.pseudoLabel}</label>
                 <input style={{ ...inputBase, marginBottom: 12 }}
                   value={pseudo} onChange={e => setPseudo(e.target.value)}
-                  placeholder="TonPseudo" required minLength={2} maxLength={32} autoComplete="username"
+                  placeholder={A.pseudoPlaceholder} required minLength={2} maxLength={32} autoComplete="username"
                 />
               </>
             )}
 
             {/* Email */}
-            <label style={label}>Adresse email</label>
+            <label style={label}>{A.emailLabel}</label>
             <input type="email" style={{ ...inputBase, marginBottom: 12 }}
               value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="ton@email.com" required autoComplete="email"
+              placeholder={A.emailPlaceholder} required autoComplete="email"
             />
 
             {/* Password (login + signup) */}
             {mode !== 'forgot' && (
               <>
-                <label style={label}>Mot de passe</label>
+                <label style={label}>{A.passwordLabel}</label>
                 <PasswordField
                   value={password} onChange={setPassword}
                   show={showPassword} onToggle={() => setShowPassword(v => !v)}
-                  placeholder={mode === 'signup' ? 'Min. 6 caractères' : '••••••••'}
+                  placeholder={mode === 'signup' ? A.passwordPlaceholderSignup : '••••••••'}
                   autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   inputBase={inputBase} eyeBtn={eyeBtn}
                 />
@@ -306,7 +312,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
             {/* Confirm password (signup only) */}
             {mode === 'signup' && (
               <>
-                <label style={label}>Confirmer le mot de passe</label>
+                <label style={label}>{A.confirmLabel}</label>
                 <PasswordField
                   value={confirmPassword} onChange={setConfirmPassword}
                   show={showConfirm} onToggle={() => setShowConfirm(v => !v)}
@@ -330,7 +336,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                     textDecoration: 'underline', textUnderlineOffset: 3,
                   }}
                 >
-                  Mot de passe oublié ?
+                  {A.forgotLink}
                 </button>
               </div>
             )}
@@ -345,7 +351,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   marginBottom: 16, display: 'block',
                 }}
               >
-                ← Retour à la connexion
+                {A.backToLogin}
               </button>
             )}
 
@@ -364,7 +370,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               width: '100%', padding: '13px', justifyContent: 'center', fontSize: 15, marginTop: 4,
               cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1,
             }}>
-              {loading ? '...' : mode === 'login' ? 'Se connecter' : mode === 'signup' ? 'Créer mon compte' : 'Envoyer le lien'}
+              {loading ? '...' : mode === 'login' ? A.submitLogin : mode === 'signup' ? A.submitSignup : A.submitForgot}
             </button>
           </form>
         )}

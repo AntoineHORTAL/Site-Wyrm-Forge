@@ -15,6 +15,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useDashboard } from '@/locales/dashboard'
+import { subscriptionTierLabel } from '@/locales/dashboard/nav'
+import { riotRankLabel, gamesLabel, type RiotRankKey } from '@/locales/dashboard/profil'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -33,16 +36,20 @@ interface UserProfile {
 
 // Rangs LoL utilisés pour la comparaison de stats moyennes.
 // Valeurs approximatives basées sur les stats publiques de la communauté
-// (sources : op.gg statistics, lolalytics, données aggregées).
-const LOL_RANKS: { key: string; label: string; color: string }[] = [
-  { key: 'iron',     label: 'Fer',       color: '#7C5D44' },
-  { key: 'bronze',   label: 'Bronze',    color: '#9E6C3F' },
-  { key: 'silver',   label: 'Argent',    color: '#9CA3AF' },
-  { key: 'gold',     label: 'Or',        color: '#EF9F27' },
-  { key: 'platinum', label: 'Platine',   color: '#5DCAA5' },
-  { key: 'emerald',  label: 'Émeraude',  color: '#10B981' },
-  { key: 'diamond',  label: 'Diamant',   color: '#3A8AC9' },
-  { key: 'master+',  label: 'Maître +',  color: '#A855F7' },
+// (sources : op.gg statistics, lolalytics, données aggregees).
+//
+// ⚠️ `key` EST la valeur écrite dans `profiles.riot_rank`, validée par
+// `chk_profiles_riot_rank` : elle ne se traduit pas. Le libellé vit dans le dico
+// (`profil.riotRanks`), la couleur reste ici — c'est du style, pas du texte.
+export const LOL_RANKS: { key: RiotRankKey; color: string }[] = [
+  { key: 'iron',     color: '#7C5D44' },
+  { key: 'bronze',   color: '#9E6C3F' },
+  { key: 'silver',   color: '#9CA3AF' },
+  { key: 'gold',     color: '#EF9F27' },
+  { key: 'platinum', color: '#5DCAA5' },
+  { key: 'emerald',  color: '#10B981' },
+  { key: 'diamond',  color: '#3A8AC9' },
+  { key: 'master+',  color: '#A855F7' },
 ]
 
 interface ChampInfo { id: string; name: string; image: string; numericId: number }
@@ -60,6 +67,9 @@ const TIER_COLORS: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter()
+  const dico = useDashboard()
+  const P = dico.profil
+  const G = P.page
   const [profile, setProfile]   = useState<UserProfile | null>(null)
   const [matches, setMatches]   = useState<MatchInfo[]>([])
   const [champMap, setChampMap] = useState<Record<number, ChampInfo>>({})
@@ -68,15 +78,18 @@ export default function ProfilePage() {
   const [todoListCount,  setTodoListCount] = useState(0)
   const [todoItemCount,  setTodoItemCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+  // Le chargement mémorise un CODE, pas un texte : le message est composé au rendu.
+  // Sans ça, le dico entrerait dans les dépendances de l'effet et une bascule de
+  // langue relancerait tout le chargement du profil.
+  const [errorKey, setErrorKey] = useState<'' | 'errSignedOut' | 'errNotFound' | 'errLoad'>('')
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError('')
+      setLoading(true); setErrorKey('')
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Tu dois être connecté pour voir ton profil.'); return }
+        if (!user) { setErrorKey('errSignedOut'); return }
 
         // Profil + compteurs Supabase en parallèle
         const [profRes, builds, todoLists, todoItems, vRes] = await Promise.all([
@@ -91,7 +104,7 @@ export default function ProfilePage() {
         if (cancelled) return
 
         const profData = profRes.data as Omit<UserProfile, 'email'> | null
-        if (!profData) { setError('Profil introuvable.'); return }
+        if (!profData) { setErrorKey('errNotFound'); return }
         const prof: UserProfile = { ...profData, email: user.email ?? '' }
         setProfile(prof)
         setBuildCount(builds.count ?? 0)
@@ -133,7 +146,7 @@ export default function ProfilePage() {
           }
         }
       } catch {
-        if (!cancelled) setError('Erreur lors du chargement du profil.')
+        if (!cancelled) setErrorKey('errLoad')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -145,14 +158,14 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <main style={{ minHeight: '100vh', padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-        Chargement du profil…
+        {G.loading}
       </main>
     )
   }
-  if (error || !profile) {
+  if (errorKey || !profile) {
     return (
       <main style={{ minHeight: '100vh', padding: 40, color: '#E24B4A' }}>
-        {error || 'Profil indisponible.'}
+        {errorKey ? G[errorKey] : G.errUnavailable}
       </main>
     )
   }
@@ -192,7 +205,7 @@ export default function ProfilePage() {
       <button onClick={() => router.back()} style={{
         background: 'transparent', border: 'none', cursor: 'pointer',
         color: 'var(--text-muted)', fontSize: 13, padding: '6px 0', marginBottom: 14,
-      }}>← Retour</button>
+      }}>{P.shared.back}</button>
 
       {/* En-tête profil */}
       <header style={{
@@ -227,18 +240,18 @@ export default function ProfilePage() {
             <span style={{
               padding: '3px 10px', borderRadius: 4,
               background: `${tierColor}22`, color: tierColor, fontWeight: 700, letterSpacing: 1,
-            }}>{profile.tier.toUpperCase()}</span>
+            }}>{subscriptionTierLabel(dico.nav, profile.tier).toUpperCase()}</span>
             {profile.tier_expires_at && (
-              <span>jusqu'au {new Date(profile.tier_expires_at).toLocaleDateString('fr-FR')}</span>
+              <span>{G.until.replace('{date}', new Date(profile.tier_expires_at).toLocaleDateString('fr-FR'))}</span>
             )}
             {!profile.tier_expires_at && profile.tier !== 'apprenti' && (
-              <span style={{ color: '#EF9F27', fontWeight: 700 }}>À VIE</span>
+              <span style={{ color: '#EF9F27', fontWeight: 700 }}>{G.lifetime}</span>
             )}
             <span>·</span>
-            <span>Membre depuis {memberSince}</span>
+            <span>{G.memberSince.replace('{date}', memberSince)}</span>
             <span>·</span>
             <Link href="/?tab=tarifs" style={{ color: '#EF9F27', fontWeight: 600, textDecoration: 'none' }}>
-              Voir les tarifs →
+              {G.pricing}
             </Link>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
@@ -255,7 +268,7 @@ export default function ProfilePage() {
         borderBottom: '1px solid rgba(255,255,255,0.06)', borderLeft: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-          Compte League of Legends
+          {G.riotTitle}
         </div>
         {profile.riot_gamename ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -270,7 +283,7 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-            Aucun compte Riot lié. Va sur l'onglet Accueil pour en ajouter un.
+            {G.riotNone}
           </div>
         )}
       </section>
@@ -279,25 +292,25 @@ export default function ProfilePage() {
       {profile.riot_gamename && matches.length > 0 && (
         <section style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            Stats sur les {matches.length} dernières parties
+            {G.statsTitle.replace('{count}', String(matches.length))}
           </div>
           <div style={{
             display: 'grid', gap: 8,
             gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           }}>
-            <StatCard label="Parties" value={String(matches.length)} />
+            <StatCard label={G.games} value={String(matches.length)} />
             <StatCard
-              label="Victoires"
-              value={`${wins}W ${losses}L`}
+              label={G.wins}
+              value={G.winLoss.replace('{wins}', String(wins)).replace('{losses}', String(losses))}
               color={wins > losses ? '#5DCAA5' : wins < losses ? '#E24B4A' : undefined}
             />
             <StatCard
-              label="Winrate"
+              label={P.shared.winrate}
               value={winrate !== null ? `${winrate}%` : '-'}
               color={(winrate ?? 0) >= 50 ? '#5DCAA5' : '#E24B4A'}
             />
-            <StatCard label="KDA moyen" value={String(avgKda)} />
-            <StatCard label="CS moyen" value={avgCs ? String(avgCs) : '-'} />
+            <StatCard label={G.avgKda} value={String(avgKda)} />
+            <StatCard label={G.avgCs} value={avgCs ? String(avgCs) : '-'} />
           </div>
         </section>
       )}
@@ -306,7 +319,7 @@ export default function ProfilePage() {
       {topChamps.length > 0 && (
         <section style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            Champions les plus joués
+            {P.shared.topChampions}
           </div>
           <div style={{
             display: 'grid', gap: 8,
@@ -334,9 +347,11 @@ export default function ProfilePage() {
                     : <div style={{ width: 48, height: 48, borderRadius: 6, background: '#222' }} />
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{champ?.name ?? `Champ #${id}`}</div>
+                    {/* Le nom du champion vient de DDragon (chargé en `fr_FR`) : il reste
+                        français en mode EN — catégorie « locale de données », Lot 8. */}
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{champ?.name ?? G.champFallback.replace('{id}', String(id))}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                      {count} {count > 1 ? 'parties' : 'partie'} · <span style={{ color: winrateChamp >= 50 ? '#5DCAA5' : '#E24B4A', fontWeight: 600 }}>{winrateChamp}% WR</span>
+                      {gamesLabel(P, count)} · <span style={{ color: winrateChamp >= 50 ? '#5DCAA5' : '#E24B4A', fontWeight: 600 }}>{G.champWinrate.replace('{rate}', String(winrateChamp))}</span>
                     </div>
                   </div>
                 </div>
@@ -349,15 +364,15 @@ export default function ProfilePage() {
       {/* Activité dans l'écosystème Wyrm Forge */}
       <section style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-          Mon activité Wyrm Forge
+          {G.activityTitle}
         </div>
         <div style={{
           display: 'grid', gap: 8,
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         }}>
-          <StatCard label="Builds créés" value={String(buildCount)} />
-          <StatCard label="To-do lists" value={String(todoListCount)} />
-          <StatCard label="Tâches au total" value={String(todoItemCount)} />
+          <StatCard label={G.builds} value={String(buildCount)} />
+          <StatCard label={G.todoLists} value={String(todoListCount)} />
+          <StatCard label={G.todoItems} value={String(todoItemCount)} />
         </div>
       </section>
 
@@ -379,46 +394,53 @@ export default function ProfilePage() {
 function ProfileSettings({ profile, onProfileUpdate }: {
   profile: UserProfile; onProfileUpdate: (p: UserProfile) => void
 }) {
+  const P = useDashboard().profil
+  const S = P.settings
+  // `Échec : {message}` interpole un message SUPABASE, non traduisible.
+  const fail = (message: string) => S.failure.replace('{message}', message)
   return (
     <section style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-        Paramètres du compte
+        {S.title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <EditableField
-          label="Pseudo"
+          label={S.username.label}
+          editLabel={S.username.editLabel}
           currentValue={profile.username}
-          placeholder="Nouveau pseudo"
+          placeholder={S.username.placeholder}
           onSave={async (newValue) => {
             const { error } = await supabase.from('profiles')
               .update({ username: newValue }).eq('id', profile.id)
-            if (error) throw new Error('Échec : ' + error.message)
+            if (error) throw new Error(fail(error.message))
             onProfileUpdate({ ...profile, username: newValue })
-            return 'Pseudo mis à jour.'
+            return S.username.done
           }}
         />
         <EditableField
-          label="Email"
+          label={S.email.label}
+          editLabel={S.email.editLabel}
           currentValue={profile.email}
-          placeholder="Nouvel email"
+          placeholder={S.email.placeholder}
           inputType="email"
           onSave={async (newValue) => {
             const { error } = await supabase.auth.updateUser({ email: newValue })
-            if (error) throw new Error('Échec : ' + error.message)
-            return 'Un email de confirmation a été envoyé à ' + newValue + '.'
+            if (error) throw new Error(fail(error.message))
+            return S.email.done.replace('{email}', newValue)
           }}
         />
         <EditableField
-          label="Mot de passe"
+          label={S.password.label}
+          editLabel={S.password.editLabel}
           currentValue="••••••••"
-          placeholder="Nouveau mot de passe (8 caractères minimum)"
+          placeholder={S.password.placeholder}
           inputType="password"
           maskValue
           onSave={async (newValue) => {
-            if (newValue.length < 8) throw new Error('Le mot de passe doit faire au moins 8 caractères.')
+            if (newValue.length < 8) throw new Error(S.password.tooShort)
             const { error } = await supabase.auth.updateUser({ password: newValue })
-            if (error) throw new Error('Échec : ' + error.message)
-            return 'Mot de passe mis à jour.'
+            if (error) throw new Error(fail(error.message))
+            return S.password.done
           }}
         />
         <div style={{
@@ -427,7 +449,7 @@ function ProfileSettings({ profile, onProfileUpdate }: {
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
           <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>
-            Compte Riot
+            {S.riotTitle}
           </div>
           {profile.riot_gamename ? (
             <div style={{ fontSize: 14, color: '#F5F2FA' }}>
@@ -436,36 +458,36 @@ function ProfileSettings({ profile, onProfileUpdate }: {
             </div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-              Aucun compte Riot lié — lier depuis l&apos;onglet Accueil.
+              {S.riotNone}
             </div>
           )}
         </div>
         <EditableField
-          label="Rang League (pour comparaisons)"
-          currentValue={
-            profile.riot_rank
-              ? LOL_RANKS.find(r => r.key === profile.riot_rank)?.label ?? profile.riot_rank
-              : 'Non renseigné'
-          }
+          label={S.rank.label}
+          editLabel={S.rank.editLabel}
+          /* `riotRankLabel` rend une valeur inconnue TELLE QUELLE et l'absence de rang
+             comme « Non renseigné » — exactement ce que la page affichait déjà. */
+          currentValue={riotRankLabel(P, profile.riot_rank)}
           customForm={(value, setValue) => (
             <select
               value={value || profile.riot_rank || ''}
               onChange={e => setValue(e.target.value)}
               style={inputStyle}
             >
-              <option value="">Sélectionne ton rang</option>
+              <option value="">{S.rank.placeholder}</option>
+              {/* `r.key` est la valeur ÉCRITE en base : seul le libellé est traduit. */}
               {LOL_RANKS.map(r => (
-                <option key={r.key} value={r.key}>{r.label}</option>
+                <option key={r.key} value={r.key}>{P.riotRanks[r.key]}</option>
               ))}
             </select>
           )}
           onSave={async (newValue) => {
-            if (!newValue) throw new Error('Sélectionne un rang.')
+            if (!newValue) throw new Error(S.rank.required)
             const { error } = await supabase.from('profiles')
               .update({ riot_rank: newValue }).eq('id', profile.id)
-            if (error) throw new Error('Échec : ' + error.message)
+            if (error) throw new Error(fail(error.message))
             onProfileUpdate({ ...profile, riot_rank: newValue })
-            return 'Rang mis à jour. Tu verras la comparaison sur la page des matchs.'
+            return S.rank.done
           }}
         />
       </div>
@@ -480,8 +502,12 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit', outline: 'none',
 }
 
-function EditableField({ label, currentValue, placeholder, inputType, maskValue, customForm, onSave }: {
+function EditableField({ label, editLabel, currentValue, placeholder, inputType, maskValue, customForm, onSave }: {
   label: string
+  /* Intitulé du mode édition. Écrit en toutes lettres et NON dérivé de `label` :
+     « Nouveau » + le libellé ne s'accorde ni en genre ni en nombre (« Nouveau email »),
+     et la construction n'a aucun équivalent d'une langue à l'autre. */
+  editLabel: string
   currentValue: string
   placeholder?: string
   inputType?: 'text' | 'email' | 'password'
@@ -493,6 +519,7 @@ function EditableField({ label, currentValue, placeholder, inputType, maskValue,
   const [value,   setValue]   = useState('')
   const [busy,    setBusy]    = useState(false)
   const [msg,     setMsg]     = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const S = useDashboard().profil.settings
 
   async function save() {
     if (busy) return
@@ -503,7 +530,7 @@ function EditableField({ label, currentValue, placeholder, inputType, maskValue,
       setEditing(false)
       setValue('')
     } catch (e: unknown) {
-      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Erreur' })
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : S.errUnknown })
     } finally {
       setBusy(false)
     }
@@ -529,12 +556,12 @@ function EditableField({ label, currentValue, placeholder, inputType, maskValue,
             padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
             cursor: 'pointer', background: 'rgba(127,119,221,0.15)',
             border: '1px solid rgba(127,119,221,0.4)', color: '#F5F2FA',
-          }}>Modifier</button>
+          }}>{S.edit}</button>
         </div>
       ) : (
         <div>
           <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-            Nouveau {label.toLowerCase()}
+            {editLabel}
           </div>
           {customForm
             ? customForm(value, setValue)
@@ -556,18 +583,18 @@ function EditableField({ label, currentValue, placeholder, inputType, maskValue,
                 padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
                 cursor: 'pointer', background: 'transparent',
                 border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)',
-              }}>Annuler</button>
+              }}>{S.cancel}</button>
             <button onClick={save} disabled={busy || !value.trim()} style={{
               padding: '6px 12px', borderRadius: 5, fontSize: 12, fontWeight: 600,
               cursor: busy ? 'wait' : 'pointer',
               background: 'rgba(239,159,39,0.18)',
               border: '1px solid #EF9F27', color: '#F5F2FA',
               opacity: !value.trim() ? 0.5 : 1,
-            }}>{busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+            }}>{busy ? S.saving : S.save}</button>
           </div>
           {!busy && maskValue && (
             <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
-              Tu seras peut-être déconnecté après le changement de mot de passe.
+              {S.passwordNotice}
             </div>
           )}
         </div>
@@ -604,6 +631,11 @@ function isProtectedAccount(profile: UserProfile): boolean {
 }
 
 function DeletionRequest({ profile }: { profile: UserProfile }) {
+  const P = useDashboard().profil
+  const D = P.deletion
+  // Même gabarit « Échec : {message} » que les paramètres du compte : le message
+  // interpolé vient de Supabase et n'est pas traduisible.
+  const fail = (message: string) => P.settings.failure.replace('{message}', message)
   const protectedAcc = isProtectedAccount(profile)
 
   const [pending,  setPending]  = useState<DeletionRequestRow | null>(null)
@@ -639,7 +671,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
   async function submit() {
     if (busy) return
     if (emailIn.trim().toLowerCase() !== profile.email.toLowerCase()) {
-      setMsg({ kind: 'err', text: 'L\'email saisi ne correspond pas à celui de ton compte.' })
+      setMsg({ kind: 'err', text: D.emailMismatch })
       return
     }
     setBusy(true); setMsg(null)
@@ -651,13 +683,13 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
         reason:   reason.trim() || null,
         status:   'pending',
       }).select().single()
-      if (error) { setMsg({ kind: 'err', text: 'Échec : ' + error.message }); return }
+      if (error) { setMsg({ kind: 'err', text: fail(error.message) }); return }
       setPending(data as DeletionRequestRow)
       setOpening(false)
       setEmailIn(''); setReason('')
-      setMsg({ kind: 'ok', text: 'Demande enregistrée. Elle sera traitée sous 30 jours.' })
+      setMsg({ kind: 'ok', text: D.done })
     } catch {
-      setMsg({ kind: 'err', text: 'Erreur inattendue.' })
+      setMsg({ kind: 'err', text: D.errUnexpected })
     } finally {
       setBusy(false)
     }
@@ -671,9 +703,9 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
       .update({ status: 'cancelled' })
       .eq('id', pending.id)
     setBusy(false)
-    if (error) { setMsg({ kind: 'err', text: 'Impossible d\'annuler : ' + error.message }); return }
+    if (error) { setMsg({ kind: 'err', text: D.cancelFailed.replace('{message}', error.message) }); return }
     setPending(null)
-    setMsg({ kind: 'ok', text: 'Demande annulée.' })
+    setMsg({ kind: 'ok', text: D.cancelled })
   }
 
   if (loading) return null
@@ -689,12 +721,12 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
         borderLeft: '3px solid #7F77DD',
       }}>
         <div style={{ fontSize: 11, color: '#7F77DD', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
-          Compte Wyrm Forge protégé
+          {D.protectedTitle}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Les comptes de l&apos;équipe Wyrm Forge ne peuvent pas être supprimés depuis l&apos;app.
-          Pour toute demande administrative, contacte directement{' '}
-          <a href="mailto:admin@wyrm-forge.com" style={{ color: '#EF9F27' }}>admin@wyrm-forge.com</a>.
+          {D.protectedBefore}{' '}
+          <a href="mailto:admin@wyrm-forge.com" style={{ color: '#EF9F27' }}>admin@wyrm-forge.com</a>
+          {D.protectedAfter}
         </div>
       </section>
     )
@@ -708,7 +740,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
       borderLeft: '3px solid #E24B4A',
     }}>
       <div style={{ fontSize: 11, color: '#E24B4A', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
-        Suppression du compte et des données (RGPD)
+        {D.title}
       </div>
 
       {pending ? (
@@ -718,10 +750,11 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
             border: '1px solid rgba(239,159,39,0.3)',
             color: '#EF9F27', fontSize: 13, marginBottom: 10,
           }}>
-            <strong>Demande en cours de traitement</strong>
+            <strong>{D.pendingTitle}</strong>
             <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-              Demande déposée le {new Date(pending.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.
-              <br />Elle sera traitée sous 30 jours (article 17 du RGPD).
+              {/* La DATE reste formatée en fr-FR — catégorie « locale de données », Lot 8. */}
+              {D.pendingDate.replace('{date}', new Date(pending.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}
+              <br />{D.pendingDelay}
             </div>
           </div>
           <button onClick={cancelPending} disabled={busy} style={{
@@ -729,22 +762,20 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
             cursor: busy ? 'wait' : 'pointer',
             background: 'rgba(127,119,221,0.15)',
             border: '1px solid rgba(127,119,221,0.4)', color: '#F5F2FA',
-          }}>{busy ? '…' : 'Annuler ma demande'}</button>
+          }}>{busy ? '…' : D.cancelRequest}</button>
         </div>
       ) : !opening ? (
         <div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 12 }}>
-            Conformément à l&apos;article 17 du RGPD (droit à l&apos;effacement), tu peux demander
-            la suppression définitive de ton compte et de toutes les données associées.
-            Cette action est <strong style={{ color: '#E24B4A' }}>irréversible</strong> et entraînera :
+            {D.introBefore} <strong style={{ color: '#E24B4A' }}>{D.introStrong}</strong> {D.introAfter}
             <ul style={{ margin: '6px 0 0 18px', padding: 0, color: 'var(--text-dim)' }}>
-              <li>Suppression de ton profil et de tes identifiants</li>
-              <li>Suppression de tes builds d&apos;items et to-do lists</li>
-              <li>Suppression du lien vers ton compte Riot</li>
-              <li>Suppression de toutes contributions publiques (workshop)</li>
+              <li>{D.bullet1}</li>
+              <li>{D.bullet2}</li>
+              <li>{D.bullet3}</li>
+              <li>{D.bullet4}</li>
             </ul>
             <div style={{ marginTop: 8, color: 'var(--text-dim)', fontStyle: 'italic' }}>
-              Traitement effectué sous 30 jours maximum.
+              {D.delay}
             </div>
           </div>
           <button onClick={() => { setOpening(true); setMsg(null) }} style={{
@@ -752,12 +783,12 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
             cursor: 'pointer',
             background: 'rgba(226,75,74,0.15)',
             border: '1px solid #E24B4A', color: '#E24B4A',
-          }}>Demander la suppression de mon compte</button>
+          }}>{D.open}</button>
         </div>
       ) : (
         <div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-            Pour confirmer, saisis ton email <strong style={{ color: '#F5F2FA' }}>{profile.email}</strong> ci-dessous :
+            {D.confirmBefore} <strong style={{ color: '#F5F2FA' }}>{profile.email}</strong> {D.confirmAfter}
           </div>
           <input
             type="email"
@@ -768,12 +799,12 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
             disabled={busy}
           />
           <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, marginBottom: 4 }}>
-            Raison du départ (optionnel) :
+            {D.reasonLabel}
           </div>
           <textarea
             value={reason}
             onChange={e => setReason(e.target.value)}
-            placeholder="Ce qui t'a déçu, manqué, ou ce qu'on pourrait améliorer…"
+            placeholder={D.reasonPlaceholder}
             disabled={busy}
             rows={3}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
@@ -783,14 +814,14 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
               padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
               cursor: 'pointer', background: 'transparent',
               border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)',
-            }}>Annuler</button>
+            }}>{P.settings.cancel}</button>
             <button onClick={submit} disabled={busy || !emailIn} style={{
               padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
               cursor: busy ? 'wait' : 'pointer',
               background: 'rgba(226,75,74,0.20)',
               border: '1px solid #E24B4A', color: '#fff',
               opacity: !emailIn ? 0.5 : 1,
-            }}>{busy ? 'Envoi…' : 'Confirmer la suppression'}</button>
+            }}>{busy ? D.submitting : D.submit}</button>
           </div>
         </div>
       )}
@@ -810,6 +841,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
 // ── Zone danger : déconnexion (suppression de compte = action plus risquée à venir) ──
 function DangerZone() {
   const router = useRouter()
+  const Z = useDashboard().profil.danger
   const [busy, setBusy] = useState(false)
 
   async function logout() {
@@ -827,17 +859,17 @@ function DangerZone() {
       borderLeft: '3px solid #E24B4A',
     }}>
       <div style={{ fontSize: 11, color: '#E24B4A', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 700 }}>
-        Zone sensible
+        {Z.title}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1, minWidth: 200 }}>
-          Te déconnecter de l'application sur cet appareil.
+          {Z.text}
         </div>
         <button onClick={logout} disabled={busy} style={{
           padding: '8px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
           cursor: busy ? 'wait' : 'pointer',
           background: 'rgba(226,75,74,0.15)', border: '1px solid #E24B4A', color: '#E24B4A',
-        }}>{busy ? 'Déconnexion…' : 'Se déconnecter'}</button>
+        }}>{busy ? Z.loggingOut : Z.logout}</button>
       </div>
     </section>
   )

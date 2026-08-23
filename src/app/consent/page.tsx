@@ -25,6 +25,8 @@ import {
   num, matchKda, csPerMin, queueLabel,
   type PlayerStats, type TrackedMatchRow,
 } from '@/lib/prac'
+import { useDashboard, type DashboardDict } from '@/locales/dashboard'
+import { consentRpcError, consentOkMessage, gamesLabel } from '@/locales/dashboard/profil'
 
 const supabase = createClient()
 
@@ -39,17 +41,22 @@ interface TrackedRow {
 
 type Decision = 'accept' | 'decline' | 'revoke'
 
-// Erreurs levées par respond_consent → message FR. Tous ces cas signifient que
-// l'état a changé entre le chargement de la page et le clic (concurrence) → on
-// resynchronise en rechargeant le dossier.
-function rpcErrorToFr(raw: string): string {
-  if (raw.includes('no_consent_request'))  return 'Aucune demande de suivi ne te concerne (elle a peut-être été retirée).'
-  if (raw.includes('invalid_transition'))  return 'Action impossible : l\'état de ta demande a changé. On a rafraîchi la page.'
-  if (raw.includes('invalid_action'))       return 'Action inconnue.'
-  return 'Une erreur est survenue. Réessaie dans un instant.'
-}
+/**
+ * Statuts possibles de `tracked_players.status` (CHECK en base). Exporté pour que le
+ * dico prouve qu'il a une pastille pour chacun de ceux qui en affichent une.
+ */
+export const CONSENT_STATUSES = ['pending', 'accepted', 'declined', 'revoked'] as const
+
+/**
+ * Codes levés par `RAISE EXCEPTION` dans `respond_consent` (migration 20260627000001).
+ * Recopiés ici : le client ne peut pas les importer depuis le SQL.
+ */
+export const CONSENT_RPC_ERRORS = ['no_consent_request', 'invalid_transition', 'invalid_action'] as const
 
 export default function ConsentPage() {
+  const dico = useDashboard()
+  const P = dico.profil
+  const C = P.consent
   const [authReady, setAuthReady] = useState(false)
   const [connected, setConnected] = useState(false)
   const [row,     setRow]     = useState<TrackedRow | null>(null)
@@ -103,7 +110,7 @@ export default function ConsentPage() {
     setBusy(true); setMsg(null)
     const { data, error } = await supabase.rpc('respond_consent', { p_decision: decision })
     if (error) {
-      setMsg({ kind: 'err', text: rpcErrorToFr(error.message) })
+      setMsg({ kind: 'err', text: consentRpcError(P, error.message) })
       await load()          // resync : l'état a divergé (dossier retiré / déjà changé)
       setBusy(false)
       return
@@ -111,24 +118,22 @@ export default function ConsentPage() {
     // respond_consent RETURNS le nouveau status — on resync proprement depuis la DB.
     await load()
     const newStatus = typeof data === 'string' ? (data as ConsentStatus) : null
-    setMsg({ kind: 'ok', text: okMessage(newStatus) })
+    setMsg({ kind: 'ok', text: consentOkMessage(P, newStatus) })
     setBusy(false)
   }
 
   // ── Rendu ────────────────────────────────────────────────────────────────
   if (loading && !authReady) {
-    return <Shell><p style={{ color: 'var(--text-muted)' }}>Chargement…</p></Shell>
+    return <Shell><p style={{ color: 'var(--text-muted)' }}>{dico.common.loading}</p></Shell>
   }
 
   if (authReady && !connected) {
     return (
       <Shell>
         <Card>
-          <Label>Suivi de performances</Label>
-          <p style={pStyle}>
-            Connecte-toi à ton compte Wyrm Forge pour consulter une éventuelle demande de suivi.
-          </p>
-          <Link href="/" style={primaryBtnStyle}>Aller à la connexion</Link>
+          <Label>{C.title}</Label>
+          <p style={pStyle}>{C.signedOut}</p>
+          <Link href="/" style={primaryBtnStyle}>{C.signIn}</Link>
         </Card>
       </Shell>
     )
@@ -137,31 +142,24 @@ export default function ConsentPage() {
   return (
     <Shell>
       <Card>
-        <Label>Suivi de performances</Label>
+        <Label>{C.title}</Label>
 
         {/* Aucun dossier : page neutre, jamais d'erreur */}
-        {!row && (
-          <p style={pStyle}>
-            Aucune demande de suivi en cours te concernant. Si un organisateur
-            souhaite suivre tes performances, tu recevras une demande ici.
-          </p>
-        )}
+        {!row && <p style={pStyle}>{C.none}</p>}
 
         {/* pending : Accepter / Refuser */}
         {row?.status === 'pending' && (
           <>
             <p style={pStyle}>
-              Un organisateur Wyrm Forge souhaite <strong style={{ color: '#F5F2FA' }}>suivre tes
-              performances League of Legends</strong> dans le temps (historique de parties trackées).
-              Aucune donnée n&apos;est collectée tant que tu n&apos;as pas accepté.
+              {C.pendingBefore} <strong style={{ color: '#F5F2FA' }}>{C.pendingStrong}</strong> {C.pendingAfter}
             </p>
             <Meta requestedAt={row.requested_at} />
             <Actions>
               <button onClick={() => respond('accept')}  disabled={busy} style={primaryBtnStyle}>
-                {busy ? '…' : 'Accepter le suivi'}
+                {busy ? '…' : C.accept}
               </button>
               <button onClick={() => respond('decline')} disabled={busy} style={dangerBtnStyle}>
-                {busy ? '…' : 'Refuser'}
+                {busy ? '…' : C.decline}
               </button>
             </Actions>
           </>
@@ -170,15 +168,12 @@ export default function ConsentPage() {
         {/* accepted : suivi actif + Révoquer */}
         {row?.status === 'accepted' && (
           <>
-            <StatusPill color="#5DCAA5">Suivi actif</StatusPill>
-            <p style={pStyle}>
-              Tu as accepté le suivi de tes performances. Tu peux le révoquer à tout moment —
-              tes données de suivi seront alors supprimées.
-            </p>
+            <StatusPill color="#5DCAA5">{C.pills.accepted}</StatusPill>
+            <p style={pStyle}>{C.acceptedText}</p>
             <Meta requestedAt={row.requested_at} respondedAt={row.responded_at} />
             <Actions>
               <button onClick={() => respond('revoke')} disabled={busy} style={dangerBtnStyle}>
-                {busy ? '…' : 'Révoquer le suivi'}
+                {busy ? '…' : C.revoke}
               </button>
             </Actions>
           </>
@@ -187,11 +182,8 @@ export default function ConsentPage() {
         {/* declined : terminal côté joueur — PAS de bouton Accepter */}
         {row?.status === 'declined' && (
           <>
-            <StatusPill color="#A1A1AA">Demande refusée</StatusPill>
-            <p style={pStyle}>
-              Tu as refusé cette demande de suivi. Aucune donnée n&apos;est collectée.
-              Si tu changes d&apos;avis, un organisateur devra te renvoyer une nouvelle demande.
-            </p>
+            <StatusPill color="#A1A1AA">{C.pills.declined}</StatusPill>
+            <p style={pStyle}>{C.declinedText}</p>
             <Meta requestedAt={row.requested_at} respondedAt={row.responded_at} />
           </>
         )}
@@ -199,15 +191,12 @@ export default function ConsentPage() {
         {/* revoked : réactivation possible (accept valide depuis revoked) */}
         {row?.status === 'revoked' && (
           <>
-            <StatusPill color="#A1A1AA">Suivi révoqué</StatusPill>
-            <p style={pStyle}>
-              Tu as révoqué le suivi de tes performances. Tu peux le réactiver quand tu veux —
-              le suivi reprendra à partir de maintenant.
-            </p>
+            <StatusPill color="#A1A1AA">{C.pills.revoked}</StatusPill>
+            <p style={pStyle}>{C.revokedText}</p>
             <Meta requestedAt={row.requested_at} respondedAt={row.responded_at} />
             <Actions>
               <button onClick={() => respond('accept')} disabled={busy} style={primaryBtnStyle}>
-                {busy ? '…' : 'Réactiver le suivi'}
+                {busy ? '…' : C.reactivate}
               </button>
             </Actions>
           </>
@@ -224,48 +213,58 @@ export default function ConsentPage() {
       </Card>
 
       {/* Vue self (4D) : ce que le suivi a enregistré, en toute transparence. */}
-      {row?.status === 'accepted' && <SelfTracking stats={stats} matches={matches} />}
+      {row?.status === 'accepted' && <SelfTracking dico={dico} stats={stats} matches={matches} />}
     </Shell>
   )
 }
 
 // ── Bloc « Ton suivi » (vue self, palette /consent) ───────────────────────────
-function SelfTracking({ stats, matches }: { stats: PlayerStats | null; matches: TrackedMatchRow[] | null }) {
+function SelfTracking({ dico, stats, matches }: {
+  dico: DashboardDict
+  stats: PlayerStats | null; matches: TrackedMatchRow[] | null
+}) {
+  const P = dico.profil
+  const C = P.consent
   const games = stats?.games ?? 0
+  // Le bilan « · 8V 4D » est optionnel (agrégats absents) : il est composé à part puis
+  // interpolé dans la phrase, qui porte elle-même sa parenthèse fermante.
+  const record = stats
+    ? C.record.replace('{wins}', String(stats.wins)).replace('{losses}', String(games - stats.wins))
+    : ''
+  const intro = (games > 1 ? C.selfIntroOther : C.selfIntroOne)
+    .replace('{count}', String(games))
+    .replace('{record}', record)
   return (
     <section style={{ ...selfCard, marginTop: 16 }}>
-      <Label>Ton suivi</Label>
+      <Label>{C.selfTitle}</Label>
 
       {games === 0 ? (
-        <p style={pStyle}>Aucune partie suivie pour l&apos;instant.</p>
+        <p style={pStyle}>{C.selfEmpty}</p>
       ) : (
         <>
-          <p style={{ ...pStyle, marginBottom: 16 }}>
-            Voici les données enregistrées sur tes performances ({games} partie{games > 1 ? 's' : ''}
-            {stats && <> · {stats.wins}V {games - stats.wins}D</>}).
-          </p>
+          <p style={{ ...pStyle, marginBottom: 16 }}>{intro}</p>
 
           {/* Tuiles d'agrégats */}
           {stats && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-              <Tile label="Winrate" value={`${num(stats.winrate).toFixed(0)}%`} accent={num(stats.winrate) >= 50 ? '#5DCAA5' : '#E24B4A'} />
-              <Tile label="KDA" value={num(stats.avg_kda).toFixed(2)} />
-              <Tile label="CS/min" value={num(stats.avg_cs_per_min).toFixed(2)} />
-              <Tile label="Vision" value={num(stats.avg_vision_score).toFixed(1)} />
-              <Tile label="Dégâts (moy.)" value={num(stats.avg_damage_dealt).toLocaleString('fr-FR')} />
-              <Tile label="Or (moy.)" value={num(stats.avg_gold_earned).toLocaleString('fr-FR')} />
+              <Tile label={P.shared.winrate} value={`${num(stats.winrate).toFixed(0)}%`} accent={num(stats.winrate) >= 50 ? '#5DCAA5' : '#E24B4A'} />
+              <Tile label={C.kda} value={num(stats.avg_kda).toFixed(2)} />
+              <Tile label={C.csPerMin} value={num(stats.avg_cs_per_min).toFixed(2)} />
+              <Tile label={C.vision} value={num(stats.avg_vision_score).toFixed(1)} />
+              <Tile label={C.damage} value={num(stats.avg_damage_dealt).toLocaleString('fr-FR')} />
+              <Tile label={C.gold} value={num(stats.avg_gold_earned).toLocaleString('fr-FR')} />
             </div>
           )}
 
           {/* Top champions */}
           {stats && stats.top_champions.length > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <div style={subLabel}>Champions les plus joués</div>
+              <div style={subLabel}>{P.shared.topChampions}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {stats.top_champions.map((c) => (
                   <div key={c.champion} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
                     <span style={{ flex: 1, minWidth: 0, color: '#F5F2FA', fontWeight: 600 }}>{c.champion}</span>
-                    <span style={{ width: 86, textAlign: 'right', color: 'var(--text-dim)' }}>{c.games} partie{c.games > 1 ? 's' : ''}</span>
+                    <span style={{ width: 86, textAlign: 'right', color: 'var(--text-dim)' }}>{gamesLabel(P, c.games)}</span>
                     <span style={{ width: 56, textAlign: 'right', fontWeight: 700, color: c.winrate >= 50 ? '#5DCAA5' : '#E24B4A' }}>{c.winrate.toFixed(0)}%</span>
                   </div>
                 ))}
@@ -274,7 +273,7 @@ function SelfTracking({ stats, matches }: { stats: PlayerStats | null; matches: 
           )}
 
           {/* Liste des matchs suivis */}
-          <div style={subLabel}>Parties suivies ({matches?.length ?? 0})</div>
+          <div style={subLabel}>{C.trackedTitle.replace('{count}', String(matches?.length ?? 0))}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(matches ?? []).map((m) => (
               <Link
@@ -289,18 +288,20 @@ function SelfTracking({ stats, matches }: { stats: PlayerStats | null; matches: 
                 <span style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: m.win ? '#5DCAA5' : '#E24B4A' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>
-                    {m.champion_name ?? 'Champion'}{' '}
+                    {m.champion_name ?? C.championFallback}{' '}
                     <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
                       · {m.kills ?? 0}/{m.deaths ?? 0}/{m.assists ?? 0} ({matchKda(m.kills, m.deaths, m.assists).toFixed(2)})
                     </span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                    {m.queue_id != null ? queueLabel(m.queue_id) : 'File ?'}
+                    {/* `queueLabel` vit dans `lib/prac`, partagé avec /prac/* (hors
+                        périmètre) : ses libellés restent français — voir Lot 8. */}
+                    {m.queue_id != null ? queueLabel(m.queue_id) : C.queueFallback}
                     {' · '}{csPerMin(m.cs, m.duration_s).toFixed(1)} cs/min
                     {' · '}{new Date(m.game_creation).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: m.win ? '#5DCAA5' : '#E24B4A' }}>{m.win ? 'V' : 'D'}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: m.win ? '#5DCAA5' : '#E24B4A' }}>{m.win ? dico.common.winInitial : dico.common.lossInitial}</span>
               </Link>
             ))}
           </div>
@@ -334,18 +335,9 @@ const subLabel: React.CSSProperties = {
   letterSpacing: 1, marginBottom: 8, fontWeight: 700,
 }
 
-// ── Messages de succès selon le nouvel état ───────────────────────────────────
-function okMessage(status: ConsentStatus | null): string {
-  switch (status) {
-    case 'accepted': return 'Suivi accepté. Merci !'
-    case 'declined': return 'Demande refusée.'
-    case 'revoked':  return 'Suivi révoqué. Tes données de suivi seront supprimées.'
-    default:         return 'C\'est noté.'
-  }
-}
-
 // ── Sous-composants de présentation (palette /profil) ─────────────────────────
 function Shell({ children }: { children: React.ReactNode }) {
+  const back = useDashboard().profil.shared.back
   return (
     <main style={{
       minHeight: '100vh', padding: '24px clamp(12px, 4vw, 40px)',
@@ -354,7 +346,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <Link href="/" style={{
         display: 'inline-block', color: 'var(--text-muted)', fontSize: 13,
         textDecoration: 'none', padding: '6px 0', marginBottom: 14,
-      }}>← Retour</Link>
+      }}>{back}</Link>
       {children}
     </main>
   )
@@ -391,13 +383,15 @@ function StatusPill({ color, children }: { color: string; children: React.ReactN
 }
 
 function Meta({ requestedAt, respondedAt }: { requestedAt: string; respondedAt?: string | null }) {
+  const C = useDashboard().profil.consent
+  // Les DATES restent formatées en fr-FR — catégorie « locale de données », Lot 8.
   const fmt = (d: string) => new Date(d).toLocaleDateString('fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
   return (
     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 14 }}>
-      Demande du {fmt(requestedAt)}
-      {respondedAt && <> · réponse le {fmt(respondedAt)}</>}
+      {C.metaRequested.replace('{date}', fmt(requestedAt))}
+      {respondedAt && <> {C.metaResponded.replace('{date}', fmt(respondedAt))}</>}
     </div>
   )
 }
