@@ -157,7 +157,7 @@ export const profilFr = {
     statsTitle: 'Stats sur les {count} dernières parties',
     games: 'Parties',
     wins: 'Victoires',
-    /* Bilan V/D — voir `consent.record`, qui utilise les initiales françaises. */
+    /* Bilan chiffré : W/L dans les deux langues — voir `consent.record`, aligné dessus. */
     winLoss: '{wins}W {losses}L',
     avgKda: 'KDA moyen',
     avgCs: 'CS moyen',
@@ -380,7 +380,11 @@ export const profilFr = {
        manquent — d'où la parenthèse fermante portée par la phrase elle-même. */
     selfIntroOne: 'Voici les données enregistrées sur tes performances ({count} partie{record}).',
     selfIntroOther: 'Voici les données enregistrées sur tes performances ({count} parties{record}).',
-    record: ' · {wins}V {losses}D',
+    /* Bilan V/D — W/L dans LES DEUX langues, comme `page.winLoss` de /profil.
+       Décision produit : le bilan chiffré s'écrit W/L partout, y compris en français.
+       À ne pas confondre avec `common.winInitial` / `analyse.postgame.win`, qui sont
+       la pastille d'UNE partie et restent, elles, traduites (« V » / « D »). */
+    record: ' · {wins}W {losses}L',
 
     kda: 'KDA',
     csPerMin: 'CS/min',

@@ -96,9 +96,10 @@ const INVARIANTS = new Set<string>([
   // Lot 7 — rangs LoL et libellés de /profil, /consent et AuthModal identiques dans
   // les deux langues.
   'Bronze', 'KDA', 'Vision',
-  // Bilan V/D de /profil : la page utilise déjà les initiales anglaises côté FR
-  // (contrairement à /consent, qui affiche « V/D » — cf. `consent.record`).
-  '{wins}W {losses}L',
+  // Bilan chiffré : W/L dans les DEUX langues, sur /profil comme sur /consent
+  // (décision produit du Lot 8). La pastille d'UNE partie, elle, reste traduite —
+  // `common.winInitial` vaut « V » en français, et un test le verrouille.
+  '{wins}W {losses}L', ' · {wins}W {losses}L',
   // Gabarits sans mot traduisible.
   '{rate}% WR', 'Champ #{id}',
   // Message natif de Supabase : côté EN, la valeur EST la clé. C'est précisément le
@@ -934,8 +935,53 @@ describe('phrases coupées — ponctuation portée par le bon fragment', () => {
     const record = C.record.replace('{wins}', '8').replace('{losses}', '4')
     const phrase = C.selfIntroOther.replace('{count}', '12').replace('{record}', record)
     expect(phrase).toBe('Here is the data recorded about your performance (12 games · 8W 4L).')
+    // Même bilan côté FR : W/L, pas V/D.
+    const fr = dashboardFr.profil.consent
+    expect(fr.selfIntroOther
+      .replace('{count}', '12')
+      .replace('{record}', fr.record.replace('{wins}', '8').replace('{losses}', '4')))
+      .toBe('Voici les données enregistrées sur tes performances (12 parties · 8W 4L).')
     // Sans agrégats, `{record}` est remplacé par du vide : la parenthèse doit rester.
     expect(C.selfIntroOne.replace('{count}', '1').replace('{record}', ''))
       .toBe('Here is the data recorded about your performance (1 game).')
+  })
+})
+
+/**
+ * Deux notions se ressemblent et ne doivent PAS être confondues :
+ *  - le BILAN chiffré (« 8W 4L ») — décision produit : W/L dans les deux langues,
+ *    sur /profil comme sur /consent, qui divergeaient jusqu'au Lot 8 ;
+ *  - la PASTILLE d'une partie (« V » / « D ») — une seule lettre dans une pastille
+ *    de 20 px, qui reste traduite.
+ * Ce test empêche l'harmonisation de l'un de déteindre sur l'autre.
+ */
+describe('initiales de résultat — bilan chiffré vs pastille d\'une partie', () => {
+  it('écrit le bilan en W/L dans les deux langues', () => {
+    expect(dashboardFr.profil.page.winLoss).toBe('{wins}W {losses}L')
+    expect(dashboardEn.profil.page.winLoss).toBe('{wins}W {losses}L')
+    expect(dashboardFr.profil.consent.record).toBe(dashboardEn.profil.consent.record)
+    expect(dashboardFr.profil.consent.record).not.toContain('V')
+    expect(dashboardFr.profil.consent.record).not.toContain('D')
+  })
+
+  it('garde la pastille d\'une partie TRADUITE', () => {
+    // `common` sert la timeline de Stats et la liste de /consent ; `analyse.postgame`
+    // redéclare les siennes pour la contrainte d'une seule lettre.
+    expect(dashboardFr.common.winInitial).toBe('V')
+    expect(dashboardFr.common.lossInitial).toBe('D')
+    expect(dashboardEn.common.winInitial).toBe('W')
+    expect(dashboardEn.common.lossInitial).toBe('L')
+    expect(dashboardFr.analyse.postgame.win).toBe('V')
+    expect(dashboardEn.analyse.postgame.win).toBe('W')
+  })
+
+  it('tient les deux pastilles sur un seul caractère', () => {
+    const pastilles = [
+      dashboardFr.common.winInitial, dashboardFr.common.lossInitial,
+      dashboardEn.common.winInitial, dashboardEn.common.lossInitial,
+      dashboardFr.analyse.postgame.win, dashboardFr.analyse.postgame.loss,
+      dashboardEn.analyse.postgame.win, dashboardEn.analyse.postgame.loss,
+    ]
+    pastilles.forEach(p => expect(p, `« ${p} » dépasse un caractère`).toHaveLength(1))
   })
 })
