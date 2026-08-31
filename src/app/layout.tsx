@@ -8,6 +8,25 @@ import TestDbBanner from '@/components/dev/TestDbBanner'
 export const metadata: Metadata = {
   title: 'Wyrm Forge — L\'assistant LoL le plus customisable',
   description: 'Overlay 100% personnalisable, builds et jungle paths partagés par la communauté, analyses IA. Wyrm Forge s\'adapte à toi — pas l\'inverse.',
+  // Seconde méthode de vérification AdSense, en complément du <Script> plus bas.
+  //
+  // Passe par `other` parce que `google-adsense-account` n'est pas une clé
+  // standard de l'API Metadata : `other` est la porte de sortie prévue pour les
+  // `<meta name=… content=…>` que Next ne connaît pas nativement.
+  //
+  // ⚠️ Et surtout : elle NE PEUT PAS être remplacée par le <Script>. En App
+  // Router, un script `beforeInteractive` n'atterrit pas dans le HTML brut sous
+  // forme de balise littérale — il y apparaît comme un `<link rel="preload">` et
+  // un `self.__next_s.push(...)`, c'est-à-dire du JS à exécuter. Le crawler de
+  // Google ne trouvait donc rien à vérifier (constaté par Invoke-WebRequest sur
+  // le HTML servi). `metadata`, lui, est rendu dans le <head> au build/SSR :
+  // la balise est présente sans dépendre de l'exécution du JS.
+  //
+  // ⚠️ Cet identifiant et celui du `client=` du <Script> désignent le MÊME
+  // compte AdSense : ils doivent rester identiques.
+  other: {
+    'google-adsense-account': 'ca-pub-2383615103865834',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -32,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script
           id="google-adsense"
           strategy="beforeInteractive"
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2386151503865834"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2383615103865834"
           crossOrigin="anonymous"
         />
         {/* Avant le ThemeProvider et dans le flux : le bandeau doit coiffer la page,
