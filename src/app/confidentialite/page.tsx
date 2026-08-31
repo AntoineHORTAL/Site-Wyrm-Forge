@@ -105,15 +105,27 @@ export default function ConfidentialitePage() {
 
       <Section title="3. Cookies et stockage local">
         <p>
-          Wyrm Forge n&apos;utilise <strong>que des cookies strictement nécessaires</strong> à son
-          fonctionnement. Il n&apos;y a ni cookie publicitaire, ni traceur tiers, ni outil de mesure
-          d&apos;audience — c&apos;est pourquoi aucun bandeau de consentement ne t&apos;est présenté.
+          Wyrm Forge dépose <strong>un seul cookie strictement nécessaire</strong> à son
+          fonctionnement, décrit ci-dessous. Nous n&apos;utilisons aucun outil de mesure
+          d&apos;audience.
         </p>
         <List>
           <li><code>sb-…-auth-token</code> — cookie de session émis par Supabase Auth. Il te
             maintient connecté d&apos;une page à l&apos;autre. Attributs <code>SameSite=Lax</code>
             et <code>Secure</code> en production. Sans lui, la connexion est impossible.</li>
         </List>
+        <p style={{ marginTop: 12 }}>
+          Le site intègre par ailleurs le script de vérification fourni par Google dans le cadre
+          de l&apos;inscription de Wyrm Forge au programme publicitaire <strong>Google AdSense</strong>.
+          Ce script est chargé sur l&apos;ensemble des pages et est susceptible de déposer des
+          cookies sur ton appareil. <strong>Aucune publicité n&apos;est diffusée à ce jour.</strong>
+        </p>
+        <p style={{ marginTop: 12 }}>
+          Aucun bandeau de consentement ne t&apos;est encore présenté : un dispositif de recueil
+          du consentement (CMP) conforme au RGPD est en cours de mise en place, et sera déployé
+          avant l&apos;activation de toute publicité. D&apos;ici là, tu peux t&apos;opposer au dépôt
+          de ces cookies via les réglages de ton navigateur.
+        </p>
         <p style={{ marginTop: 12 }}>
           Certaines données restent <strong>uniquement sur ton appareil</strong>, dans le stockage
           local du navigateur, et ne nous sont jamais transmises : tes scénarios de Match Up
