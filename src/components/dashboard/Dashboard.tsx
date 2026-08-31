@@ -16,6 +16,8 @@ import MatchUpTab from './tabs/MatchUpTab'
 import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
+import DashboardAdRail from '@/components/ads/DashboardAdRail'
+import { shouldShowAds } from '@/lib/ads'
 import Pricing from '@/components/landing/Pricing'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
@@ -172,8 +174,24 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
   const userTierIndex = TIER_ORDER.indexOf(profile?.tier ?? 'apprenti')
   const isProTier = userTierIndex >= TIER_ORDER.indexOf('maître')
 
+  /**
+   * POINT D'INTÉGRATION UNIQUE des emplacements publicitaires.
+   *
+   * Le dashboard est un routeur d'onglets rendu par un seul composant : brancher
+   * la pub ici la met sur TOUT ce qui vit derrière le dashboard, sans qu'aucun
+   * onglet ait à s'en occuper et sans risque d'en oublier un. La vitrine
+   * publique n'est pas concernée — elle est rendue par la branche `else` de
+   * `page.tsx`, qui n'instancie jamais ce composant.
+   *
+   * Décidé de façon SYNCHRONE au premier rendu, jamais après : `page.tsx`
+   * n'affiche `<Dashboard>` qu'une fois `loading` retombé, ce qui garantit que
+   * `profile` est déjà résolu ici. La colonne ne peut donc pas apparaître après
+   * coup et pousser le contenu (CLS).
+   */
+  const showAds = shouldShowAds(profile?.tier, isAdmin)
+
   return (
-    <div className="dash-layout">
+    <div className={`dash-layout${showAds ? ' dash-layout--ads' : ''}`}>
       {/* ── SIDEBAR (desktop only) ── */}
       <aside className="dash-sidebar" style={{
         background: 'var(--sidebar-bg)',
@@ -292,6 +310,12 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
           <SoonScreen title="Tournois" c={c} />
         )}
       </main>
+
+      {/* ── COLONNE PUBLICITAIRE (palier gratuit uniquement) ──
+          Enfant DIRECT de `.dash-layout` : c'est ce qui en fait la troisième
+          piste de la grille, et ce qui la fait disparaître à l'impression via
+          la règle `.dash-layout > :not(.dash-main)` déjà en place. */}
+      {showAds && <DashboardAdRail />}
     </div>
   )
 }

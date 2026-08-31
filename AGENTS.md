@@ -28,6 +28,26 @@ Application : assistant League of Legends (Next.js 16.2.4 + Supabase + Vercel). 
 - `DashTab` (type union) et `UserProfile` (interface) sont exportés depuis `src/app/page.tsx`
 - `effectiveTier` dans `page.tsx` force `'architecte+'` pour les admins côté affichage, peu importe la valeur en DB
 
+### Emplacements publicitaires (dashboard uniquement)
+
+- **Point d'intégration UNIQUE** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. La vitrine publique n'est jamais concernée (branche `else` de `page.tsx`).
+- **Deux verrous indépendants**, tous deux dans `src/lib/ads.ts` :
+  - `shouldShowAds(tier, isAdmin)` — **seul `apprenti` voit des pubs**. C'est une LISTE BLANCHE d'un élément, jamais une liste noire des paliers payants : un palier ajouté demain n'affiche rien par défaut. Palier inconnu ou profil non chargé ⇒ pas de pub.
+  - `hasAdConsent()` — renvoie `false` **en dur** tant qu'aucune CMP n'existe. Aucun script tiers n'est chargé, donc aucun cookie publicitaire. C'est le seul endroit à modifier le jour où la CMP arrive.
+- **Régie agnostique** : `AdSlot` ne connaît aucun fournisseur. Le point d'insertion du script est balisé dans son `useEffect`.
+- **Anti-CLS** : la largeur de la piste est réservée par le CSS (`.dash-layout--ads` dans `globals.css`), pas par du JS — donc connue avant le premier rendu React. Le tier est résolu avant que `<Dashboard>` monte (`page.tsx` garde `loading` jusque-là), la colonne ne peut donc pas apparaître après coup.
+- **Seuils responsive** — dérivés des largeurs réelles, calcul complet en commentaire au-dessus de `.dash-adrail` dans `globals.css` (source qui fait foi) :
+
+| Viewport | Colonne pub | Contenu restant |
+|---|---|---|
+| ≥ 1440 px | 300×600 | 780 px |
+| 1280–1439 px | 160×600 | 760 px et + |
+| < 1280 px | **masquée** | inchangé |
+
+  Plancher visé : 768 px de contenu, imposé par `.dash-grid-jungle` (448 px figés). Sous 1280 px la colonne disparaît **entièrement** plutôt que de rogner le contenu ou la sidebar.
+- ⚠️ **`ConsentBanner.tsx` n'est PAS une CMP** — malgré son nom, il annonce une demande de suivi « prac ». Ne pas y brancher le consentement publicitaire.
+- ⚠️ **Avant activation réelle** : la page `/confidentialite` affirme aujourd'hui « ni cookie publicitaire, ni traceur tiers […] c'est pourquoi aucun bandeau de consentement ne t'est présenté ». Cette phrase devient fausse dès qu'une régie est branchée — à réécrire en même temps que la CMP.
+
 ### Navigation mobile
 - Pas de bottom tab bar — la navigation dashboard est intégrée dans le **hamburger drawer** (Nav.tsx)
 - Classes CSS : `.nav-desktop` (visible ≥768px), `.nav-hamburger-btn` (visible <768px)

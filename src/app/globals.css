@@ -182,6 +182,93 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 .dash-sidebar { display: flex; flex-direction: column; }
 .dash-main    { padding: 32px 40px; overflow-y: auto; }
 
+/* ─── COLONNE PUBLICITAIRE DU DASHBOARD ───
+ *
+ * Troisième piste de `.dash-layout`, ajoutée par la classe `.dash-layout--ads`
+ * (posée par Dashboard.tsx uniquement pour le palier gratuit). Absente de la
+ * grille par défaut : un abonné n'a pas la piste du tout, pas une piste vide.
+ *
+ * ANTI-CLS : la largeur de la piste est fixée ICI, en CSS, donc réservée dès la
+ * première peinture — avant tout rendu React et bien avant qu'un script de
+ * régie ne charge quoi que ce soit. Le contenu du dashboard ne bouge jamais
+ * quand la pub apparaît. C'est pour cette raison que la largeur n'est pas
+ * calculée en JS.
+ *
+ * ── D'où viennent les deux seuils ────────────────────────────────────────
+ * Largeur disponible pour le contenu, à un viewport V :
+ *     contenu = V − 240 (sidebar) − 80 (padding de .dash-main) − L (pub) − 40 (gouttière droite)
+ *
+ * Plancher visé : 768 px de contenu. Ce n'est pas un chiffre rond arbitraire,
+ * c'est ce qu'exige la grille interne la plus contrainte du dashboard,
+ * `.dash-grid-jungle` (200px + 220px + 2 gaps de 14px = 448 px figés) pour que
+ * sa colonne centrale garde ~320 px utiles. `.dash-grid-todo` (304 px figés) et
+ * `.dash-grid-builds` (100 px figés) sont moins exigeantes.
+ *
+ *   L = 300 px  →  contenu = V − 660  →  768 px atteints à V = 1428  →  seuil 1440
+ *   L = 160 px  →  contenu = V − 520  →  768 px atteints à V = 1288  →  seuil 1280
+ *
+ * Le seuil de 1280 laisse 760 px de contenu (8 px sous la cible) : la colonne
+ * centrale du path de jungle y garde 312 px, ce qui reste utilisable. En
+ * dessous de 1280, la colonne DISPARAÎT complètement plutôt que de rogner le
+ * contenu ou la sidebar de navigation.
+ *
+ * Les deux formats du COLLANT font 600 px de haut : passer de l'un à l'autre à
+ * 1440 px ne change jamais la hauteur réservée.
+ *
+ * ── Pourquoi le second emplacement n'est PAS collant ─────────────────────
+ * La colonne empile un 300×600 puis un 300×250. Rendre la pile entière
+ * collante exigerait 97 (offset de départ) + 600 + 24 (gouttière) + 250
+ * = 971 px de hauteur de viewport. Les résolutions sur lesquelles la colonne
+ * existe (≥ 1280 px de large) sont très en dessous :
+ *
+ *     1920×1080 maximisé   → ~953 px de viewport   (18 px de trop)
+ *     1920×1080 fenêtré    → ~849 px               (122 px de trop)
+ *     MacBook Air 1440×900 → ~800 px               (171 px de trop)
+ *     laptop 1600×900      → ~773 px               (198 px de trop)
+ *     2560×1440 maximisé   → ~1313 px              seul cas qui tienne
+ *
+ * Un bloc collant plus haut que la fenêtre est pire qu'un bloc normal : son bas
+ * n'est jamais atteignable, donc la seconde créa ne serait jamais entièrement
+ * visible. Seul le 300×600 est donc collant ; le 300×250 défile avec le
+ * contenu.
+ *
+ * ⚠️ Ces valeurs sont dupliquées dans `src/lib/ads.ts` (AD_FORMATS,
+ * AD_BREAKPOINTS) et `src/lib/ads.test.ts` échoue si les deux divergent.
+ * Modifier un seuil ici implique de le modifier là-bas.
+ */
+.dash-adrail       { display: none; }
+.dash-adrail-inner { position: sticky; top: 97px; }   /* 73px de nav collante + 24px de respiration */
+
+/* Piste du collant. Elle absorbe TOUTE la hauteur restante de la colonne
+ * (`flex: 1 0 auto`), ce qui a deux effets voulus :
+ *   - le collant a de la course pendant le scroll ;
+ *   - il ne peut pas en sortir. Un élément `sticky` est borné par son parent,
+ *     donc le 300×600 s'arrête au bas de cette piste et ne vient JAMAIS
+ *     recouvrir le 300×250 qui la suit.
+ * `min-height` réserve les 600 px du format dès la première peinture, même si
+ * la colonne est plus courte que la pile. */
+.dash-adrail-track { flex: 1 0 auto; min-height: 600px; }
+
+/* Second emplacement (300×250), NON collant : il défile avec le dashboard, cf.
+ * le calcul de hauteur ci-dessus. Masqué sous 1440 px parce que la piste n'y
+ * fait que 160 px de large. La bascule est purement CSS : l'espace est réservé
+ * ou libéré dès la première peinture, jamais par du JS après coup (anti-CLS).
+ * `flex: none` empêche la colonne flex de comprimer les 250 px réservés. */
+.dash-adrail-tail  { display: none; flex: none; margin-top: 24px; }
+
+@media (min-width: 1280px) {
+  .dash-layout--ads { grid-template-columns: 240px 1fr 200px; }  /* 160 de pub + 40 de gouttière */
+  /* flex column (et non block) : c'est ce qui permet à `.dash-adrail-track` de
+     prendre la hauteur restante et de borner la course du collant. */
+  .dash-adrail      { display: flex; flex-direction: column; padding: 32px 40px 32px 0; --ad-slot-w: 160px; }
+}
+
+@media (min-width: 1440px) {
+  .dash-layout--ads { grid-template-columns: 240px 1fr 340px; }  /* 300 de pub + 40 de gouttière */
+  .dash-adrail      { --ad-slot-w: 300px; }
+  .dash-adrail-tail { display: block; }   /* la piste ne fait 300 px de large qu'ici */
+}
+
 .dash-grid-builds  { display: grid; grid-template-columns: 72px 3fr 2fr; gap: 14px; height: 640px; align-items: stretch; }
 .dash-grid-jungle  { display: grid; grid-template-columns: 200px 1fr 220px; gap: 14px; }
 .dash-grid-todo    { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
