@@ -3,8 +3,9 @@
 --
 -- ÉTAT AVANT CETTE MIGRATION
 -- --------------------------
---   • prac_visible_match_ids  — n'existe dans AUCUNE migration ni dans
---     bootstrap/00. Créée directement sur la prod.
+--   • prac_visible_match_ids  — n'existe dans AUCUNE migration ni dans le baseline
+--     pré-versionnage (aujourd'hui la migration 20260529000000, à l'époque
+--     bootstrap/00). Créée directement sur la prod.
 --   • prac_related_players    — idem.
 --   • prac_player_stats       — existe bien en migration (20260628000001) mais la
 --     prod porte une RÉÉCRITURE postérieure, jamais reversée.

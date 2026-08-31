@@ -22,7 +22,7 @@
 --
 -- ⚠️ PAS de FORCE ROW LEVEL SECURITY — délibérément.
 -- `increment_likes` / `increment_saves` / `increment_jp_likes` / `increment_jp_saves`
--- sont SECURITY DEFINER (définies dans bootstrap/00, search_path figé par
+-- sont SECURITY DEFINER (définies par la migration 20260529000000, search_path figé par
 -- 20260715000001) et font un UPDATE sur ces deux tables. Elles ne fonctionnent que
 -- parce que le propriétaire de la table échappe à la RLS. FORCE supprimerait cette
 -- exemption et casserait les compteurs likes/saves des deux clients, sans qu'aucune

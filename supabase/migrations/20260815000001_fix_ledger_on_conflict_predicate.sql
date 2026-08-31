@@ -38,11 +38,15 @@
 -- -------------------------------------------------------------------
 -- Elle est un NO-OP partout aujourd'hui : la prod comme le projet de test portent
 -- déjà le bon prédicat (vérifié le 2026-08-15 sur les deux bases). Elle ne corrige
--- donc aucune panne en cours, et ce n'est pas non plus « le schéma reconstruit depuis
--- les migrations » qu'elle sauve — ce cas n'est pas atteignable : un push sur base
--- vierge meurt à la 2e migration (20260530000002 fait ALTER TABLE profiles sur une
--- table qu'aucune migration ne crée), tant que le pré-versionnage vit dans
--- bootstrap/00_pre_versioning_baseline.sql au lieu d'une migration.
+-- donc aucune panne en cours.
+--
+-- ⚠️ Mise à jour du 2026-08-15 : ce paragraphe affirmait que le cas « schéma
+-- reconstruit depuis les migrations » n'était PAS atteignable, un push sur base
+-- vierge mourant à la 2e migration (20260530000002 fait ALTER TABLE profiles sur une
+-- table qu'aucune migration ne créait), tant que le pré-versionnage vivait dans
+-- bootstrap/00_pre_versioning_baseline.sql. Ce n'est PLUS vrai : ce baseline a été
+-- promu en migration 20260529000000, donc un push sur base vierge va jusqu'au bout et
+-- ce cas est désormais bel et bien atteignable. La présente migration le couvre.
 --
 -- Ce qu'elle achète est ailleurs : le correctif en place ne tient aujourd'hui QUE par
 -- bootstrap/01_post_push_alignment.sql, un fichier hors-migration joué à la main UNE

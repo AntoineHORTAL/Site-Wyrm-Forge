@@ -718,6 +718,53 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 
 ---
 
+## 🟢 Chantier baseline des migrations — CLOS (2026-08-18)
+
+Les migrations `supabase/migrations/` ne couvraient pas le schéma antérieur au versionnage : une base vierge ne pouvait pas être reconstruite depuis zéro. La migration `20260529000000_baseline_pre_versioning.sql` comble ce trou d'historique.
+
+| Phase | Objet | État |
+|---|---|---|
+| A | Rédaction de la baseline `20260529000000_baseline_pre_versioning.sql` | ✅ |
+| B | `migration repair` sur prod et test pour marquer la baseline `applied` | ✅ |
+| C | Alignement 80/80 local↔remote sur prod et test, diff d'instantané sans écart (374 objets) | ✅ |
+| D | **Rejeu intégral des 80 migrations sur un projet vierge, sans aucun `repair`** | ✅ |
+
+### Phase D — la preuve empirique
+Projet jetable `wyrm-forge-baseline-test-jetable` créé, poussé, vérifié puis **supprimé** (2026-08-18). Base au départ strictement vierge : 0 migration remote, 0 objet dans `public`.
+
+- `supabase db push` à nu → **80/80 migrations appliquées**, `db push --dry-run` ensuite : « Remote database is up to date ».
+- Instantané des objets (même méthode de hash qu'en Phase C : fonctions, colonnes, contraintes, index, policies, triggers, RLS, grants, vues, extensions) comparé à la prod : **un seul écart**, voir ci-dessous.
+- Les 6 écarts CRLF/LF connus sur `update_updated_at` / `increment_*` **n'apparaissent pas** — le fingerprint normalise les espaces (`regexp_replace(..., '\s+', ' ', 'g')`) avant le md5.
+
+**Verdict : le trou d'historique est comblé.** Une base vierge absorbe les 80 migrations dans l'ordre et produit le schéma de la prod.
+
+### ⚠️ Deux dépendances hors migrations (découvertes en Phase D)
+
+**1. `storage.buckets` — piège de provisionnement.** La migration `20260613000002_tournaments_create_infra.sql` fait `INSERT INTO storage.buckets` (bucket `tournament-heroes`). Cette table n'est créée par aucune de nos migrations : c'est le service Storage de Supabase qui la crée, **de façon asynchrone après la création du projet**. Sur un projet neuf, le premier push a échoué ici (`relation "storage.buckets" does not exist`, SQLSTATE 42P01) simplement parce qu'il a doublé le provisionnement ; relancé quelques minutes plus tard sans rien modifier, il est passé. **Sur un projet neuf, attendre le statut `ACTIVE_HEALTHY` avant `db push`** — un échec sur cette migration n'est pas une régression de schéma.
+
+**2. Trigger `prac-notify-tracked-players` — Database Webhook du Dashboard.** Seul écart d'instantané prod ↔ base reconstruite. C'est un webhook créé à la main dans le Dashboard (`AFTER INSERT OR UPDATE ON public.tracked_players` → `supabase_functions.http_request` vers l'EF `prac-notify`), donc absent de toute base reconstruite depuis les migrations. **À recréer manuellement** sur tout nouvel environnement, ou à codifier en migration si on veut qu'il suive.
+
+> 🔴 Sécurité : la définition de ce trigger embarque un en-tête `X-Internal-Token` **en clair dans la base**. Il n'est pas dans Git, mais il est lisible par quiconque peut lire `pg_trigger` sur la prod. À considérer pour une rotation / un passage par Vault.
+
+
+### 🟡 Dette connue — 2 bugs de policy repérés en relisant la baseline (2026-08-31)
+
+Repérés pendant la relecture de `20260529000000_baseline_pre_versioning.sql`, **hors périmètre du chantier baseline**. La baseline les REPRODUIT fidèlement, et c'est sa fonction : elle reproduit la prod, elle ne la corrige pas. Chacun demande une migration séparée, non planifiée à ce jour.
+
+**1. `deletion_requests` — policy INSERT au prédicat mort.** La policy `"Users can create their own deletion request"` porte un sous-`SELECT` qui compare `deletion_requests.id` à `auth.uid()` au lieu de `user_id` :
+
+```sql
+AND (NOT (EXISTS ( SELECT 1
+                     FROM public.admin_users
+                    WHERE (deletion_requests.id = auth.uid()))))
+```
+
+`id` est la PK de la demande, `auth.uid()` l'identifiant de l'utilisateur : l'égalité ne peut **jamais** être vraie, donc le `NOT EXISTS` vaut toujours TRUE. La clause, censée empêcher un admin de déposer une demande de suppression, **ne bloque rien**. Impact réel limité — les deux autres conditions (`user_id = auth.uid()` et l'exclusion des e-mails `@wyrm-forge.com`) tiennent — mais l'intention de la troisième est perdue. Correction = `DROP POLICY` + `CREATE POLICY` avec `user_id` à la place de `id`, dans une migration dédiée.
+
+**2. `profiles` — doublon de policy SELECT.** `"View profiles"` (`auth.uid() = id OR public.is_admin()`) et `"Users can read own profile"` (`auth.uid() = id`) coexistent. Les policies permissives se cumulant en OU, la seconde est **strictement incluse** dans la première et ne rend visible aucune ligne supplémentaire. Même classe de doublon que les 8 policies de `scenarios`. Aucun risque de sécurité : juste une évaluation de prédicat inutile à chaque SELECT et une lecture ambiguë du modèle d'accès. À retirer si l'on généralise le nettoyage entamé sur `scenarios`.
+
+---
+
 ## 🟢 Conventions de code
 
 - Composants et fichiers : `PascalCase.tsx`
@@ -1890,12 +1937,19 @@ Le déclencheur de `prac-notify` est un **Database Webhook Supabase créé à la
 
 | Champ | Valeur |
 |---|---|
-| Name | `prac-notify-consent` |
+| Name | `prac-notify-tracked-players` (prod) — voir l'avertissement ci-dessous |
 | Table | `public.tracked_players` |
 | Events | **INSERT + UPDATE** (pas DELETE) |
 | Type | HTTP Request → POST |
 | URL | `https://cuscgmgqakxnfwnsrhhv.supabase.co/functions/v1/prac-notify` |
 | HTTP Header | `X-Internal-Token: <valeur de PRAC_WEBHOOK_SECRET>` |
+
+> ⚠️ **Le nom du webhook DIFFÈRE entre les deux bases** (constaté le 2026-08-15 en lisant `pg_trigger` sur chacune) : la prod porte `prac-notify-tracked-players`, le projet de test porte `prac-notify-consent`. Ce document annonçait `prac-notify-consent` pour les deux — il décrivait donc le test, pas la prod. Sans conséquence fonctionnelle (le nom du trigger n'entre dans aucun chemin d'exécution), mais c'est un piège de diagnostic : chercher `prac-notify-consent` sur la prod ne renvoie rien et donne l'impression que le webhook est absent. **Vérifier par la table, pas par le nom** :
+> ```sql
+> SELECT tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+>  WHERE c.relname = 'tracked_players' AND NOT t.tgisinternal;
+> ```
+> Le nom lui-même n'est PAS aligné entre les deux bases — les renommer serait une opération manuelle de dashboard sans bénéfice, non faite.
 
 - **Pas de filtre par colonne** : les Database Webhooks ne supportent pas de condition (`WHEN status='pending'`) → **tout** INSERT/UPDATE de `tracked_players` fire, et c'est **l'EF qui filtre** en code (`relevantTransition` : seul `status` devenant `pending` déclenche un envoi ; tout le reste → `200 { ignored:true }`). Volontaire — la sélectivité vit dans l'EF, pas dans le webhook.
 - **Header = seule barrière** : `verify_jwt=false`, la valeur de `X-Internal-Token` DOIT correspondre au secret Supabase `PRAC_WEBHOOK_SECRET`. Si le header manque/diffère → `401`, aucun e-mail. Si un jour le secret est tourné, **mettre à jour le header du webhook en même temps** (sinon toutes les notifications tombent en 401 silencieusement côté déclencheur).
