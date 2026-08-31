@@ -60,6 +60,15 @@ describe('formats et seuils', () => {
     expect(AD_FORMATS['halfpage-300'].height).toBe(600)
   })
 
+  it("l'encart maison a exactement le format du slot qu'il surplombe", () => {
+    // HouseAdSlot lit `rectangle-300` au lieu de coder ses dimensions en dur :
+    // les deux blocs de la queue doivent rester de la même taille, sinon la
+    // colonne devient bancale dès que le format bouge.
+    const src = readFileSync(path.resolve(__dirname, '../components/ads/HouseAdSlot.tsx'), 'utf8')
+    expect(src).toContain("AD_FORMATS['rectangle-300']")
+    expect(src).not.toMatch(/height:s*250/)
+  })
+
   it('le second emplacement est un medium rectangle IAB 300×250', () => {
     // Format standard : toutes les régies savent le servir, ce qui garde le
     // choix du fournisseur ouvert — même raison que pour les deux autres.
@@ -127,10 +136,11 @@ describe('formats et seuils', () => {
     expect(css).toContain(`min-height: ${AD_FORMATS['halfpage-300'].height}px`)
     expect(css).toContain('.dash-adrail-tail')
 
-    // `.dash-adrail-tail` n'est démasqué qu'au seuil haut : c'est la seule
-    // largeur de piste (300 px) qui accepte le format.
+    // `.dash-adrail-tail` est masquée par défaut et n'est démasquée qu'au seuil
+    // haut : c'est la seule largeur de piste (300 px) qui accepte le format.
+    expect(css).toContain('.dash-adrail-tail  { display: none;')
     const seuilHaut = css.slice(css.indexOf(`@media (min-width: ${AD_BREAKPOINTS.widenAt}px)`))
-    expect(seuilHaut).toContain('.dash-adrail-tail { display: block; }')
+    expect(seuilHaut).toMatch(/.dash-adrail-tail { display: flex;[^}]*gap: 24px/)
 
     // Piste de grille = largeur de la pub + 40 px de gouttière droite.
     expect(css).toContain(`240px 1fr ${AD_FORMATS['skyscraper-160'].width + 40}px`)

@@ -249,11 +249,18 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
  * la colonne est plus courte que la pile. */
 .dash-adrail-track { flex: 1 0 auto; min-height: 600px; }
 
-/* Second emplacement (300×250), NON collant : il défile avec le dashboard, cf.
- * le calcul de hauteur ci-dessus. Masqué sous 1440 px parce que la piste n'y
- * fait que 160 px de large. La bascule est purement CSS : l'espace est réservé
- * ou libéré dès la première peinture, jamais par du JS après coup (anti-CLS).
- * `flex: none` empêche la colonne flex de comprimer les 250 px réservés. */
+/* Queue de la colonne, sous le collant : l'encart d'auto-promotion (300×250)
+ * puis le second emplacement de régie (300×250). Aucun des deux n'est collant,
+ * ils défilent avec le dashboard — cf. le calcul de hauteur ci-dessus.
+ *
+ * Masquée sous 1440 px parce que la piste n'y fait que 160 px de large et ne
+ * peut donc accueillir aucune créa de 300. La bascule est purement CSS :
+ * l'espace est réservé ou libéré dès la première peinture, jamais par du JS
+ * après coup (anti-CLS).
+ *
+ * `gap` reprend les 24 px qui séparent déjà la queue du collant, pour que les
+ * trois blocs de la colonne soient à intervalle constant. `flex: none` empêche
+ * la colonne flex de comprimer les hauteurs réservées. */
 .dash-adrail-tail  { display: none; flex: none; margin-top: 24px; }
 
 @media (min-width: 1280px) {
@@ -266,7 +273,10 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 @media (min-width: 1440px) {
   .dash-layout--ads { grid-template-columns: 240px 1fr 340px; }  /* 300 de pub + 40 de gouttière */
   .dash-adrail      { --ad-slot-w: 300px; }
-  .dash-adrail-tail { display: block; }   /* la piste ne fait 300 px de large qu'ici */
+  /* flex column + gap : deux blocs de 250 px espacés de 24 px, comme la queue
+     l'est du collant. `display` seul suffirait à les empiler, le gap est ce qui
+     tient l'espacement sans marge à recalculer si un bloc s'ajoute. */
+  .dash-adrail-tail { display: flex; flex-direction: column; gap: 24px; }   /* la piste ne fait 300 px de large qu'ici */
 }
 
 .dash-grid-builds  { display: grid; grid-template-columns: 72px 3fr 2fr; gap: 14px; height: 640px; align-items: stretch; }

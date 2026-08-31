@@ -3,7 +3,7 @@
 /**
  * Colonne publicitaire du dashboard — troisième piste de la grille `.dash-layout`.
  *
- * DEUX emplacements, globaux au layout : pas de logement par fonctionnalité
+ * TROIS blocs, globaux au layout : pas de logement par fonctionnalité
  * (rien dans le Builder, rien dans MatchUp). Tout ce qui s'affiche derrière le
  * dashboard hérite de cette colonne sans rien avoir à déclarer, et il n'y a
  * qu'un endroit à modifier le jour où les formats ou la régie changent.
@@ -36,8 +36,18 @@
  */
 
 import AdSlot from './AdSlot'
+import HouseAdSlot from './HouseAdSlot'
 
-export default function DashboardAdRail() {
+interface DashboardAdRailProps {
+  /**
+   * Ouvre la page tarifs — uniquement consommé par `HouseAdSlot`, le seul bloc
+   * de la colonne qui soit cliquable. Les deux `AdSlot` sont, eux, totalement
+   * agnostiques : ils ne savent rien du site qui les héberge.
+   */
+  onSeePricing: () => void
+}
+
+export default function DashboardAdRail({ onSeePricing }: DashboardAdRailProps) {
   return (
     <aside className="dash-adrail" aria-label="Publicité">
       {/* Piste collante — voir `.dash-adrail-track` dans globals.css : elle prend
@@ -61,8 +71,9 @@ export default function DashboardAdRail() {
       </div>
 
       {/*
-        Second emplacement : medium rectangle 300×250, format IAB que toutes les
-        régies savent servir. Il n'existe QU'À PARTIR DE 1440 px de viewport,
+        Queue de la colonne : l'encart d'auto-promotion puis un second
+        emplacement de régie, tous deux en 300×250 (format IAB que toutes les
+        régies savent servir). Elle n'existe QU'À PARTIR DE 1440 px de viewport,
         parce qu'en dessous la piste ne fait que 160 px de large et ne peut pas
         accueillir une créa de 300. Cette bascule est faite en CSS
         (`.dash-adrail-tail`), donc l'espace est réservé ou libéré dès la
@@ -73,6 +84,15 @@ export default function DashboardAdRail() {
         déjà 300 px, soit exactement la largeur nominale du format.
       */}
       <div className="dash-adrail-tail">
+        {/*
+          Auto-promotion, AVANT le second emplacement de régie. L'ordre n'est pas
+          neutre : c'est le seul bloc qui affiche réellement quelque chose tant
+          qu'aucune régie n'est branchée, donc le mettre au-dessus lui donne la
+          meilleure position des deux. Il hérite du verrou de palier de toute la
+          colonne — il n'a aucune condition propre.
+        */}
+        <HouseAdSlot onSeePricing={onSeePricing} />
+
         <AdSlot
           format="rectangle-300"
           name="dashboard-rail-2"

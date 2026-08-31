@@ -315,7 +315,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
           Enfant DIRECT de `.dash-layout` : c'est ce qui en fait la troisième
           piste de la grille, et ce qui la fait disparaître à l'impression via
           la règle `.dash-layout > :not(.dash-main)` déjà en place. */}
-      {showAds && <DashboardAdRail />}
+      {showAds && <DashboardAdRail onSeePricing={() => onTabChange('tarifs')} />}
     </div>
   )
 }
