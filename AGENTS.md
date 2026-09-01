@@ -286,6 +286,12 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 - SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` (INSERT + UPDATE avec `WITH CHECK` pour bloquer la réassignation de `user_id`).
 - `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
 
+> 🟡 **Dette connue — le verrou « palier payant » des Scénarios est PUREMENT CÔTÉ CLIENT.** Constaté le 2026-09-01. L'accès à l'onglet est décidé dans `components/dashboard/Dashboard.tsx` (`isPro = isAdmin || isPaidTier(profile?.tier)`), donc **dans le navigateur**. Les 4 policies `scn_*` ne testent que `(select auth.uid()) = user_id` — **aucune notion de palier en base**. Un compte Apprenti qui appelle PostgREST directement lit, crée, modifie et supprime ses scénarios sans obstacle. C'est un verrou d'affichage, pas une barrière de sécurité, et l'abaissement du seuil de `maître` à « tout palier payant » n'y change rien.
+>
+> **Question de conception à trancher AVANT d'écrire la moindre policy** : que devient le contenu déjà créé par un compte qui redescend en Apprenti (fin d'abonnement) — **lecture seule** (SELECT reste ouvert, seuls INSERT/UPDATE/DELETE deviennent conditionnés au palier) ou **invisible** (SELECT lui-même conditionné) ? Le second fait disparaître des données que l'utilisateur a produites et pourrait vouloir récupérer ; le premier laisse s'accumuler du contenu sans contrepartie. Tant que ce n'est pas tranché, écrire la policy serait prématuré.
+>
+> Correction éventuelle = policies avec jointure sur `profiles.tier`, dans une migration dédiée. **Non planifiée à ce jour.**
+
 ### Consommateurs
 - **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro).
 - **App WPF** : `ScenarioService` (CRUD PostgREST sous **JWT user**, calqué sur `ForgeService`) — port en cours (Lot 0 : migration + modèles miroir + service ; Lot 1 : vue lecture seule `ScenariosTab`). Carte de fond = **même art que le site** (DDragon `map11` v14.24.1, `ScenarioService.MapImageUrl`), pas la minimap in-game — garantit l'alignement des tracés.
@@ -1607,6 +1613,8 @@ Contrainte `uq_tracked_players_profile UNIQUE (profile_id)` — **un seul dossie
 |---|---|
 | `request_tracking(p_profile_id uuid) → uuid` | Admin crée OU rouvre une demande. Vérifie `is_prac_admin` (sinon `RAISE 'not_prac_admin'`). Retourne l'id du dossier. |
 | `remove_tracking(p_profile_id uuid) → void` | Admin retire le joueur du roster (DELETE du dossier). Vérifie `is_prac_admin` (sinon `RAISE 'not_prac_admin'`). |
+
+> 🟡 **Dette connue — `remove_tracking` est un point d'entrée mort.** Constaté le 2026-09-01 : la fonction n'a **aucun appelant** dans `src/` ni dans `supabase/functions/` — le retrait d'un joueur du roster n'est exposé nulle part dans l'UI prac. Elle reste néanmoins `GRANT EXECUTE ... TO authenticated`, donc appelable en RPC par n'importe quel compte connecté (sa garde interne `is_prac_admin` tient : un non-admin reçoit `not_prac_admin`). **Non corrigée volontairement** — hors périmètre du lot de durcissement F1/F2/F4, qui ne retire que le grant d'`anon`. À trancher plus tard : soit brancher l'appel côté UI, soit retirer le grant `authenticated` (voire la fonction) si le retrait de roster passe définitivement par service_role.
 
 **`request_tracking` — comportement par statut existant :**
 - **absence de dossier** → INSERT (`status='pending'`, `added_by=auth.uid()`).
