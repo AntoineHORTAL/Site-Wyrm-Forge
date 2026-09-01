@@ -2,51 +2,79 @@
 -- ║  BASELINE — état de la base AVANT le début du versionnage (2026-05-30)   ║
 -- ╚══════════════════════════════════════════════════════════════════════════╝
 --
+-- ⚠️⚠️ MIGRATION AU STATUT PARTICULIER — LIRE AVANT TOUT `db push` ⚠️⚠️
+-- ---------------------------------------------------------------------------
+-- Cette migration N'A JAMAIS ÉTÉ EXÉCUTÉE sur la prod ni sur le projet de test,
+-- et ne doit JAMAIS l'être : tout ce qu'elle contient y existe déjà depuis
+-- toujours. Elle y est marquée `applied` SANS exécution, par :
+--
+--     supabase migration repair --status applied 20260529000000
+--
+-- Tant que ce repair n'a pas été fait sur une base existante, un `supabase db
+-- push` visant cette base considérera cette migration comme EN ATTENTE et
+-- tentera de l'appliquer. Chaque instruction étant idempotente (IF NOT EXISTS /
+-- OR REPLACE / DROP POLICY IF EXISTS puis CREATE), le résultat serait de toute
+-- façon un no-op — mais on ne compte pas là-dessus : le repair est la procédure,
+-- l'idempotence n'est que le filet.
+--
+-- Sur une base NEUVE, en revanche, elle s'applique normalement et en PREMIER
+-- (horodatage 20260529000000 < 20260530000001, la plus ancienne des autres).
+--
 -- POURQUOI CE FICHIER EXISTE
 -- --------------------------
 -- Les 7 tables ci-dessous (+ 6 fonctions) ont été créées À LA MAIN dans le
--- dashboard Supabase AVANT que le projet ne versionne son schéma. Aucune des 74
+-- dashboard Supabase AVANT que le projet ne versionne son schéma. Aucune des
 -- migrations de `supabase/migrations/` ne les crée : la toute première migration
 -- qui les touche est `20260530000002_profiles_riot_columns.sql`, qui fait
 -- `ALTER TABLE profiles ADD COLUMN …` en supposant la table déjà présente.
 --
--- Conséquence : **`supabase db push` sur un projet VIERGE échoue** (relation
--- "profiles" does not exist), et échouerait de nouveau plus loin sur
--- `admin_users` (20260530000003) puis sur les 4 fonctions `increment_*`
--- (20260715000001, qui fait `ALTER FUNCTION … SET search_path`).
+-- Conséquence, avant l'existence de ce fichier : **`supabase db push` sur un
+-- projet VIERGE échouait** (relation "profiles" does not exist), et échouait de
+-- nouveau plus loin sur `admin_users` (20260530000003) puis sur les 4 fonctions
+-- `increment_*` (20260715000001, qui fait `ALTER FUNCTION … SET search_path`).
+-- C'est ce trou que cette migration comble.
 --
--- Ce fichier comble ce trou. Il reproduit l'état pré-versionnage, PAS l'état
--- actuel de la prod : tout ce que les migrations ajoutent ensuite en est
--- volontairement ABSENT, sinon les migrations échoueraient sur des objets
--- déjà présents (les `CREATE POLICY` / `ADD CONSTRAINT` des migrations ne sont
--- pas idempotents). Sont donc exclus ici, et laissés aux migrations :
+-- HISTORIQUE — promotion depuis `supabase/bootstrap/00`
+-- -----------------------------------------------------
+-- Ce contenu vivait auparavant dans `supabase/bootstrap/00_pre_versioning_baseline.sql`,
+-- un script HORS migration qu'il fallait jouer à la main (`supabase db query -f …`)
+-- avant le premier `db push` de tout environnement neuf. Le promouvoir en
+-- migration horodatée supprime cette étape manuelle : `db push` seul suffit
+-- désormais à monter un environnement complet. Les migrations 20260815000001 à
+-- 20260815000003 référencent encore « bootstrap/00 » dans leurs commentaires
+-- d'en-tête — il s'agit de ce fichier-ci.
+--
+-- CE QUI EST VOLONTAIREMENT ABSENT
+-- --------------------------------
+-- Ce fichier reproduit l'état PRÉ-VERSIONNAGE, PAS l'état actuel de la prod :
+-- tout ce que les migrations ajoutent ensuite en est délibérément EXCLU, sinon
+-- ces migrations échoueraient sur des objets déjà présents (leurs `CREATE POLICY`
+-- et `ADD CONSTRAINT` ne sont pas idempotents). Sont donc laissés aux migrations :
 --   • profiles      : colonnes riot_* (20260530000002 / 20260606000004),
 --                     chk_profiles_riot_rank (20260530000004),
 --                     uq_profiles_riot_puuid + triggers (20260606000004…),
 --                     policies restrict_insert_privileges / *_update_self_or_admin
 --   • admin_users   : RLS + policies deny_anon / deny_authenticated (20260530000003)
 --   • workshop_*    : policies wb_* / wjp_* (20260530000005, 20260716000001),
+--                     RLS (20260815000002),
 --                     workshop_builds.source_build_id (20260723000001)
 --   • item_builds   : colonne priority (20260807000001)
 --
--- MODE D'EMPLOI (bootstrap d'un environnement neuf, ex. le projet de test)
--- ------------------------------------------------------------------------
---   supabase db query --linked -f supabase/bootstrap/00_pre_versioning_baseline.sql
---   supabase db push
---
--- Sur la PROD ce fichier est un no-op complet (tout y existe déjà, chaque
--- instruction est idempotente) — il n'a jamais besoin d'y être joué.
---
--- ⚠️ Ce fichier n'est PAS une migration et n'apparaît pas dans
--- `supabase_migrations.schema_migrations`. Le promouvoir en migration
--- horodatée < 20260530000001 imposerait un `supabase migration repair` sur la
--- prod pour l'y marquer `applied` sans l'exécuter — décision non prise.
+-- Cette répartition a été vérifiée colonne par colonne, contrainte par contrainte
+-- et policy par policy contre la prod le 2026-08-15 : aucun écart.
 
 -- ── 0. Extensions ────────────────────────────────────────────────────────────
 -- Présentes sur la prod, absentes d'un projet Supabase neuf. `pg_cron` est
--- exigée dès la PREMIÈRE migration (20260530000001 planifie la purge de
+-- exigée dès la migration suivante (20260530000001 planifie la purge de
 -- `riot_cache` via `cron.schedule`) ; `pg_net` porte les Database Webhooks
 -- (dont `prac-notify`). Les schémas cibles reproduisent ceux de la prod.
+--
+-- ⚠️ Ces deux CREATE EXTENSION sont les seules instructions de ce fichier qui
+-- exigent des droits élevés. Elles passent sous le rôle `postgres` utilisé par
+-- `supabase db push`. Si un jour elles échouaient sur un environnement neuf,
+-- les activer depuis le dashboard (Database → Extensions) AVANT le push rend
+-- ces deux lignes no-op grâce au IF NOT EXISTS — le reste du fichier n'a besoin
+-- d'aucun privilège particulier.
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
 CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
 
@@ -54,8 +82,8 @@ CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
 
 -- Trigger générique de bump d'updated_at. Doublon historique de
 -- `fn_set_updated_at` (créée, elle, par 20260530000008) : conservée à
--- l'identique de la prod, où elle existe toujours sans être attachée à un
--- trigger. Ne pas « nettoyer » ici — ce fichier reproduit, il ne corrige pas.
+-- l'identique de la prod, où elle porte les deux triggers ad-hoc réattachés par
+-- 20260815000004. Ne pas « nettoyer » ici — ce fichier reproduit, il ne corrige pas.
 CREATE OR REPLACE FUNCTION public.update_updated_at() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -202,6 +230,11 @@ CREATE INDEX IF NOT EXISTS idx_wjp_side                 ON public.workshop_jungl
 -- fonctions : elles DOIVENT exister avant le push, sinon la migration échoue.
 -- Le `SET search_path` est déjà posé ici (état actuel de la prod) ; l'ALTER de
 -- la migration devient alors un no-op, ce qui est sans conséquence.
+--
+-- Elles sont aussi la raison pour laquelle 20260815000002 n'active PAS
+-- `FORCE ROW LEVEL SECURITY` sur les tables Workshop : SECURITY DEFINER, elles
+-- écrivent en tant que propriétaire de la table et n'ont aucune policy UPDATE
+-- pour les rattraper.
 
 CREATE OR REPLACE FUNCTION public.increment_likes(build_id uuid) RETURNS void
     LANGUAGE sql SECURITY DEFINER SET search_path TO 'public'
