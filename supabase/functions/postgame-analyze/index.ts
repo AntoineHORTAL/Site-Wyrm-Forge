@@ -56,9 +56,9 @@ const TIER_CONFIG: Record<string, { credits: number; model: string }> = {
   'apprenti':    { credits: 15,  model: HAIKU },
   'forgeron':    { credits: 65,  model: HAIKU },
   'maître':      { credits: 135, model: SONNET },
+  // `architecte` / `architecte+` retirés de l'offre (migration 20260901000004).
+  // Même budget que Maître : les comptes basculés n'ont rien perdu.
   'légion':      { credits: 135, model: SONNET },
-  'architecte':  { credits: 135, model: SONNET },
-  'architecte+': { credits: 135, model: SONNET },
 }
 const DEFAULT_CONFIG = TIER_CONFIG['apprenti']
 

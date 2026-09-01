@@ -7,7 +7,7 @@
 // un nouvel exemplaire ; plutôt que d'importer depuis une page, on centralise.
 //
 // ⚠️ NE PAS CONFONDRE avec les couleurs des **tiers d'abonnement Wyrm Forge**
-// (apprenti / forgeron / maître / légion / architecte / architecte+), définies
+// (apprenti / forgeron / maître / légion), définies
 // dans `components/dashboard/tabs/AdminTab.tsx` et `app/profil/page.tsx`. Deux
 // concepts entièrement différents qui partagent seulement le mot « tier » —
 // ne jamais fusionner les deux tables.

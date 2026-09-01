@@ -20,8 +20,9 @@
 //
 // ⚠️ On teste l'appartenance au palier GRATUIT, jamais l'absence des paliers
 // payants. La différence est structurelle, pas cosmétique : la liste des
-// paliers payants a déjà bougé (`architecte` / `architecte+` en base, parfois
-// appelés « Monarque » à l'oral) et bougera encore. Avec une liste noire, tout
+// paliers payants a déjà bougé DANS LES DEUX SENS (`architecte`/`architecte+`
+// ajoutés puis retirés de l'offre, migration 20260901000004) et bougera encore.
+// Avec une liste noire, tout
 // palier ajouté demain afficherait des pubs à des abonnés par défaut, en
 // silence. Avec cette liste blanche d'un seul élément, un palier inconnu ne
 // voit RIEN — le défaut penche du côté qui ne dégrade pas un client payant.

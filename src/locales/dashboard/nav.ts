@@ -108,14 +108,20 @@ const groupsEn: Record<NavGroupId, string> = {
  *    libellés vivent dans `src/lib/lol-tiers.ts` ;
  *  - la clé EST la valeur métier. Traduire la valeur affichée ne doit JAMAIS toucher
  *    aux comparaisons qui s'appuient dessus (`TIER_ORDER`, `'apprenti'`, `'maître'`).
+ *
+ * ⚠️ `admin` n'est PAS un palier : c'est un marqueur de RÔLE (`profiles.role`),
+ * posé par `effectiveTier` dans `page.tsx` pour que la carte utilisateur d'un
+ * admin n'emprunte pas le nom d'un palier commercial. Il est déclaré ici parce
+ * qu'il transite par `subscriptionTierLabel`, et volontairement ABSENT de
+ * `TIER_ORDER` : il ne doit jamais apparaître dans les boutons d'assignation de
+ * l'éditeur admin, ni être écrit dans `profiles.tier`.
  */
 const tiersFr = {
   apprenti:     'Apprenti',
   forgeron:     'Forgeron',
   'maître':     'Maître',
   'légion':     'Légion',
-  architecte:   'Architecte',
-  'architecte+':'Architecte+',
+  admin:        'Admin',
 }
 
 export type TierKey = keyof typeof tiersFr
@@ -125,8 +131,7 @@ const tiersEn: Record<TierKey, string> = {
   forgeron:     'Blacksmith',
   'maître':     'Master',
   'légion':     'Legion',
-  architecte:   'Architect',
-  'architecte+':'Architect+',
+  admin:        'Admin',
 }
 
 /**

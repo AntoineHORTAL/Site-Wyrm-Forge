@@ -63,7 +63,10 @@ interface MatchInfo {
 
 const TIER_COLORS: Record<string, string> = {
   apprenti: '#A1A1AA', forgeron: '#5DCAA5', maître: '#7F77DD',
-  légion: '#3A8AC9', architecte: '#BA7517', 'architecte+': '#EF9F27',
+  légion: '#3A8AC9',
+  // Marqueur de rôle, pas un palier — voir `effectiveTier` (page.tsx) et la note
+  // de `tiersFr` (locales/dashboard/nav.ts). Hors `TIER_ORDER`.
+  admin: '#EF9F27',
 }
 
 export default function ProfilePage() {

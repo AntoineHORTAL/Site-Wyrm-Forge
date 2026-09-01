@@ -133,7 +133,7 @@ export const landingFr = {
     ctaDownload: 'Télécharger gratuitement',
     ctaSoon: 'Bientôt disponible',
     ctaSoonTitle: 'Le paiement sera disponible prochainement',
-    moreTiers: "D'autres paliers (Architecte, Architecte+) arrivent prochainement.",
+    moreTiers: "D'autres paliers arrivent prochainement.",
     // ⚠️ `name` est un LIBELLÉ D'AFFICHAGE, pas la valeur de `profiles.tier`.
     // Les valeurs en base (apprenti / forgeron / maître) sont partagées avec l'app
     // de bureau et ne changent JAMAIS : elles restent portées par le tableau `tiers`
@@ -342,7 +342,7 @@ export const landingEn: LandingDict = {
     ctaDownload: 'Download for free',
     ctaSoon: 'Coming soon',
     ctaSoonTitle: 'Payments will be available soon',
-    moreTiers: 'More tiers (Architecte, Architecte+) are coming soon.',
+    moreTiers: 'More tiers are coming soon.',
     tiers: [
       {
         name: 'Apprentice',

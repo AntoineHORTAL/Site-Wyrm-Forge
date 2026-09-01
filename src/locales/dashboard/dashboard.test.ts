@@ -632,7 +632,15 @@ describe('libellé de tier d\'abonnement', () => {
   it('traduit les valeurs connues de profiles.tier', () => {
     expect(subscriptionTierLabel(dashboardFr.nav, 'apprenti')).toBe('Apprenti')
     expect(subscriptionTierLabel(dashboardEn.nav, 'apprenti')).toBe('Apprentice')
-    expect(subscriptionTierLabel(dashboardEn.nav, 'architecte+')).toBe('Architect+')
+    expect(subscriptionTierLabel(dashboardEn.nav, 'légion')).toBe('Legion')
+  })
+
+  it('traduit le marqueur de rôle `admin`, qui n\'est pas un palier', () => {
+    // Posé par `effectiveTier` (page.tsx) et rendu par Nav.tsx. Hors TIER_ORDER :
+    // il ne doit jamais être proposé à l'assignation ni écrit en base.
+    expect(subscriptionTierLabel(dashboardFr.nav, 'admin')).toBe('Admin')
+    expect(subscriptionTierLabel(dashboardEn.nav, 'admin')).toBe('Admin')
+    expect(TIERS).not.toContain('admin')
   })
 
   it('normalise la casse — `page.tsx` peut passer la valeur de repli « Apprenti »', () => {

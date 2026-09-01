@@ -13,6 +13,12 @@
  * (cf. `20260529000000_baseline_pre_versioning.sql`) : la liste ci-dessous est
  * une convention de code, pas une garantie de la base. C'est précisément
  * pourquoi `isPaidTier` ne s'appuie PAS dessus (voir plus bas).
+ *
+ * Historique — `architecte` et `architecte+` ont été RETIRÉS de l'offre
+ * (migration `20260901000004_retire_tier_architecte.sql`, qui a basculé les
+ * comptes concernés sur `maître`). La colonne n'ayant pas de CHECK, ces valeurs
+ * restent techniquement écrivables : `isPaidTier` continue donc de les traiter
+ * comme payantes, exactement comme n'importe quel palier inconnu.
  */
 
 /**
@@ -26,6 +32,11 @@ export const FREE_TIER = 'apprenti'
 
 /**
  * Liste ordonnée canonique des paliers, du plus bas au plus haut.
+ *
+ * C'est la liste des paliers PROPOSABLES : ce que le panneau admin sait
+ * assigner, et ce dont l'interface sait compter les comptes. Ce n'est PAS la
+ * liste exhaustive de ce qui peut exister en base — un palier retiré de l'offre
+ * sort d'ici sans que sa valeur disparaisse de la colonne pour autant.
  *
  * ⚠️ `isPaidTier` NE L'UTILISE PAS, volontairement — c'est le cœur de la
  * décision, pas un oubli (voir la doc de la fonction). Cette constante reste
@@ -41,8 +52,6 @@ export const TIER_ORDER: string[] = [
   'forgeron',
   'maître',
   'légion',
-  'architecte',
-  'architecte+',
 ]
 
 /**

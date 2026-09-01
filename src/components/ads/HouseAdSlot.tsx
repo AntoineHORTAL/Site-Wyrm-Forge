@@ -28,7 +28,7 @@ import { AD_FORMATS } from '@/lib/ads'
 /**
  * Les créas disponibles — UNE PAR PALIER PAYANT.
  *
- * Ajouter un palier (Légion, Architecte…) = ajouter UNE LIGNE ici, rien
+ * Ajouter un palier (Légion…) = ajouter UNE LIGNE ici, rien
  * d'autre : pas de composant, pas de condition, pas de style. Le tirage
  * ci-dessous s'adapte tout seul à la longueur de la liste.
  *

@@ -9,10 +9,11 @@ describe('verrou commercial — qui voit des publicités', () => {
   })
 
   it('AUCUN palier payant ne voit de pub', () => {
-    // Valeurs réelles de `profiles.tier` (cf. TIER_ORDER dans Dashboard.tsx,
-    // Nav.tsx et AdminTab.tsx). « Monarque » y figure aussi : ce nom circule à
-    // l'oral pour le palier haut, sans exister en base. Le test l'inclut pour
-    // prouver que la règle ne dépend pas du nommage des paliers payants.
+    // Valeurs de `profiles.tier` (cf. TIER_ORDER dans `lib/subscription.ts`,
+    // source unique). La liste inclut À DESSEIN des valeurs hors offre :
+    // `architecte`/`architecte+` sont des paliers RETIRÉS (migration
+    // 20260901000004), « monarque » n'a jamais existé en base. Toutes doivent
+    // rester non-publicitaires : la règle ne dépend pas du nommage des paliers.
     for (const tier of ['forgeron', 'maître', 'légion', 'architecte', 'architecte+', 'monarque']) {
       expect(shouldShowAds(tier), `${tier} ne doit jamais voir de pub`).toBe(false)
     }
@@ -35,7 +36,7 @@ describe('verrou commercial — qui voit des publicités', () => {
   })
 
   it('un admin ne voit jamais de pub, même avec un tier gratuit en base', () => {
-    // Cohérent avec `effectiveTier` dans page.tsx, qui force 'architecte+'
+    // Cohérent avec `effectiveTier` dans page.tsx, qui pose le marqueur 'admin'
     // à l'affichage pour les admins quelle que soit la valeur en base.
     expect(shouldShowAds('apprenti', true)).toBe(false)
   })

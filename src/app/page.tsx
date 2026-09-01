@@ -128,8 +128,16 @@ export default function Home() {
 
   const isAdmin = profile?.role === 'admin'
 
-  // Admin always gets architecte+ display regardless of DB tier value
-  const effectiveTier = isAdmin ? 'architecte+' : (profile?.tier ?? 'Apprenti')
+  // Un admin s'affiche avec le marqueur de RÔLE `'admin'`, pas avec un palier
+  // commercial emprunté. L'ancien code forçait `'architecte+'` : ce palier ayant
+  // été retiré de l'offre (migration 20260901000004), il aurait laissé un palier
+  // fantôme visible du seul admin. `'admin'` est déclaré dans `tiersFr`/`tiersEn`
+  // (libellé) et dans les deux tables `TIER_COLORS` (filet), mais reste hors de
+  // `TIER_ORDER` : il n'est ni proposable ni écrivable dans `profiles.tier`.
+  // Sûr côté verrous : `isPaidTier('admin')` et `shouldShowAds('admin')` donnent
+  // déjà le bon résultat (≠ 'apprenti'), et `Nav`/`Dashboard` testent `isAdmin`
+  // en premier de toute façon.
+  const effectiveTier = isAdmin ? 'admin' : (profile?.tier ?? 'Apprenti')
 
   // Le LanguageProvider vit désormais dans le layout racine (src/app/layout.tsx) :
   // il coiffe TOUTES les routes, pas seulement celle-ci. En remettre un ici créerait

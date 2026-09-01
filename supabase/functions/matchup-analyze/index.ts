@@ -83,13 +83,14 @@ const TIER_CONFIG: Record<string, { credits: number; model: string }> = {
   'apprenti':    { credits: 15,  model: HAIKU },
   'forgeron':    { credits: 65,  model: HAIKU },
   'maître':      { credits: 135, model: SONNET },
-  // ⚠️ NON DÉFINIS par le cadrage « Chaleur de la Forge », qui n'a acté que
-  // Apprenti/Forgeron/Maître. Alignés sur Maître faute de valeur propre : c'est
-  // le choix conservateur côté budget, mais il ne différencie plus ces tiers
-  // payants supérieurs. À trancher avec leur budget réel.
+  // ⚠️ NON DÉFINI par le cadrage « Chaleur de la Forge », qui n'a acté que
+  // Apprenti/Forgeron/Maître. Aligné sur Maître faute de valeur propre : c'est
+  // le choix conservateur côté budget, mais il ne différencie plus ce tier
+  // payant supérieur. À trancher avec son budget réel.
+  // (`architecte` / `architecte+` retirés de l'offre — migration
+  //  20260901000004. Leur budget valait déjà celui de Maître : les comptes
+  //  basculés n'ont rien perdu.)
   'légion':      { credits: 135, model: SONNET },
-  'architecte':  { credits: 135, model: SONNET },
-  'architecte+': { credits: 135, model: SONNET },
 }
 // Défaut prudent si tier inconnu/absent : plancher gratuit (Apprenti).
 const DEFAULT_CONFIG = TIER_CONFIG['apprenti']

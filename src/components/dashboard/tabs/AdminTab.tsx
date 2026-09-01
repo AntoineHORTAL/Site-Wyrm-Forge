@@ -75,8 +75,12 @@ const TIER_COLORS: Record<string, string> = {
   'forgeron':    '#5DCAA5',
   'maître':      '#7F77DD',
   'légion':      '#3A8AC9',
-  'architecte':  '#BA7517',
-  'architecte+': '#EF9F27',
+  // Marqueur de RÔLE, pas un palier (cf. `effectiveTier` dans `page.tsx`).
+  // Absent de `TIER_ORDER`, donc jamais rendu dans les boutons d'assignation ni
+  // dans les cartes de comptage — il n'est là que pour qu'un badge alimenté par
+  // `effectiveTier` ne retombe pas sur le gris neutre. Reprend l'or de l'ancien
+  // `architecte+` : l'admin garde exactement l'apparence qu'il avait.
+  'admin':       '#EF9F27',
 }
 
 /**

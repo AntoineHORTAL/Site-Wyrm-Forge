@@ -9,9 +9,10 @@ describe('isPaidTier — qui a accès aux fonctionnalités payantes', () => {
 
   it('TOUS les paliers payants passent, Forgeron compris', () => {
     // Forgeron est le point de la correction : l'ancien seuil était `maître`,
-    // ce qui excluait un abonné payant. « monarque » est inclus pour la même
-    // raison que dans ads.test.ts : ce nom circule à l'oral sans exister en
-    // base, et la règle ne doit pas dépendre du nommage des paliers payants.
+    // ce qui excluait un abonné payant. `architecte`/`architecte+` (retirés de
+    // l'offre, migration 20260901000004) et « monarque » (jamais en base) sont
+    // conservés ici À DESSEIN : ils prouvent qu'un palier hors offre garde son
+    // accès payant, ce qui est exactement le comportement voulu.
     for (const tier of ['forgeron', 'maître', 'légion', 'architecte', 'architecte+', 'monarque']) {
       expect(isPaidTier(tier), `${tier} doit avoir accès`).toBe(true)
     }

@@ -62,7 +62,7 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 ### State & props
 - `activeTab: DashTab` est lifté dans `src/app/page.tsx` et passé en props à Nav et Dashboard
 - `DashTab` (type union) et `UserProfile` (interface) sont exportés depuis `src/app/page.tsx`
-- `effectiveTier` dans `page.tsx` force `'architecte+'` pour les admins côté affichage, peu importe la valeur en DB
+- `effectiveTier` dans `page.tsx` pose le marqueur de RÔLE `'admin'` pour les admins côté affichage, peu importe la valeur en DB. Ce n'est pas un palier : il est déclaré dans `tiersFr`/`tiersEn` et dans les deux `TIER_COLORS`, mais reste hors de `TIER_ORDER` — donc jamais proposable ni écrivable dans `profiles.tier`
 
 ### Emplacements publicitaires (dashboard uniquement)
 
@@ -99,7 +99,7 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 - Détection : `profile.role === 'admin'`
 - Table `admin_users` avec **RLS activé** — `deny_anon` + `deny_authenticated` bloquent tout accès client direct ; `is_admin()` bypass via SECURITY DEFINER
 - Fonction `is_admin()` : SECURITY DEFINER, lit `admin_users` sans déclencher les policies
-- Compte admin : `admin@wyrm-forge.com` — role='admin', tier='architecte+' en DB
+- Compte admin : `admin@wyrm-forge.com` — role='admin', tier='maître' en DB (basculé depuis `architecte+` par la migration `20260901000004`, ce palier ayant été retiré de l'offre). Son affichage ne dépend plus de son tier : `effectiveTier` pose `'admin'`
 
 ---
 
@@ -121,8 +121,9 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 | forgeron | `#5DCAA5` |
 | maître | `#7F77DD` |
 | légion | `#3A8AC9` |
-| architecte | `#BA7517` |
-| architecte+ | `#EF9F27` |
+| admin | `#EF9F27` |
+
+⚠️ `admin` est un marqueur de **RÔLE**, pas un palier : il est hors de `TIER_ORDER`, posé par `effectiveTier` (`page.tsx`), et n'est jamais écrit dans `profiles.tier`. Il reprend l'or de l'ancien `architecte+` pour que la carte admin garde exactement son apparence. Les paliers `architecte` (`#BA7517`) et `architecte+` (`#EF9F27`) ont été retirés de l'offre par la migration `20260901000004`.
 
 ### Badge certifié
 SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTab.tsx et Nav.tsx (composant `CertifiedBadge`)
@@ -136,7 +137,7 @@ SVG : cercle bleu `#3B82F6` avec checkmark blanc — défini inline dans AdminTa
 | `id` | `uuid` | NOT NULL | PK, FK → `auth.users` |
 | `username` | `text` | NOT NULL | |
 | `email` | `text` | nullable | copié depuis `auth.users` à la création |
-| `tier` | `text` | NOT NULL | `apprenti` \| `forgeron` \| `maître` \| `légion` \| `architecte` \| `architecte+` |
+| `tier` | `text` | NOT NULL | `apprenti` \| `forgeron` \| `maître` \| `légion` — **aucune contrainte CHECK**, la liste est une convention de code (`TIER_ORDER`). `architecte` / `architecte+` retirés de l'offre par `20260901000004` |
 | `role` | `text` | NOT NULL | `'user'` \| `'admin'` |
 | `certified` | `boolean` | NOT NULL | default `false` |
 | `tier_expires_at` | `timestamptz` | nullable | `null` = compte à vie |
@@ -285,6 +286,12 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 ### RLS scenarios (owner-based, migration 20260622000001)
 - SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` (INSERT + UPDATE avec `WITH CHECK` pour bloquer la réassignation de `user_id`).
 - `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
+
+> ✅ **`20260901000003` — jeu de policies ad-hoc retiré. APPLIQUÉE ET VALIDÉE sur test ET prod le 2026-09-01** (`db push` manuel, sondes vertes : la sonde `anon` est passée de `200 []` à `42501`, le CRUD utilisateur est resté inchangé). Elle retire les 4 policies `"Users can ..."` — sans clause `TO`, donc PUBLIC, `anon` compris — que `20260815000005` avait **reproduites** sans les nettoyer, pose le `REVOKE ALL ... FROM anon, authenticated` qui manquait depuis toujours, et supprime l'index `scenarios_user_idx` (préfixe strict de `idx_scenarios_user_time`). Les 4 policies `scn_*` restent seules en place.
+>
+> C'est ce qui rend la ligne « `anon` : aucun accès » ci-dessus **littéralement** vraie. Avant, elle ne l'était qu'en pratique : la table portait le `GRANT ALL` par défaut de Supabase et le refus ne tenait qu'au prédicat `auth.uid() = user_id` s'évaluant à NULL pour un visiteur non connecté. Le refus est désormais un privilège, plus un effet de bord d'évaluation.
+>
+> ⚠️ Comme pour `20260901000002`, **l'application a précédé le commit** `13369ec` qui a introduit le fichier dans le dépôt, et dont le message affirme à tort « PAS ENCORE APPLIQUEES ». L'historique git n'est pas réécrit : c'est cette section qui fait foi.
 
 > 🟡 **Dette connue — le verrou « palier payant » des Scénarios est PUREMENT CÔTÉ CLIENT.** Constaté le 2026-09-01. L'accès à l'onglet est décidé dans `components/dashboard/Dashboard.tsx` (`isPro = isAdmin || isPaidTier(profile?.tier)`), donc **dans le navigateur**. Les 4 policies `scn_*` ne testent que `(select auth.uid()) = user_id` — **aucune notion de palier en base**. Un compte Apprenti qui appelle PostgREST directement lit, crée, modifie et supprime ses scénarios sans obstacle. C'est un verrou d'affichage, pas une barrière de sécurité, et l'abaissement du seuil de `maître` à « tout palier payant » n'y change rien.
 >
@@ -1094,7 +1101,7 @@ Tests : `src/components/dashboard/tabs.test.ts` (6 tests) verrouille l'absence d
 
 - **1 crédit = 0,001 $** de coût Anthropic estimé.
 - Budgets hebdomadaires par tier (cadrage « Chaleur de la Forge », Lot 0) : **Apprenti 15**, **Forgeron 65**, **Maître 135**.
-- ⚠️ **Légion / Architecte / Architecte+ / admin n'ont PAS été définis** par ce cadrage. Alignés sur Maître (135) pour les trois tiers, 1000 pour admin — choix conservateur côté budget, mais qui **ne différencie plus les tiers payants supérieurs**. À trancher.
+- ⚠️ **Légion et admin n'ont PAS été définis** par ce cadrage. Légion aligné sur Maître (135), admin à 1000 — choix conservateur côté budget, mais qui **ne différencie plus le tier payant supérieur**. À trancher. (Architecte / Architecte+ figuraient ici au même budget ; ils ont été retirés de l'offre par `20260901000004`, la bascule vers Maître était donc neutre côté crédits.)
 
 ### Coût d'un appel — dépend du MODÈLE, pas seulement de `advanced`
 Tarif **pire cas** (discipline actée au Lot 1) : input max mesuré sur un 5v5 complet + sortie au plafond `max_tokens`, arrondi au crédit supérieur.
@@ -1193,7 +1200,7 @@ SECURITY DEFINER, `REVOKE FROM PUBLIC`, **aucun GRANT** → service_role uniquem
   - `riot-match-detail` logue `event_type='match_viewed'` dans `app_events` (fire-and-forget, uniquement si JWT présent) — alimente la vérification de `app_view_match`.
 - `quest-status` : lecture de l'état des quêtes du jour (GET ou POST, JWT obligatoire). Retourne `{ day, streak, earned_today, cap, quests[] }` avec `completed_today` et `progress` par quête. Le flag `quests_enabled` N'est PAS vérifié — lecture pure disponible même quand les quêtes sont off. Quatre requêtes DB en parallèle (`quest_definitions` pool_eligible + `quest_completions` + `quest_streaks` + `app_settings` cap). `streak` = null si jamais de complétion. `earned_today` = somme des rewards des complétions du jour. `progress` = `{ current, target }` pour les quêtes `app_event` (lecture `app_events`), `null` pour les quêtes `lol` (pas d'appel Riot). Consommé par le dashboard web (M7) et le futur overlay desktop.
 - `matchup-analyze` (MatchUp — analyse IA, chantier clos 2026-07-21) : proxy Anthropic **serveur** pour l'analyse d'un match up (POST, **`verify_jwt = true`** — JWT obligatoire, à la différence des EF Riot). La clé `ANTHROPIC_API_KEY` reste **côté serveur, jamais exposée au client** (le WPF appelait l'API Anthropic en direct → supprimé). Body `{ advanced: boolean, scenario: { mode, allies[], enemies[] } }` (champ = `{ name, level, stats?: [{label,value}], build?: string[], role?: 'TOP'|'JUNGLE'|'MID'|'ADC'|'SUPPORT' }` — `role` **optionnel**, absent/inconnu ⇒ prompt identique à l'ancien format ; envoyé par les deux clients depuis 2026-07-23, cf. §MatchUp Web). Reconstruit le prompt **côté serveur** (miroir de l'ancien `BuildPrompt` WPF) → le client n'envoie que des données structurées, jamais le prompt.
-  - **Gating par tier** (mapping `tier → { budget hebdo EN CRÉDITS, modèle }` **dans l'EF**, PAS en DB — les fonctions SQL ne connaissent pas les tiers, elles reçoivent `p_limit` calculé) : Apprenti 15 cr + Haiku, Forgeron 65 cr + Haiku, Maître/Légion/Architecte(+) 135 cr + Sonnet, admin 1000 cr + Sonnet. Tier inconnu/absent → plancher Apprenti. Modèles épinglés : `claude-haiku-4-5` / `claude-sonnet-5`. Voir § Chaleur de la Forge.
+  - **Gating par tier** (mapping `tier → { budget hebdo EN CRÉDITS, modèle }` **dans l'EF**, PAS en DB — les fonctions SQL ne connaissent pas les tiers, elles reçoivent `p_limit` calculé) : Apprenti 15 cr + Haiku, Forgeron 65 cr + Haiku, Maître/Légion 135 cr + Sonnet, admin 1000 cr + Sonnet. Tier inconnu/absent → plancher Apprenti. Modèles épinglés : `claude-haiku-4-5` / `claude-sonnet-5`. Voir § Chaleur de la Forge.
   - **Quota atomique** — table `usage_counters` + deux fonctions SECURITY DEFINER (migration `20260720000001`, service_role only, aucune écriture client) : `consume_ai_quota(user, feature, limit)` réserve un slot en **une seule instruction** (`INSERT … ON CONFLICT DO UPDATE SET count=count+1 WHERE count < limit RETURNING count` + `pg_advisory_xact_lock` → aucune fenêtre TOCTOU ; renvoie `NULL` = plafond atteint, zéro écriture) ; `refund_ai_quota(user, feature)` rend le slot **uniquement si l'appel Anthropic échoue** (jamais de débit sur une panne serveur). Fenêtre = semaine calendaire **lundi 00:00 UTC** (`date_trunc('week', now() at time zone 'UTC')::date`). RLS SELECT self-only (affichage du compteur).
   - **Flow POST** : auth → lecture `tier`/`role` (`profiles`) → mapping → `consume_ai_quota` → `NULL` ⇒ **429** `{ over_quota:true, used, limit, remaining:0, resets_at }` (aucun appel payant) ; sinon appel Anthropic → échec ⇒ `refund_ai_quota` + **502** ; succès ⇒ `{ analysis, model, advanced, truncated, used, limit, remaining, resets_at }`. `truncated = (stop_reason === 'max_tokens')` — avertissement remonté explicitement, jamais de troncature muette.
   - **GET** : état du quota de la semaine (`{ used, limit, remaining, model, resets_at }`) **sans rien consommer** — alimente l'affichage « X/N ».
@@ -1331,7 +1338,7 @@ Le site recopie cette liste **une fois** (nouvelle constante dédiée à Live Ga
 
 #### `tier` LoL (rang classé) → libellé FR + couleur
 
-⚠️ **Piège de lecture** : ne pas confondre avec les couleurs des **tiers d'abonnement Wyrm Forge** (apprenti/forgeron/maître/légion/architecte/architecte+, documentées plus haut dans ce fichier § Base de données — table `profiles`). Il s'agit ici du rang **LoL** (Fer → Challenger), un concept entièrement différent qui partage juste le mot « tier ».
+⚠️ **Piège de lecture** : ne pas confondre avec les couleurs des **tiers d'abonnement Wyrm Forge** (apprenti/forgeron/maître/légion, documentées plus haut dans ce fichier § Base de données — table `profiles`). Il s'agit ici du rang **LoL** (Fer → Challenger), un concept entièrement différent qui partage juste le mot « tier ».
 
 ✅ **RÉSOLU au Lot D4** — `TIER_COLORS` / `TIER_FR` vivent désormais dans **`src/lib/lol-tiers.ts`** (source unique, testée), avec `tierColor` / `tierLabel` / `formatTier` (cette dernière n'affiche pas de division pour Maître / Grand Maître / Challenger, alors que l'API renvoie pourtant `rank: 'I'`). `src/app/summoner/[region]/[riotId]/page.tsx` et `src/app/matches/[region]/[riotId]/page.tsx` l'importent — **ne jamais réécrire ces tables ailleurs**.
 
@@ -1579,6 +1586,22 @@ Erreurs levées par `start_match` : `'match_not_found'`, `'match_forbidden'`, `'
 ## 🟡 Module prac (prac.wyrm-forge.com) — suivi de joueurs (interne)
 
 Outil interne réservé aux **admins prac** (HORTAL/Ewen) pour suivre la performance de joueurs Wyrm Forge dans le temps. Partage la base d'utilisateurs (pas d'identité séparée). Découpage : **1) socle** (fait) → 2) roster+consentement → 3) tracking (résolution par créneau + désambiguïsation) → 4) pages (liste, top-5 winrate, détail joueur) → 5) email Resend.
+
+### Durcissement F1/F2/F4 — migration `20260901000002`
+
+> ✅ **APPLIQUÉE ET VALIDÉE sur test ET prod le 2026-09-01**, par `db push` manuel depuis le terminal, sondes A→F vertes des deux côtés : `anon` renvoie `42501` sur `scenarios`, `prac_admins` et `prac_top_winrate` ; le trigger F4 se déclenche ; le CRUD utilisateur est intact ; et sous JWT d'admin prac, `prac_admins_lisible = 1`, `is_prac_admin = true`, roster lisible.
+>
+> ⚠️ **Le message du commit `13369ec` affirme à tort « PAS ENCORE APPLIQUEES ».** Il a été rédigé sans connaissance du `db push` manuel déjà effectué : **l'application a précédé le commit** qui a introduit les fichiers dans le dépôt. L'historique git n'est pas réécrit — **c'est cette section qui fait foi**, exactement comme l'en-tête de `20260901000001` au Lot 5E fait foi contre sa propre prescription périmée.
+
+Trois écarts au moindre privilège relevés par un audit manuel du module. Aucun n'était un trou exploitable ; tous trois **amendent ce que décrit le Socle ci-dessous**.
+
+⚠️ Ne pas confondre avec les lots `F*` de juillet (`20260715000001_f2_search_path_increment_fns`, `20260715000002_f4_restrict_insert_certified`, `20260716000002_f4bis…`) : autre audit, autres tables. La numérotation F1/F2/F4 ci-dessous est propre au module prac.
+
+- **F1 — `REVOKE ... FROM PUBLIC` était un no-op.** Les `ALTER DEFAULT PRIVILEGES` de Supabase accordent EXECUTE **nominativement** à `anon` sur toute nouvelle fonction de `public` : un REVOKE sur le pseudo-rôle PUBLIC ne retire pas un grant nominatif. Les 11 fonctions du module — `is_prac_admin`, `prac_caller_puuid`, `prac_caller_in_match`, `prac_player_stats`, `prac_related_players`, `prac_search_profiles`, `prac_top_winrate`, `prac_visible_match_ids`, `request_tracking`, `remove_tracking`, `respond_consent` — reçoivent donc un `REVOKE ALL ... FROM anon` explicite. Même motif que `20260731000002` pour d'autres fonctions.
+  > ⚠️ **`authenticated` n'est PAS touché, et ne doit jamais l'être** : `is_prac_admin` est appelée **à l'intérieur** des policies `tp_select` / `tm_select`, où l'expression s'évalue avec les droits du rôle appelant. Lui retirer EXECUTE casserait toute lecture de `tracked_players`. Cinq de ces fonctions sont par ailleurs appelées depuis le navigateur (`prac_player_stats`, `prac_search_profiles`, `prac_top_winrate`, `request_tracking`, `respond_consent`) — toujours sous JWT `authenticated`, derrière la garde de session du layout `/prac` ou le `getUser()` de `/consent`.
+- **F2 — `prac_admins` a reçu le patron des 4 autres tables du module** (`REVOKE ALL FROM anon, authenticated` puis GRANT minimal, cf. `20260627000003`), et `pa_select_self` la clause `TO authenticated` qui lui manquait — sans elle, la policy visait PUBLIC, `anon` compris. Avant, ce qui protégeait la table n'était pas un privilège mais le prédicat `auth.uid() = user_id` s'évaluant à NULL : même fragilité que `scenarios`.
+  > ⚠️ Le `GRANT SELECT ON public.prac_admins TO authenticated` est **obligatoire, pas cosmétique** : `src/app/prac/layout.tsx` lit la table sous JWT utilisateur pour décider de l'accès au shell. Sans lui, **tout `/prac` tombe en 403**. C'est le seul endroit du lot où une erreur casse quelque chose de visible.
+- **F4 — le modèle de consentement est devenu une contrainte de base.** Trigger `trg_tracked_matches_require_consent` (BEFORE INSERT sur `tracked_matches`) qui refuse tout parent dont le statut n'est pas `accepted`, via un `SELECT ... FOR SHARE` sur la ligne de `tracked_players`. Le verrou le sérialise avec le `FOR UPDATE` que `respond_consent` prend au revoke, donc un INSERT concurrent et une révocation ne peuvent plus se croiser. **Défense en profondeur** : sur le chemin nominal, `prac_commit_tracked_matches` lève déjà `player_not_accepted` avant d'insérer — le trigger ne se déclenche jamais. Les messages sont repris **à l'identique** pour que le mapping 403/404 de l'EF `prac-track` continue de fonctionner. Ce que ça ferme : une future EF en service_role, un backfill ou un `INSERT` manuel en SQL Editor, qui contournaient tous la règle sans rien violer.
 
 ### Socle (chantier 1 — migration 20260626000001)
 - **Table `prac_admins`** (`user_id` PK → `auth.users`, `granted_by`, `created_at`) : allowlist **plate**, sans scopes (≠ `tournament_admins` volontairement — pas de hiérarchie). RLS : SELECT self-only (`pa_select_self`) ; aucune écriture client (service_role uniquement). **Amorçage manuel** (BOOTSTRAP commenté dans la migration).
