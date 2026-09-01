@@ -10,6 +10,7 @@ import { useDashboard, useLang } from '@/locales/dashboard'
 import type { Lang } from '@/locales/landing'
 import { formatDate } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
+import { TIER_ORDER, isPaidTier } from '@/lib/subscription'
 import {
   profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
   type AdminDict, type AdminSettingKey,
@@ -63,7 +64,11 @@ interface PatchNote {
   published_at: string | null
 }
 
-export const TIERS = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
+// Alias de la liste canonique de `lib/subscription.ts`. Le nom `TIERS` est
+// CONSERVÉ : il est importé par `locales/dashboard/dashboard.test.ts`, qui en
+// fait une frontière métier (tout tier proposé par l'éditeur admin doit avoir
+// un libellé FR et EN). Seule la duplication de la liste disparaît.
+export const TIERS = TIER_ORDER
 
 const TIER_COLORS: Record<string, string> = {
   'apprenti':    '#A1A1AA',
@@ -409,9 +414,11 @@ export default function AdminTab() {
   const stats = {
     total:      profiles.length,
     certified:  profiles.filter(p => p.certified).length,
-    // Abonnés actifs = tier payant + expiration définie + pas encore expirée
+    // Abonnés actifs = tier payant + expiration définie + pas encore expirée.
+    // `isPaidTier` plutôt qu'un `!== 'apprenti'` en dur : même règle que le
+    // verrou des fonctionnalités payantes, définie à un seul endroit.
     activeSubscribers: withExpiry.filter(p =>
-      p.tier !== 'apprenti' && new Date(p.tier_expires_at!) > new Date()
+      isPaidTier(p.tier) && new Date(p.tier_expires_at!) > new Date()
     ).length,
     expiring: withExpiry.filter(p => {
       const exp = new Date(p.tier_expires_at!)

@@ -18,6 +18,7 @@ import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
 import DashboardAdRail from '@/components/ads/DashboardAdRail'
 import { shouldShowAds } from '@/lib/ads'
+import { isPaidTier } from '@/lib/subscription'
 import Pricing from '@/components/landing/Pricing'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
@@ -153,8 +154,6 @@ interface DashboardProps {
   forgeRequest?: number
 }
 
-const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
-
 export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, ecaillesEnabled = false, forgeRequest = 0 }: DashboardProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
@@ -170,9 +169,10 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
   }
   void router // au cas où on souhaite remplacer par router.push plus tard
 
-  // Tiers qui débloquent les fonctionnalités Pro (maître et au-dessus)
-  const userTierIndex = TIER_ORDER.indexOf(profile?.tier ?? 'apprenti')
-  const isProTier = userTierIndex >= TIER_ORDER.indexOf('maître')
+  // Accès aux fonctionnalités « Pro » : TOUT palier payant (Forgeron et
+  // au-dessus), plus les admins. Le seuil était auparavant `maître`, ce qui
+  // privait un abonné Forgeron. Règle centralisée dans `lib/subscription.ts`.
+  const isPro = isAdmin || isPaidTier(profile?.tier)
 
   /**
    * POINT D'INTÉGRATION UNIQUE des emplacements publicitaires.
@@ -230,7 +230,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
                 badges={d.nav.badges}
                 active={activeTab === tab.id} c={c}
                 onClick={() => handleTabClick(tab)}
-                unlocked={isAdmin || isProTier}
+                unlocked={isPro}
               />
             ))}
           </div>
@@ -267,7 +267,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {activeTab === 'jungle'           && <JunglePathTab />}
         {activeTab === 'builds'           && <BuildsTab />}
         {activeTab === 'scenarios'        && (
-          (isAdmin || isProTier)
+          isPro
             ? <ScenariosTab />
             : <LockedScreen
                 title={tabTitles.scenarios.title}
@@ -398,29 +398,6 @@ function LockedScreen({ title, subtitle, labels, c, badge }: {
         {subtitle}{labels.upgrade}
       </p>
       <button className="wf-btn-primary" style={{ margin: '0 auto' }}>{labels.cta}</button>
-    </div>
-  )
-}
-
-/* ── Dev preview screen ── */
-function DevPreviewScreen({ title, c, isAdmin }: { title: string; c: boolean; isAdmin: boolean }) {
-  return (
-    <div style={{
-      textAlign: 'center', padding: '60px 32px', borderRadius: 12,
-      border: `2px dashed ${c ? 'rgba(186,117,23,0.3)' : 'rgba(93,202,165,0.25)'}`,
-    }}>
-      <div style={{
-        display: 'inline-block', marginBottom: 16, padding: '4px 12px', borderRadius: 20,
-        fontSize: 11, textTransform: 'uppercase', letterSpacing: 1,
-        background: c ? 'rgba(186,117,23,0.12)' : 'rgba(93,202,165,0.1)',
-        border: `1px solid ${c ? 'rgba(186,117,23,0.4)' : 'rgba(93,202,165,0.35)'}`,
-        color: c ? '#BA7517' : '#5DCAA5',
-      }}>{isAdmin ? 'Accès Admin' : 'Analyse IA'}</div>
-      <div style={{ fontSize: 32, marginBottom: 12 }}>🔬</div>
-      <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>{title} — En développement</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 420, margin: '0 auto' }}>
-        Cette fonctionnalité est en cours de développement et sera disponible prochainement.
-      </p>
     </div>
   )
 }

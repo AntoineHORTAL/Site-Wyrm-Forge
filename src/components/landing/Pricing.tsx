@@ -34,8 +34,8 @@ interface Tier {
 
 const tiers: Tier[] = [
   { name: 'Apprenti', monthly: 0, cta: 'download' },
-  { name: 'Forgeron', monthly: 2, cta: 'soon' },
-  { name: 'Maître',   monthly: 5, cta: 'soon', popular: true },
+  { name: 'Forgeron', monthly: 3, cta: 'soon' },
+  { name: 'Maître',   monthly: 6, cta: 'soon', popular: true },
 ]
 
 // Le formatage des prix (séparateur décimal ET position du symbole €) vit dans

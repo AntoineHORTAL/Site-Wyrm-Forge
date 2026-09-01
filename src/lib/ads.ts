@@ -16,20 +16,20 @@
  * aucun identifiant, aucune URL de script, aucun nom de fournisseur ici.
  */
 
-/**
- * Palier gratuit — le SEUL qui voit des publicités.
- *
- * ⚠️ On teste l'appartenance au palier GRATUIT, jamais l'absence des paliers
- * payants. La différence est structurelle, pas cosmétique : la liste des
- * paliers payants a déjà bougé (`architecte` / `architecte+` en base, parfois
- * appelés « Monarque » à l'oral) et bougera encore. Avec une liste noire, tout
- * palier ajouté demain afficherait des pubs à des abonnés par défaut, en
- * silence. Avec cette liste blanche d'un seul élément, un palier inconnu ne
- * voit RIEN — le défaut penche du côté qui ne dégrade pas un client payant.
- *
- * Valeur alignée sur la colonne `profiles.tier` (base partagée avec l'app WPF).
- */
-const FREE_TIER = 'apprenti'
+// Palier gratuit — le SEUL qui voit des publicités.
+//
+// ⚠️ On teste l'appartenance au palier GRATUIT, jamais l'absence des paliers
+// payants. La différence est structurelle, pas cosmétique : la liste des
+// paliers payants a déjà bougé (`architecte` / `architecte+` en base, parfois
+// appelés « Monarque » à l'oral) et bougera encore. Avec une liste noire, tout
+// palier ajouté demain afficherait des pubs à des abonnés par défaut, en
+// silence. Avec cette liste blanche d'un seul élément, un palier inconnu ne
+// voit RIEN — le défaut penche du côté qui ne dégrade pas un client payant.
+//
+// La constante elle-même vit dans `lib/subscription.ts` : le palier qui voit
+// des pubs et le palier privé des fonctionnalités payantes sont le même, et
+// doivent le rester. Valeur alignée sur `profiles.tier` (base partagée WPF).
+import { FREE_TIER } from './subscription'
 
 /**
  * Le palier `tier` doit-il voir des emplacements publicitaires ?

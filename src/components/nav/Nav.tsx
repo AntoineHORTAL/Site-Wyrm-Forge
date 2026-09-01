@@ -12,6 +12,7 @@ import { formatNumber } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import type { DashTab } from '@/app/page'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { isPaidTier } from '@/lib/subscription'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   label: string; icon: React.ReactNode; onClick: () => void
@@ -58,8 +59,6 @@ interface NavProps {
   onNavigateToForge?: () => void
 }
 
-const TIER_ORDER = ['apprenti', 'forgeron', 'maître', 'légion', 'architecte', 'architecte+']
-
 /* Sections de la vitrine visées par les liens centrés + le scroll-spy. Les id sont
    structurels (ils doivent matcher les `id` des <section>) — seuls les libellés sont
    traduits, via `nav.links` dans src/locales/landing.ts, dans CE MÊME ORDRE. */
@@ -73,7 +72,8 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   const { t } = useLanguage()
   const d = useDashboard()
   const lang = useLang()
-  const isProTier = TIER_ORDER.indexOf(tier ?? 'apprenti') >= TIER_ORDER.indexOf('maître')
+  // Même règle que le Dashboard : tout palier payant, plus les admins.
+  const isPro = isAdmin || isPaidTier(tier)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -439,7 +439,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                           if (tab.href) window.location.assign(tab.href)
                           else onTabChange(tab.id as DashTab)
                         }}
-                        locked={!isAdmin && !isProTier && !!tab.locked}
+                        locked={!isPro && !!tab.locked}
                         soon={tab.soon}
                       />
                     ))}
