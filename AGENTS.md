@@ -766,7 +766,7 @@ Projet jetable `wyrm-forge-baseline-test-jetable` créé, poussé, vérifié pui
 
 > 🔴 Sécurité : la définition de ce trigger embarque un en-tête `X-Internal-Token` **en clair dans la base**. Il n'est pas dans Git, mais il est lisible par quiconque peut lire `pg_trigger` sur la prod. À considérer pour une rotation / un passage par Vault.
 >
-> ✅ **Traité — voir Lot 5E.** `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) remplace ce webhook par un trigger versionné qui lit le token dans Vault, ce qui referme du même coup cet écart d'instantané : le déclencheur suit désormais les migrations. ⚠️ **Migration committée mais PAS ENCORE appliquée au 2026-09-01** — tant que le `db push` n'est pas fait, tout ce paragraphe décrit encore la prod, token en clair compris. La **rotation** du token, elle, reste entièrement à faire (procédure au Lot 5E).
+> ✅ **Traité — voir Lot 5E.** `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) remplace ce webhook par un trigger versionné qui lit le token dans Vault, ce qui referme du même coup cet écart d'instantané : le déclencheur suit désormais les migrations. ✅ **Appliquée sur test ET prod le 2026-09-01**, et **le token a été tourné dans la foulée sur les deux projets**, avec une valeur distincte par environnement. Le paragraphe ci-dessus est donc de l'archéologie : plus aucun `X-Internal-Token` en clair dans `pg_trigger`, et plus rien à recréer à la main sur un nouvel environnement — hors les deux secrets Vault (cf. Lot 5E).
 
 
 ### 🟡 Dette connue — 2 bugs de policy repérés en relisant la baseline (2026-08-31)
@@ -1955,8 +1955,10 @@ Reclaim **uniquement sur `'failed'`** : une ligne restée `'pending'` (crash EF 
 
 ### Lot 5E — déclencheur de `prac-notify` (trigger versionné + secret en Vault)
 
-> 🕒 **État au 2026-09-01 — LA MIGRATION EST COMMITTÉE, PAS ENCORE APPLIQUÉE.**
-> `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) est dans le dépôt, mais **aucun `db push` n'a été fait** et **aucun secret Vault n'a été créé**. Tant que ce n'est pas fait, la prod tourne TOUJOURS sur l'ancien Database Webhook du Dashboard, avec son token en clair. Cette section décrit les deux états — ne pas diagnostiquer contre le mauvais. Vérifier lequel est en place :
+> ✅ **État au 2026-09-01 — MIGRATION APPLIQUÉE ET TOKEN TOURNÉ, sur test ET prod.**
+> `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) est poussée sur les deux projets — sur la prod, le `db push` a affiché le `NOTICE` de suppression de l'ancien webhook Dashboard. Les deux secrets Vault (`prac_webhook_secret`, `prac_notify_url`) existent partout, et **le token a été tourné le 2026-09-01**, avec une valeur **différente par environnement**. La section « État HISTORIQUE » plus bas ne décrit plus rien de vivant : elle est conservée pour comprendre d'où l'on vient.
+>
+> Contrôle de l'état en place, si un doute subsiste :
 > ```sql
 > SELECT t.tgname, p.proname
 >   FROM pg_trigger t
@@ -1964,9 +1966,9 @@ Reclaim **uniquement sur `'failed'`** : une ligne restée `'pending'` (crash EF 
 >   JOIN pg_proc  p ON p.oid = t.tgfoid
 >  WHERE c.relname = 'tracked_players' AND NOT t.tgisinternal;
 > ```
-> `http_request` → ancien état (Dashboard). `prac_notify_webhook` → nouvel état (versionné).
+> Attendu : `prac_notify_tracked_players | prac_notify_webhook`. Un `http_request` signalerait un retour en arrière — base reconstruite sans la migration, ou restauration d'un dump antérieur.
 
-#### État CIBLE (après application de la migration)
+#### État ACTUEL (en place sur test et prod depuis le 2026-09-01)
 
 Le déclencheur est un **trigger versionné**, `prac_notify_tracked_players`, créé par migration sur `public.tracked_players` (AFTER INSERT OR UPDATE, FOR EACH ROW). Il appelle `public.prac_notify_webhook()`, qui à **chaque appel** lit dans Vault le token et l'URL, construit l'en-tête en mémoire et POSTe via `net.http_post`. Plus rien de sensible dans le catalogue, et le trigger porte **le même nom sur toutes les bases**.
 
@@ -1986,9 +1988,9 @@ select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/prac-
 
 **`net.http_post`, pas `extensions.http_post`.** Mesuré sur la prod le 2026-09-01 : `http_post` vit dans le schéma `net`, alors même que la baseline porte `CREATE EXTENSION pg_net WITH SCHEMA extensions`. `pg_net` crée son propre schéma `net` indépendamment du schéma déclaré à l'installation. Le piège est réel : lire le `CREATE EXTENSION` de la baseline conduit à conclure `extensions.http_post`, et c'est faux. L'appel est qualifié en dur dans la fonction, `search_path` réduit à `pg_catalog, net`.
 
-#### État HISTORIQUE (ce qui tourne encore aujourd'hui)
+#### État HISTORIQUE (supprimé le 2026-09-01 — conservé pour l'archéologie)
 
-Un **Database Webhook créé à la main dans le Dashboard** (Database → Webhooks), non exportable en migration, donc absent de toute base reconstruite. Sa config :
+Jusqu'au 2026-09-01, un **Database Webhook créé à la main dans le Dashboard** (Database → Webhooks), non exportable en migration, donc absent de toute base reconstruite. Sa config **avant suppression** :
 
 | Champ | Valeur |
 |---|---|
@@ -2003,15 +2005,134 @@ Un **Database Webhook créé à la main dans le Dashboard** (Database → Webhoo
 
 > ⚠️ **Le nom du webhook DIFFÈRE entre les deux bases** (constaté le 2026-08-15) : prod `prac-notify-tracked-players`, test `prac-notify-consent`. Piège de diagnostic — chercher `prac-notify-consent` sur la prod ne renvoie rien et donne l'impression que le webhook est absent. **Vérifier par la table, pas par le nom.** La migration fait disparaître cette divergence : elle supprime les anciens triggers **par leur définition** (tout trigger de `tracked_players` passant par `supabase_functions.http_request`), pas par leur nom, justement parce que les noms ne sont pas alignés.
 
-#### Rotation du token
+#### Rotation du token — procédure de référence (ordre EF-first)
 
-Le token a vécu en clair dans le catalogue : **il doit être tourné**, séparément de la migration (qui ne le tourne pas — elle ne fait que le déplacer). Dans cet ordre :
+> ✅ **Jouée le 2026-09-01 sur test puis prod**, tokens distincts par environnement, canari vert sur les deux. Cette section décrit la procédure telle qu'elle a réellement été exécutée : la rejouer telle quelle pour toute rotation future.
 
-1. `select vault.update_secret((select id from vault.secrets where name = 'prac_webhook_secret'), '<nouvelle valeur>');`
-2. Mise à jour du secret Edge Function `PRAC_WEBHOOK_SECRET` (Dashboard → Edge Functions → Secrets).
-3. Redéploiement de l'EF : `supabase functions deploy prac-notify`.
+Le token a vécu en clair dans `pg_trigger.tgargs`. La migration ne fait que le **déplacer** dans Vault, elle ne le **tourne** pas — la rotation est un geste séparé.
 
-> ⚠️ **Entre (1) et (3), les appels partent avec le nouveau token vers une EF qui attend encore l'ancien → `401`. Et `pg_net` NE REJOUE PAS** : les notifications de cette fenêtre sont **perdues, pas retardées**. À faire à une heure creuse, ou en faisant accepter deux secrets à l'EF (`PRAC_WEBHOOK_SECRET` + `PRAC_WEBHOOK_SECRET_PREVIOUS`) le temps du basculement.
+**Le piège central** : la valeur doit être identique côté Vault (lue par le trigger à chaque appel) ET côté variable d'environnement de l'EF (qui la compare) **au même instant**. Tant que les deux divergent, `secretsMatch()` échoue → `401` → et **`pg_net` NE REJOUE PAS** : les notifications de cette fenêtre sont **perdues, pas retardées**. À faire à une heure creuse.
+
+##### L'ordre : Edge Function d'abord, Vault en dernier
+
+> ⚠️ **C'est l'inverse de ce que prescrivaient les versions antérieures de ce document et l'en-tête de la migration `20260901000001`** (qui disaient Vault → EF → deploy). Cette prescription était mauvaise : **ne pas la restaurer**. L'en-tête de la migration n'est volontairement pas corrigé — on ne réécrit pas un fichier de migration déjà appliqué ; **c'est cette section qui fait foi**.
+
+Les deux côtés n'ont pas du tout la même dynamique :
+
+| Côté | Vitesse de propagation | Bord observable ? |
+|---|---|---|
+| `vault.update_secret` | **immédiate et atomique** — `prac_notify_webhook()` relit `vault.decrypted_secrets` à chaque appel, la transaction suivante voit la nouvelle valeur | **oui**, au commit près |
+| `supabase secrets set` | **lente et non déterministe** — l'env est injecté au **boot de l'isolate** ; un isolate chaud garde l'ancienne valeur jusqu'à recyclage. Seul un `functions deploy` force le basculement | **non** — on ne voit pas mourir le dernier isolate portant l'ancien env |
+
+Conséquence directe sur la fenêtre de `401` :
+
+- **Vault d'abord** (l'ancienne prescription) → la fenêtre s'ouvre au commit SQL et se ferme *quand le dernier isolate portant l'ancien env disparaît*. Bord de fermeture **hors de contrôle et inobservable** : 30 s à plusieurs minutes. Et si le deploy échoue, on est en panne avec un correctif à trouver sous pression.
+- **EF d'abord** → la fenêtre s'ouvre pendant le `secrets set` / `deploy` et se ferme **à l'instant précis** où l'on lance l'instruction Vault, qui prend quelques millisecondes. Tant que Vault n'est pas basculé, le système reste fonctionnel et un échec de deploy se rejoue **sans dégât** — la base n'a pas été touchée.
+
+> 🧭 **Principe général, réutilisable hors de ce contexte.** Quand une bascule doit être simultanée des deux côtés, on fait passer en premier l'opération **lente, faillible et non observable**, et on garde l'opération **instantanée, atomique et fiable** pour **fermer** la fenêtre. L'ordre inverse concentre l'incertitude sur le bord qu'on ne maîtrise pas.
+
+Deux corollaires pratiques :
+
+- **Préparer l'étape Vault *entièrement* avant de lancer le deploy** (SQL prêt, valeur déjà en place, curseur dans l'éditeur). La fenêtre se réduit alors au temps entre « le deploy rend la main » et « Run » — 1 à 2 s au lieu d'une minute. C'est le levier qui compte le plus.
+- **Un seul acteur doit posséder les deux bords.** Répartir le deploy et le `Run` SQL entre deux intervenants — ou entre un agent et un humain — réintroduit une latence de passage de relais bien plus grande que la fenêtre qu'on cherche à supprimer. Lors de la rotation du 2026-09-01, c'est ce constat qui a fait basculer l'exécution vers un script PowerShell unique lancé par l'opérateur, plutôt qu'un enchaînement agent → humain.
+
+##### Séquence effective
+
+Sur **chaque** projet — test d'abord, prod seulement après un canari vert sur test — avec un **token différent par environnement** (une compromission du test ne doit pas donner la prod) :
+
+0. `git status --porcelain -- supabase/functions/prac-notify supabase/functions/_shared` → **doit être vide**. `functions deploy` expédie l'arbre **local**, pas le dernier commit : une modification non commitée partirait avec la rotation, et l'on aurait deux changements dans la même fenêtre — diagnostic impossible en cas de `401`.
+1. Générer le token **sans jamais l'afficher** — 32 octets de RNG cryptographique en hex (64 caractères). Aucun format n'est imposé : Vault stocke du `text` libre et `secretsMatch()` compare des SHA-256, donc même la longueur ne fuit pas. L'hex évite tout échappement shell ou env.
+2. SQL Editor **ouvert sur le bon projet**, onglet vide, curseur dedans.
+3. `supabase secrets set "PRAC_WEBHOOK_SECRET=<token>" --project-ref <ref>`
+4. `supabase functions deploy prac-notify --project-ref <ref>` — **le redéploiement est obligatoire, pas optionnel** : c'est lui qui rend l'instant du basculement déterministe. Un `secrets set` seul laisse les isolates chauds sur l'ancienne valeur pour une durée indéterminée.
+5. **Immédiatement** : le bloc `do $$ … $$;` ci-dessous.
+6. Contrôles + canari (section suivante).
+7. Nettoyage : **supprimer le snippet du SQL Editor** — il est persisté côté serveur, le token y resterait en clair, ce qui annulerait une partie du bénéfice de la rotation — puis vider le presse-papier.
+
+> ⚠️ **`--project-ref` est obligatoire, pas décoratif** : le projet lié par défaut de la CLI est la **prod** (`cuscgmgqakxnfwnsrhhv`). Une commande sans le flag tape sur la prod, y compris quand on croit travailler sur le projet de test.
+
+`vault.update_secret`, **jamais `create_secret`** — un doublon rendrait la valeur lue par le trigger indéterminée (son `max(case … end)` prendrait l'une des deux). Version qui échoue bruyamment plutôt que de ne rien faire silencieusement, `update_secret(null, …)` ne mettant rien à jour :
+
+```sql
+do $$
+declare v_id uuid;
+begin
+  select id into v_id from vault.secrets where name = 'prac_webhook_secret';
+  if v_id is null then
+    raise exception 'prac_webhook_secret absent de Vault - NE PAS CONTINUER.';
+  end if;
+  perform vault.update_secret(v_id, '<nouvelle valeur>');
+end
+$$;
+```
+
+##### Vérification post-rotation — le canari à effet nul (méthode standard)
+
+**À rejouer tel quel à chaque rotation**, sur chaque projet, avant de passer au suivant. Ne pas réinventer une validation ad hoc — et surtout **ne pas valider en créant une vraie demande de suivi** : cela enverrait un e-mail réel et brûlerait un créneau d'idempotence de `prac_notify_claim`.
+
+**1. La bascule Vault a bien eu lieu** (n'affiche aucune valeur) :
+
+```sql
+select name, created_at, updated_at, now() - updated_at as depuis
+  from vault.secrets
+ where name in ('prac_webhook_secret', 'prac_notify_url');
+```
+
+Attendu : `prac_webhook_secret` → `updated_at` à l'instant, **`created_at` INCHANGÉ** (un `created_at` qui bouge trahit un doublon créé par `create_secret`). `prac_notify_url` → les deux inchangés.
+
+**2. Le canari** — rejoue le chemin *exact* du trigger (lecture Vault → construction de l'en-tête → comparaison côté EF) sans toucher à `tracked_players` ni envoyer d'e-mail :
+
+```sql
+select net.http_post(
+  url     => (select decrypted_secret from vault.decrypted_secrets where name = 'prac_notify_url'),
+  body    => jsonb_build_object('type','UPDATE','table','tracked_players','schema','public',
+                                'record','{}'::jsonb,'old_record','{}'::jsonb),
+  params  => '{}'::jsonb,
+  headers => jsonb_build_object(
+               'Content-Type','application/json',
+               'X-Internal-Token',(select decrypted_secret from vault.decrypted_secrets where name = 'prac_webhook_secret')),
+  timeout_milliseconds => 5000
+) as request_id;
+```
+
+**Pourquoi c'est sans effet** : `record` vide → `relevantTransition()` sort dès `newStatus !== 'pending'` → `200 { ignored: true }`. Aucun envoi Resend, aucune ligne dans `prac_notification_log`. Le canari passant par l'URL **lue dans Vault**, il valide au passage `prac_notify_url` : une URL corrompue se verrait ici.
+
+**3. Lire la réponse**, 2-3 s plus tard :
+
+```sql
+select id, status_code, timed_out, error_msg, left(content, 200) as content, created
+  from net._http_response
+ order by created desc
+ limit 3;
+```
+
+| Résultat | Lecture |
+|---|---|
+| `200` + `{"ignored":true}` | ✅ Vault et EF alignés — rotation réussie |
+| `401` + `{"error":"Authentification interne requise."}` | ❌ désalignement : deploy non propagé, ou valeur Vault ≠ valeur EF. Rejouer la séquence complète, qui regénère et réaligne les deux côtés |
+| aucune ligne | worker `pg_net` pas encore passé, ou lignes expirées (TTL ~6 h) — relancer la lecture |
+
+**Confirmation e2e optionnelle**, qui valide en plus le trigger lui-même et pas seulement le couple Vault/EF. Un `UPDATE` no-op ne peut structurellement pas produire d'e-mail, `reopen` exigeant `old ∈ {declined, revoked}` **et** `new = 'pending'` — impossible quand `old = new` :
+
+```sql
+update public.tracked_players set status = status
+ where id = (select id from public.tracked_players limit 1);
+```
+
+(Écrit une nouvelle version de ligne : inoffensif, mais ce n'est pas une lecture pure.)
+
+##### Variante zéro fenêtre (envisagée, non retenue)
+
+Faire accepter deux secrets à l'EF le temps du basculement **supprime** la fenêtre au lieu de la réduire, au prix d'une quinzaine de lignes et de deux deploys :
+
+```ts
+const expected = requireSecret('PRAC_WEBHOOK_SECRET')
+const previous = Deno.env.get('PRAC_WEBHOOK_SECRET_PREVIOUS')
+const ok = await secretsMatch(provided, expected)
+       || (!!previous && await secretsMatch(provided, previous))
+```
+
+Deploy 1 : `PREVIOUS` = ancien token, `SECRET` = nouveau → l'EF accepte les deux, la bascule Vault se fait sans aucune contrainte de timing. Deploy 2, à froid plus tard : suppression de `PREVIOUS`. **Écartée à la rotation du 2026-09-01** — la fenêtre de 1-2 s obtenue par l'ordre EF-first a été jugée suffisante à une heure creuse. À reconsidérer si le volume de notifications augmente, ou si une rotation doit se faire en pleine journée.
 
 #### Invariants, quel que soit l'état
 
