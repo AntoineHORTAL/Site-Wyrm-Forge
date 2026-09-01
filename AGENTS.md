@@ -765,6 +765,8 @@ Projet jetable `wyrm-forge-baseline-test-jetable` créé, poussé, vérifié pui
 **2. Trigger `prac-notify-tracked-players` — Database Webhook du Dashboard.** Seul écart d'instantané prod ↔ base reconstruite. C'est un webhook créé à la main dans le Dashboard (`AFTER INSERT OR UPDATE ON public.tracked_players` → `supabase_functions.http_request` vers l'EF `prac-notify`), donc absent de toute base reconstruite depuis les migrations. **À recréer manuellement** sur tout nouvel environnement, ou à codifier en migration si on veut qu'il suive.
 
 > 🔴 Sécurité : la définition de ce trigger embarque un en-tête `X-Internal-Token` **en clair dans la base**. Il n'est pas dans Git, mais il est lisible par quiconque peut lire `pg_trigger` sur la prod. À considérer pour une rotation / un passage par Vault.
+>
+> ✅ **Traité — voir Lot 5E.** `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) remplace ce webhook par un trigger versionné qui lit le token dans Vault, ce qui referme du même coup cet écart d'instantané : le déclencheur suit désormais les migrations. ⚠️ **Migration committée mais PAS ENCORE appliquée au 2026-09-01** — tant que le `db push` n'est pas fait, tout ce paragraphe décrit encore la prod, token en clair compris. La **rotation** du token, elle, reste entièrement à faire (procédure au Lot 5E).
 
 
 ### 🟡 Dette connue — 2 bugs de policy repérés en relisant la baseline (2026-08-31)
@@ -1951,28 +1953,70 @@ Après filtrage transition (5B) + résolution destinataire (`auth.users.email`) 
 #### Dette V1 (rappel)
 Reclaim **uniquement sur `'failed'`** : une ligne restée `'pending'` (crash EF entre claim et UPDATE final) ne se re-débloque pas automatiquement → notification perdue silencieusement. Déviation actée (voir dette V1 du lot 5C ci-dessus), pas un bug.
 
-### Lot 5E — câblage du Database Webhook (⚠️ configuration MANUELLE, non versionnée)
+### Lot 5E — déclencheur de `prac-notify` (trigger versionné + secret en Vault)
 
-Le déclencheur de `prac-notify` est un **Database Webhook Supabase créé à la main dans le dashboard** (Database → Webhooks). **Ce n'est PAS du code commité** : les webhooks Supabase ne sont pas exportables dans les migrations → **dette d'infra visible, à recréer manuellement sur tout nouvel environnement**. Reproduire à l'identique la config suivante :
+> 🕒 **État au 2026-09-01 — LA MIGRATION EST COMMITTÉE, PAS ENCORE APPLIQUÉE.**
+> `20260901000001_prac_notify_webhook_vault.sql` (commit `0280b0f`) est dans le dépôt, mais **aucun `db push` n'a été fait** et **aucun secret Vault n'a été créé**. Tant que ce n'est pas fait, la prod tourne TOUJOURS sur l'ancien Database Webhook du Dashboard, avec son token en clair. Cette section décrit les deux états — ne pas diagnostiquer contre le mauvais. Vérifier lequel est en place :
+> ```sql
+> SELECT t.tgname, p.proname
+>   FROM pg_trigger t
+>   JOIN pg_class c ON c.oid = t.tgrelid
+>   JOIN pg_proc  p ON p.oid = t.tgfoid
+>  WHERE c.relname = 'tracked_players' AND NOT t.tgisinternal;
+> ```
+> `http_request` → ancien état (Dashboard). `prac_notify_webhook` → nouvel état (versionné).
+
+#### État CIBLE (après application de la migration)
+
+Le déclencheur est un **trigger versionné**, `prac_notify_tracked_players`, créé par migration sur `public.tracked_players` (AFTER INSERT OR UPDATE, FOR EACH ROW). Il appelle `public.prac_notify_webhook()`, qui à **chaque appel** lit dans Vault le token et l'URL, construit l'en-tête en mémoire et POSTe via `net.http_post`. Plus rien de sensible dans le catalogue, et le trigger porte **le même nom sur toutes les bases**.
+
+⚠️ **Pré-requis MANUEL, à faire AVANT le `db push`, sur CHAQUE environnement.** Les deux valeurs sont propres à l'environnement, elles n'entrent donc pas dans Git — c'est le seul geste manuel qui reste :
+
+| Secret Vault | Contenu |
+|---|---|
+| `prac_webhook_secret` | la valeur exacte du secret Edge Function `PRAC_WEBHOOK_SECRET` |
+| `prac_notify_url` | `https://<project-ref>.supabase.co/functions/v1/prac-notify` du projet courant |
+
+```sql
+select vault.create_secret('<valeur>', 'prac_webhook_secret', 'En-tete X-Internal-Token du webhook prac-notify');
+select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/prac-notify', 'prac_notify_url', 'URL de l EF prac-notify appelee par le trigger tracked_players');
+```
+
+**Si Vault n'est pas renseigné** : `RAISE WARNING` dans les logs Postgres, aucun POST, et **l'INSERT/UPDATE sur `tracked_players` passe quand même**. Choix délibéré — une config de notification manquante ne doit pas casser l'ouverture d'une demande de suivi. Contrepartie assumée : l'e-mail est perdu silencieusement pour l'admin, visible seulement dans les logs. C'est aussi ce qui rend la migration rejouable sur un environnement vierge sans danger : sans secret Vault le trigger existe mais ne poste **nulle part**, en particulier jamais vers la prod — ce qu'une URL en dur dans la migration aurait provoqué.
+
+**`net.http_post`, pas `extensions.http_post`.** Mesuré sur la prod le 2026-09-01 : `http_post` vit dans le schéma `net`, alors même que la baseline porte `CREATE EXTENSION pg_net WITH SCHEMA extensions`. `pg_net` crée son propre schéma `net` indépendamment du schéma déclaré à l'installation. Le piège est réel : lire le `CREATE EXTENSION` de la baseline conduit à conclure `extensions.http_post`, et c'est faux. L'appel est qualifié en dur dans la fonction, `search_path` réduit à `pg_catalog, net`.
+
+#### État HISTORIQUE (ce qui tourne encore aujourd'hui)
+
+Un **Database Webhook créé à la main dans le Dashboard** (Database → Webhooks), non exportable en migration, donc absent de toute base reconstruite. Sa config :
 
 | Champ | Valeur |
 |---|---|
-| Name | `prac-notify-tracked-players` (prod) — voir l'avertissement ci-dessous |
+| Name | `prac-notify-tracked-players` (prod) / `prac-notify-consent` (test) |
 | Table | `public.tracked_players` |
 | Events | **INSERT + UPDATE** (pas DELETE) |
 | Type | HTTP Request → POST |
 | URL | `https://cuscgmgqakxnfwnsrhhv.supabase.co/functions/v1/prac-notify` |
 | HTTP Header | `X-Internal-Token: <valeur de PRAC_WEBHOOK_SECRET>` |
 
-> ⚠️ **Le nom du webhook DIFFÈRE entre les deux bases** (constaté le 2026-08-15 en lisant `pg_trigger` sur chacune) : la prod porte `prac-notify-tracked-players`, le projet de test porte `prac-notify-consent`. Ce document annonçait `prac-notify-consent` pour les deux — il décrivait donc le test, pas la prod. Sans conséquence fonctionnelle (le nom du trigger n'entre dans aucun chemin d'exécution), mais c'est un piège de diagnostic : chercher `prac-notify-consent` sur la prod ne renvoie rien et donne l'impression que le webhook est absent. **Vérifier par la table, pas par le nom** :
-> ```sql
-> SELECT tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
->  WHERE c.relname = 'tracked_players' AND NOT t.tgisinternal;
-> ```
-> Le nom lui-même n'est PAS aligné entre les deux bases — les renommer serait une opération manuelle de dashboard sans bénéfice, non faite.
+> 🔴 **C'est précisément ce que la migration corrige** : les arguments de `supabase_functions.http_request()` — dont ce header — sont stockés **en clair dans `pg_trigger.tgargs`**. `prac-notify` tournant en `verify_jwt=false`, ce header est sa **seule** barrière : le lire, c'est pouvoir déclencher des e-mails à volonté (open relay) et brûler les créneaux d'idempotence de `prac_notify_claim`.
 
-- **Pas de filtre par colonne** : les Database Webhooks ne supportent pas de condition (`WHEN status='pending'`) → **tout** INSERT/UPDATE de `tracked_players` fire, et c'est **l'EF qui filtre** en code (`relevantTransition` : seul `status` devenant `pending` déclenche un envoi ; tout le reste → `200 { ignored:true }`). Volontaire — la sélectivité vit dans l'EF, pas dans le webhook.
-- **Header = seule barrière** : `verify_jwt=false`, la valeur de `X-Internal-Token` DOIT correspondre au secret Supabase `PRAC_WEBHOOK_SECRET`. Si le header manque/diffère → `401`, aucun e-mail. Si un jour le secret est tourné, **mettre à jour le header du webhook en même temps** (sinon toutes les notifications tombent en 401 silencieusement côté déclencheur).
+> ⚠️ **Le nom du webhook DIFFÈRE entre les deux bases** (constaté le 2026-08-15) : prod `prac-notify-tracked-players`, test `prac-notify-consent`. Piège de diagnostic — chercher `prac-notify-consent` sur la prod ne renvoie rien et donne l'impression que le webhook est absent. **Vérifier par la table, pas par le nom.** La migration fait disparaître cette divergence : elle supprime les anciens triggers **par leur définition** (tout trigger de `tracked_players` passant par `supabase_functions.http_request`), pas par leur nom, justement parce que les noms ne sont pas alignés.
+
+#### Rotation du token
+
+Le token a vécu en clair dans le catalogue : **il doit être tourné**, séparément de la migration (qui ne le tourne pas — elle ne fait que le déplacer). Dans cet ordre :
+
+1. `select vault.update_secret((select id from vault.secrets where name = 'prac_webhook_secret'), '<nouvelle valeur>');`
+2. Mise à jour du secret Edge Function `PRAC_WEBHOOK_SECRET` (Dashboard → Edge Functions → Secrets).
+3. Redéploiement de l'EF : `supabase functions deploy prac-notify`.
+
+> ⚠️ **Entre (1) et (3), les appels partent avec le nouveau token vers une EF qui attend encore l'ancien → `401`. Et `pg_net` NE REJOUE PAS** : les notifications de cette fenêtre sont **perdues, pas retardées**. À faire à une heure creuse, ou en faisant accepter deux secrets à l'EF (`PRAC_WEBHOOK_SECRET` + `PRAC_WEBHOOK_SECRET_PREVIOUS`) le temps du basculement.
+
+#### Invariants, quel que soit l'état
+
+- **Pas de filtre par colonne** : le trigger fire sur **tout** INSERT/UPDATE de `tracked_players`, et c'est **l'EF qui filtre** (`relevantTransition` : seul `status` devenant `pending` déclenche un envoi ; tout le reste → `200 { ignored:true }`). Volontaire — la sélectivité vit dans l'EF. Le trigger étant désormais à nous, une clause `WHEN` deviendrait possible ; non faite, ce serait un changement de comportement.
+- **Le header est la seule barrière** : `verify_jwt=false`, la valeur de `X-Internal-Token` DOIT correspondre à `PRAC_WEBHOOK_SECRET`. Header absent ou différent → `401`, aucun e-mail, silencieusement côté déclencheur.
 - **Ne pas ajouter l'event DELETE** : `remove_tracking` supprime le dossier → aucun e-mail à envoyer (l'EF ignorerait de toute façon, mais éviter le POST inutile).
 
 ### Lot 5F — finitions du template `prac-notify`
