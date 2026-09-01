@@ -11,8 +11,9 @@
 // navigateur → pas de JWT user.
 //
 // Sécurité : verify_jwt=false (comme prac-track). Seule barrière = header
-// X-Internal-Token comparé à PRAC_WEBHOOK_SECRET en code → 401 sinon (sans ce
-// check l'EF serait un open relay d'e-mails).
+// X-Internal-Token comparé à PRAC_WEBHOOK_SECRET en code (comparaison à temps
+// constant) → 401 sinon (sans ce check l'EF serait un open relay d'e-mails). Le
+// secret est porté par le trigger via Vault, plus en clair dans pg_trigger.
 //
 // Filtrage (les webhooks n'ont pas de condition par colonne) — ne traiter que :
 //   - INSERT record.status === 'pending'                       → 'initial'
@@ -27,7 +28,7 @@
 //     prac_notify_claim re-claime la ligne 'failed').
 import { createClient }   from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse }   from '../_shared/cors.ts'
-import { requireSecret }  from '../_shared/auth.ts'
+import { requireSecret, secretsMatch } from '../_shared/auth.ts'
 import { sendEmail }      from '../_shared/resend.ts'
 
 const CHANNEL = 'email'
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
     // ── Barrière d'accès : header interne partagé ────────────────────────────
     const expected = requireSecret('PRAC_WEBHOOK_SECRET')
     const provided = req.headers.get('X-Internal-Token')
-    if (!provided || provided !== expected) {
+    if (!(await secretsMatch(provided, expected))) {
       return jsonResponse({ error: 'Authentification interne requise.' }, 401)
     }
 

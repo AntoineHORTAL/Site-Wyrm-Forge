@@ -18,7 +18,7 @@
 //   - completeMissingDescriptions : complète les descriptions absentes via un appel ciblé
 
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
-import { getUser } from '../_shared/auth.ts'
+import { getUser, secretsMatch } from '../_shared/auth.ts'
 import { cacheGet, cacheSet } from '../_shared/cache.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -549,7 +549,7 @@ Deno.serve(async (req) => {
     if (!authorized) {
       const cronSecret = Deno.env.get('PATCH_CRON_SECRET')
       const tokenHeader = req.headers.get('X-Internal-Token')
-      if (cronSecret && tokenHeader === cronSecret) authorized = true
+      if (cronSecret && await secretsMatch(tokenHeader, cronSecret)) authorized = true
     }
 
     if (!authorized) {
