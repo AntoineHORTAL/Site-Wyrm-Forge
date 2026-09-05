@@ -12,7 +12,7 @@
  * ne fait que les assembler.
  *
  * Périmètre (validé) : dashboard + Nav connecté + /profil + /consent + AuthModal +
- * builder/ + ecailles/. EXCLUS : /tournois/manage, /prac/*, et toutes les pages
+ * builder/ + ecailles/. EXCLUS : /prac/*, et toutes les pages
  * publiques, qui restent en français.
  *
  * ⏳ Les modules sont vides : le Lot 0 pose la structure, chaque lot suivant remplit

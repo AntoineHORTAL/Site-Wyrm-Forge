@@ -741,13 +741,43 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 - ⚠️ Migration `20260611000005_tournaments_demo.sql` (seed démo) : **JAMAIS exécutée sur le remote** — marquée `applied` via `supabase migration repair` pour que `db push` la saute (le fichier porte un bandeau « NE PAS APPLIQUER EN PRODUCTION »). Les données du tournoi `demo-noel-2024` ont été injectées en remote **ad-hoc** via `supabase db query` pour la QA visuelle — réversible : `DELETE FROM public.tournaments WHERE slug = 'demo-noel-2024';` (CASCADE équipes/joueurs/matchs).
 - EF `tournament-register` + `tournament-admin` : **déployées** (`verify_jwt = false` dans config.toml pour les deux — JWT vérifié dans le code de tournament-admin, getUser → 401).
 
-### Front Tournois (étape 4 — câblage)
-- `src/lib/tournois.ts` : types DB + `callTournamentEF` (token optionnel) + filtres `?statut=` (`tous`/`avenir`/`encours`/`termines`) + `parseRules` + `remainingSlots`.
-- `/tournois` : SSR, charge TOUS les tournois non-draft (table petite, jamais tronquée) puis filtre serveur selon `?statut=` ; stats hero calculées sur les données réelles.
-- `/tournois/[slug]` : SSR (tournoi puis teams+matches+standings en parallèle), `notFound()` si absent/draft (RLS masque les drafts aux non-propriétaires). Bandeau brouillon pour le créateur.
-- `TournamentLive` (client) : détient l'état vivant + **UN SEUL channel Realtime** par page sur `matches` (filtre tournament_id), patch local + refetch débounce standings/teams. Reste monté à travers les changements de tab (le tab est une prop).
-- Bracket v2 : `bracket-layout.ts` (géométrie PURE calculée depuis les données matches — testée par `bracket-layout.test.ts`, `npm test` / vitest) + `BracketView.tsx` (cartes 2 lignes liées vers `/tournois/[slug]/match/M{n}`, connecteurs SVG orthogonaux `--xv2-blue` 40% → 100% sur le chemin du vainqueur, badge EN COURS pulsant, mobile : scroll horizontal + snap + ancres WB/LB/Finale).
-- `RegistrationForm` (client) → EF `tournament-register` (JWT optionnel) ; `AdminPanel` (client) → EF `tournament-admin` (toutes actions dont `start_match`) ; garde serveur `/tournois/[slug]/admin` : `created_by` OU `profiles.role='admin'`.
+### 🔴 Front Tournois — SUPPRIMÉ le 2026-09-03
+
+**Le front tournois n'existe plus.** Retiré en entier sur décision HORTAL, la route ayant été
+jugée inutile. Ce qui a disparu du dépôt :
+
+| Supprimé | Volume |
+|---|---|
+| `src/app/tournois/**` — listing écosystèmes, vitrine série, tournoi, page match, `/manage`, `/manage/creer`, `/manage/serie/creer`, `[slug]/admin`, `[slug]/edit` | 11 fichiers, 1 486 l. |
+| `src/components/tournois/**` — dont `TournamentLive` (Realtime), `BracketView` + `bracket-layout.ts`, `RegistrationForm`, `AdminPanel`, `EcosystemsGrid`, `Xv2Deco` | 19 fichiers, 4 343 l. |
+| `src/lib/tournois.ts` + `src/lib/tournois/{bracket-template,themes}.ts` | 607 l. |
+| `src/app/globals.css` — bloc `XV2 TOURNOIS` (thème, grilles, bracket) | ~348 l. |
+| `src/components/tournois/bracket/bracket-layout.test.ts` | 11 `it`, **27 tests** à l'exécution (boucles `for (const size of BRACKET_SIZES)`) |
+| `src/proxy.ts` — CAS sous-domaine tournois, redirect 308 depuis l'apex, `tournoisHostname()`, `lowercaseSerieSlug()` | ~50 l. |
+| `docs/tournois.md` + `docs/references/tournois/` (4 maquettes PNG) | — |
+
+Retiré aussi : l'`@import` Google Fonts **Kanit + Rajdhani** en tête de `globals.css`, dont
+`.xv2-display` / `.xv2-data` étaient les seuls consommateurs. C'était un import **bloquant au
+rendu sur toutes les pages du site**, pas seulement sur les tournois.
+
+⚠️ **Suppression NETTE, sans redirection** : le sous-domaine `NEXT_PUBLIC_TOURNOIS_HOST` et
+`wyrm-forge.com/tournois*` renvoient désormais **404**. Aucun lien entrant n'existait dans le
+code (pas de sitemap, rien dans la vitrine, bouton « Tournois » de l'app WPF `IsEnabled="False"`),
+mais **les annonces externes éventuelles n'ont pas pu être vérifiées**. Si un lien cassé
+apparaît, reprendre le patron du CAS 2 de prac dans `proxy.ts` (redirection vers l'accueil).
+La variable d'environnement `NEXT_PUBLIC_TOURNOIS_HOST` et l'entrée DNS/domaine côté
+Vercel + Cloudflare sont **hors dépôt** et restent à retirer à la main.
+
+⚠️ **NE PAS confondre avec l'onglet dashboard `tournois`** (`Dashboard.tsx`, badge « Bientôt ») :
+c'est un `SoonScreen` sans aucun lien de code avec ce front (zéro import partagé, vérifié), il
+est **volontairement conservé** et sert de prototype pour autre chose. Ne pas le retirer en
+« nettoyant » les restes de ce chantier.
+
+**Ce qui SURVIT et reste documenté ci-dessus** : les 11 migrations, les 6 tables/vues, les 4
+fonctions `SECURITY DEFINER` (`seed_bracket`, `report_match_result`, `undo_match_result`,
+`start_match`) et les 2 Edge Functions (`tournament-register`, `tournament-admin`). Elles n'ont
+plus de client web, mais l'app WPF lit toujours `tournament_standings` et
+`tournament_players_public` — **ne pas les supprimer sans vérifier ce dépôt-là**.
 
 ---
 
@@ -834,13 +864,9 @@ AND (NOT (EXISTS ( SELECT 1
 | `/patch-notes` | Fonctionnel — liste publique SSR |
 | `/match/[platform]/[matchId]` | Fonctionnel — vue détail avec Impact d'items (Vue 1 stats + Vue 2 Meraki) |
 | `/summoner/[region]/[gameName]/[tagLine]` | Fonctionnel — historique joueur public, autocomplete `searched_summoners`, comparaison de rang (Vue A percentile + Vue B vs avg) |
-| `/tournois` | Fonctionnel — liste SSR + filtres `?statut=` |
-| `/tournois/[slug]` | Fonctionnel — poster/règles SSR + bracket v2 + classement, Realtime sur `matches` |
-| `/tournois/[slug]/admin` | Fonctionnel — panneau organisateur (garde created_by/admin), actions via EF `tournament-admin` |
-| `/tournois/[slug]/match/[code]` | À FAIRE (étape D) — les cartes du bracket pointent déjà dessus |
-| `/tournois/creer` | À FAIRE (étape E) |
+| ~~`/tournois*`~~ | **SUPPRIMÉ le 2026-09-03** (décision HORTAL) — front retiré en entier : 11 routes, 19 composants, `lib/tournois*`, le bloc CSS XV2 et le routage de sous-domaine du proxy. Suppression **nette**, sans redirection : le sous-domaine et `wyrm-forge.com/tournois*` renvoient 404. La BASE et les Edge Functions sont intactes — voir § Base de données — module Tournois. |
 | `/live/[region]/[riotId]` | Fonctionnel (Lots D1→D5) — les 9 états d'interface du contrat `riot-live-game` (§ Contrat client normatif ci-dessous), composition des 2 équipes, **rangs + winrate des 10 joueurs**. Logique dans `src/lib/live-game.ts` (module pur testé : types, fetch, libellés, `elapsedSeconds`, `splitTeams`, `fetchParticipantRanks`), rendu dans `src/components/live/LiveComposition.tsx`, icônes via `src/lib/ddragon.ts`, libellés de rang via `src/lib/lol-tiers.ts`. **Plus d'appel EF inline** (extrait au Lot D2). Les rangs viennent de 10 appels `riot-rank?puuid=` en `Promise.allSettled` (jamais `all` : un rejet ne doit dégrader QUE sa ligne) — `ranks` reste `null` côté EF. Coût mesuré en réel (29/07/2026) : **11 appels Riot à froid** (1 spectator + 10 league-v4), **0 pour un 2ᵉ participant de la même partie** (mutualisation du cache). Verrou de 30 s sur « Actualiser » : c'est lui qui borne `riot-rank` à 2 chargements/min, soit pile son bucket `isRateLimited` de 20/min. **Point d'entrée depuis `/summoner`** (Lot D5) : bouton « Partie en direct → » dans l'en-tête joueur, construit par `buildLiveHref` (module pur testé). Il propage `?puuid=` **quand il est déjà résolu** par le chargement de `/summoner` (riot-rank ou riot-matches) → la page cible emprunte le chemin canonique de l'EF, **12 appels → 11**. PUUID absent ou mal formé (GUID LCU 36 car.) ⇒ **omis**, repli sur le Riot ID seul : lien toujours valide, juste un account-v1 de plus. Deux décisions actées : (1) le bouton **ne pré-vérifie PAS `in_game`** — le faire coûterait un appel spectator-v5 à chaque visite de `/summoner` pour une info périmée dès le clic ; « pas en partie » se découvre sur la page cible, où c'est un état NOMINAL ; (2) `prefetch={false}` sur le `next/link` est **fonctionnel, pas cosmétique** — le prefetch par défaut déclencherait une requête RSC vers `/live` dès l'entrée du lien dans le viewport, ce qu'interdit le STOP D5 (zéro requête réseau après le chargement initial de `/summoner`). |
-| `/confidentialite`, `/mentions-legales`, `/cgu` | Fonctionnel (Lot P1.a) — pages légales statiques, câblées depuis la barre basse du `Footer` (les 3 liens y sont désormais des routes réelles ; les colonnes du haut restent en `'#'`). **Versions de départ, PAS la version juridique finale** — relecture par un juriste prévue. Server Components (pour exporter `metadata`) qui rendent la coquille cliente partagée `src/components/legal/LegalPage.tsx` (`LegalPage` + helpers `Section` / `List` / `Todo`). ⚠️ Les informations manquantes sont marquées par le composant **`<Todo>`**, qui les rend **visibles à l'écran** en `[À COMPLÉTER — …]` : c'est volontaire (un placeholder invisible en commentaire serait publié tel quel sans que personne ne le voie). À renseigner dès l'immatriculation de la SASU : raison sociale, capital, siège, SIREN/SIRET, RCS, TVA, directeur de publication, adresse postale Supabase, région d'hébergement, médiateur de la consommation, modalités de facturation Stripe. |
+| `/confidentialite`, `/mentions-legales`, `/cgu` | Fonctionnel (Lot P1.a) — pages légales statiques, câblées depuis la barre basse du `Footer` (les 3 liens y sont des routes réelles ; **les colonnes du haut aussi depuis le 2026-09-03** — les 9 `'#'` restants ont été soit rebranchés, soit retirés avec leur libellé). **Versions de départ, PAS la version juridique finale** — relecture par un juriste prévue. Server Components (pour exporter `metadata`) qui rendent la coquille cliente partagée `src/components/legal/LegalPage.tsx` (`LegalPage` + helpers `Section` / `List` / `Todo`). ⚠️ Les informations manquantes sont marquées par le composant **`<Todo>`**, qui les rend **visibles à l'écran** en `[À COMPLÉTER — …]` : c'est volontaire (un placeholder invisible en commentaire serait publié tel quel sans que personne ne le voie). À renseigner dès l'immatriculation de la SASU : raison sociale, capital, siège, SIREN/SIRET, RCS, TVA, directeur de publication, adresse postale Supabase, région d'hébergement, médiateur de la consommation, modalités de facturation Stripe. |
 
 ### Impact d'items (`/match/...`) — précisions techniques
 - **Cache v3** (depuis 2026-07-31) : `riot-match-detail` utilise `match:v3:${routing}:${matchId}`. Historique des versions : v1 (origine) → v2 (`playerStats` de timeline) → **v3 (runes complètes : 6 perks + stat shards)**.

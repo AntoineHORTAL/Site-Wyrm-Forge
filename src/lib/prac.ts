@@ -4,9 +4,11 @@ const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 // ── Navigation in-app (routing sous-domaine) ──────────────────────────────────
-// Même convention que tournois (src/lib/tournois.ts → navFromPublic) :
+// Convention de routing sous-domaine (elle était partagée avec `src/lib/tournois.ts`
+// → `navFromPublic`, retiré le 2026-09-03 avec la route /tournois ; prac en est
+// désormais le seul porteur) :
 //   PROD  (NEXT_PUBLIC_PRAC_HOST défini) → chemin RELATIF au sous-domaine, SANS
-//         préfixe /prac ('/joueurs', '/ajouter'…). Le proxy (CAS 3) réécrit /X → /prac/X.
+//         préfixe /prac ('/joueurs', '/ajouter'…). Le proxy (CAS 1) réécrit /X → /prac/X.
 //         Utiliser un href '/prac/joueurs' en prod donnerait /prac/prac/joueurs → 404.
 //   LOCAL/preview (host absent) → chemin direct '/prac/...' (le sous-domaine n'existe
 //         pas ; accès par chemin, convention documentée du repo).
