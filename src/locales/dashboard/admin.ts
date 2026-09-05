@@ -74,27 +74,24 @@ const genReasonsEn: Record<PatchGenReasonKey, string> = {
 }
 
 /**
- * Libellé + description de chaque feature flag, indexés par `app_settings.key`.
- * La clé est écrite en base par `toggleSetting` : elle ne se traduit pas. Le jeu de
- * clés est celui de `ADMIN_SETTING_KEYS` (AdminTab), qui pilote aussi le `.in()` de
- * chargement — une clé gérée sans entrée ici afficherait une ligne sans libellé.
+ * Libellé + description des RÉGLAGES (`kind='setting'`) rendus par un interrupteur
+ * dédié, indexés par `app_settings.key`.
+ *
+ * ⚠️ N'y remettez PAS les feature flags. Les trois clés Écailles vivaient ici ;
+ * elles ont déménagé en base (`label_fr`/`label_en`, `desc_fr`/`desc_en`, migration
+ * 20260905000001) avec les 36 autres flags du catalogue, pour qu'ajouter un flag
+ * soit un INSERT sans déploiement. Les garder ici en double aurait produit
+ * exactement la divergence silencieuse que ce déménagement supprime : deux sources
+ * de libellé pour la même clé, dont une seule visible.
+ *
+ * Il ne reste donc que `patch_auto_publish`, qui n'est pas un flag mais un réglage
+ * de comportement de la génération de patch notes, et garde son interrupteur dans
+ * la carte Patch notes — hors des deux sections du catalogue.
  */
 const settingsFr = {
   patch_auto_publish: {
     label:       'Publication automatique',
     description: 'Publie directement le patch généré sans passer par le statut brouillon.',
-  },
-  ecailles_enabled: {
-    label:       'Activer les Écailles',
-    description: 'Active la monnaie virtuelle — gain, affichage du solde et transactions.',
-  },
-  shop_enabled: {
-    label:       'Boutique',
-    description: 'Rend la boutique accessible aux utilisateurs pour dépenser leurs Écailles.',
-  },
-  quests_enabled: {
-    label:       'Quêtes journalières',
-    description: 'Active les quêtes quotidiennes qui récompensent des Écailles.',
   },
 }
 
@@ -104,18 +101,6 @@ const settingsEn: Record<AdminSettingKey, { label: string; description: string }
   patch_auto_publish: {
     label:       'Auto-publish',
     description: 'Publishes the generated patch straight away, skipping the draft status.',
-  },
-  ecailles_enabled: {
-    label:       'Enable Scales',
-    description: 'Turns on the virtual currency — earning, balance display and transactions.',
-  },
-  shop_enabled: {
-    label:       'Shop',
-    description: 'Opens the shop so users can spend their Scales.',
-  },
-  quests_enabled: {
-    label:       'Daily quests',
-    description: 'Turns on the daily quests that reward Scales.',
   },
 }
 
@@ -233,8 +218,59 @@ export const adminFr = {
   },
 
   /* ── Section Économie Écailles ── */
-  economy: {
-    title: 'Économie Écailles',
+  /* ⚠️ Il y avait ici `economy.title` (« Économie Écailles »), le titre de la
+     section des trois interrupteurs Écailles écrits en dur. La section a été
+     remplacée par les deux sections du catalogue, dont les titres sont dans
+     `flags` — la clé n'avait plus de consommateur. */
+
+  /* ── Panneau de feature flags (catalogue `app_settings`) ──
+     ⚠️ Les LIBELLÉS des flags eux-mêmes ne sont PAS ici : ils vivent en base
+     (`label_fr`/`label_en`, `desc_fr`/`desc_en`), pour qu'ajouter un flag soit un
+     INSERT sans déploiement. Ce bloc ne porte que le CHÂSSIS du panneau, qui lui
+     est bien du code. */
+  flags: {
+    launchTitle: '🚀 Lancements',
+    launchHint:  'Features codées et déployées, pas encore ouvertes au public.',
+    killTitle:   '🛑 Kill switches',
+    killHint:    'Features livrées. Couper est une action d\'incident.',
+    overlayTitle: 'Overlay in-game',
+    overlayHint:  'Le maître coupe tout. Les blocs ci-dessous se pilotent un par un.',
+
+    /* États affichés en pastille sur chaque carte. */
+    stateNotLaunched: 'pas encore lancé',
+    stateLive:        'en ligne',
+    stateActive:      'actif',
+    stateCut:         '⚠ COUPÉ',
+
+    /* Bandeau permanent. `{count}` = nombre de kill switches coupés. */
+    bannerOne:   '⚠ 1 fonctionnalité actuellement coupée',
+    bannerOther: '⚠ {count} fonctionnalités actuellement coupées',
+
+    /* Confirmation inline d'une coupure — même grammaire que `actions.confirmCertify`. */
+    cutTitle:           'Couper « {label} » ?',
+    cutReasonLabel:     'Motif (obligatoire)',
+    cutReasonHint:      'Sera relu lors du retour à la normale — dis ce qui se passe, pas ce que tu fais.',
+    cutReasonPlaceholder: 'ex. : 502 en boucle sur l\'Edge Function',
+    cutConfirm:         'Couper',
+    cutCancel:          'Annuler',
+
+    /* Ligne d'état sur un flag coupé. `{who}` = pseudo, `{when}` = durée relative. */
+    cutBy:        'coupé par {who} {when}',
+    cutByUnknown: 'coupé {when}',
+    cutReason:    'Motif : {reason}',
+
+    /* Verrouillage d'un enfant d'overlay quand le maître est coupé. */
+    lockedByMaster: 'Indisponible — l\'overlay est coupé',
+
+    /* Ce que verra l'utilisateur, dérivé d'`off_behavior`. Affiché AVANT la bascule. */
+    impactLabel: 'Ce que voit l\'utilisateur :',
+    impact: {
+      hidden:   'rien — la fonctionnalité disparaît de la navigation',
+      notice:   'un encart « Temporairement indisponible »',
+      degraded: 'un repli partiel — la fonctionnalité de base est conservée',
+    },
+
+    empty: 'Aucun flag dans le catalogue. La migration a-t-elle été appliquée ?',
   },
 
   /* Indexé par `app_settings.key`. */
@@ -336,8 +372,43 @@ export const adminEn: AdminDict = {
     invalidJson:    'Invalid JSON.',
   },
 
-  economy: {
-    title: 'Scales economy',
+  flags: {
+    launchTitle: '🚀 Launches',
+    launchHint:  'Features coded and deployed, not opened to the public yet.',
+    killTitle:   '🛑 Kill switches',
+    killHint:    'Shipped features. Turning one off is an incident action.',
+    overlayTitle: 'In-game overlay',
+    overlayHint:  'The master kills everything. The blocks below are controlled one by one.',
+
+    stateNotLaunched: 'not launched yet',
+    stateLive:        'live',
+    stateActive:      'active',
+    stateCut:         '⚠ OFF',
+
+    bannerOne:   '⚠ 1 feature currently turned off',
+    bannerOther: '⚠ {count} features currently turned off',
+
+    cutTitle:           'Turn off "{label}"?',
+    cutReasonLabel:     'Reason (required)',
+    cutReasonHint:      'Will be read again when service is restored — say what is happening, not what you are doing.',
+    cutReasonPlaceholder: 'e.g. repeated 502s on the Edge Function',
+    cutConfirm:         'Turn off',
+    cutCancel:          'Cancel',
+
+    cutBy:        'turned off by {who} {when}',
+    cutByUnknown: 'turned off {when}',
+    cutReason:    'Reason: {reason}',
+
+    lockedByMaster: 'Unavailable — the overlay is off',
+
+    impactLabel: 'What users see:',
+    impact: {
+      hidden:   'nothing — the feature disappears from navigation',
+      notice:   'a "Temporarily unavailable" panel',
+      degraded: 'a partial fallback — core functionality is kept',
+    },
+
+    empty: 'No flags in the catalogue. Has the migration been applied?',
   },
 
   settings: settingsEn,

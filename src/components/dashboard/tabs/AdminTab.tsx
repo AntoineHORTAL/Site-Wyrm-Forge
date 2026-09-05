@@ -11,6 +11,13 @@ import type { Lang } from '@/locales/landing'
 import { formatDate } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import { TIER_ORDER, isPaidTier } from '@/lib/subscription'
+import SettingToggle from '@/components/dashboard/SettingToggle'
+import KillSwitchModal from '@/components/dashboard/KillSwitchModal'
+import {
+  partitionCatalogue, cutKillSwitches, canSubmitCut, isChildLocked,
+  offBehaviorKey, relativeTime, flagLabel, flagDescription, isOn,
+  type FlagCatalogueRow,
+} from '@/lib/admin-flags'
 import {
   profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
   type AdminDict, type AdminSettingKey,
@@ -94,9 +101,20 @@ export const QUICK_DATES = [
   { key: 'y1', days: 365 },
 ] as const satisfies readonly { key: keyof AdminDict['quickDates']; days: number }[]
 
-/** Clés `app_settings.key` gérées par ce panneau — pilotent le `.in()` ET l'état initial. */
+/**
+ * Clés `kind='setting'` rendues par un interrupteur DÉDIÉ, hors catalogue.
+ *
+ * ⚠️ Cette liste ne contient plus les feature flags. Elle en portait quatre ; les
+ * trois clés Écailles sont parties dans le CATALOGUE, lu dynamiquement depuis
+ * `app_settings` (`kind IN ('launch','kill')`). C'est tout l'objet du chantier :
+ * ajouter un flag devient un INSERT, sans toucher à ce fichier ni redéployer.
+ *
+ * `patch_auto_publish` reste ici parce qu'il n'est pas un flag mais un réglage du
+ * comportement de génération des patch notes — il vit dans la carte Patch notes,
+ * pas dans les deux sections du catalogue, et son rendu est inchangé.
+ */
 export const ADMIN_SETTING_KEYS = [
-  'patch_auto_publish', 'ecailles_enabled', 'shop_enabled', 'quests_enabled',
+  'patch_auto_publish',
 ] as const satisfies readonly AdminSettingKey[]
 
 function addDays(n: number): string {
@@ -122,64 +140,6 @@ function expiryLabel(iso: string | null, labels: AdminDict['expiry'], lang: Lang
   return formatDate(d, lang, FMT_DATE)
 }
 
-// Composant réutilisable pour un toggle de feature flag app_settings.
-// Factorisé ici pour éviter la duplication de JSX entre patch_auto_publish
-// et les flags Écailles — même rendu visuel garanti.
-interface SettingToggleProps {
-  label:       string
-  description: string
-  settingKey:  string
-  value:       boolean
-  saving:      boolean
-  loading:     boolean
-  onToggle:    (key: string) => void
-  border:      string
-  bg:          string
-}
-function SettingToggle({ label, description, settingKey, value, saving, loading, onToggle, border, bg }: SettingToggleProps) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '12px 16px', borderRadius: 8,
-      background: bg, border: `1px solid ${border}`,
-      gap: 16, flexWrap: 'wrap',
-    }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA', marginBottom: 2 }}>
-          {label}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-          {description}
-        </div>
-      </div>
-      <button
-        onClick={() => onToggle(settingKey)}
-        disabled={saving || loading}
-        aria-pressed={value}
-        style={{
-          flexShrink: 0,
-          width: 52, height: 28, borderRadius: 14,
-          background: value ? '#5DCAA5' : '#3F3F46',
-          border: 'none', cursor: saving || loading ? 'not-allowed' : 'pointer',
-          position: 'relative', transition: 'background 0.2s',
-          opacity: saving || loading ? 0.6 : 1,
-        }}
-      >
-        <span style={{
-          position: 'absolute',
-          top: 3, left: value ? 27 : 3,
-          width: 22, height: 22, borderRadius: '50%',
-          background: 'white', transition: 'left 0.2s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, color: value ? '#5DCAA5' : '#71717A',
-        }}>
-          {saving ? '…' : (value ? '✓' : '')}
-        </span>
-      </button>
-    </div>
-  )
-}
-
 export default function AdminTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
@@ -187,6 +147,8 @@ export default function AdminTab() {
   const dico = useDashboard()
   const lang = useLang()
   const A = dico.admin
+  /** Châssis du panneau de flags. Les LIBELLÉS des flags, eux, viennent de la base. */
+  const F = A.flags
 
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading]   = useState(true)
@@ -232,6 +194,14 @@ export default function AdminTab() {
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving]   = useState<string | null>(null)
 
+  // Catalogue de feature flags (kind 'launch' / 'kill') — lu dynamiquement.
+  const [catalogue, setCatalogue] = useState<FlagCatalogueRow[]>([])
+  const [catalogueLoading, setCatalogueLoading] = useState(false)
+  // Coupure en attente de confirmation + son motif. Même patron que
+  // `confirmCertifyId` : un seul élément confirmable à la fois, l'état porte sa clé.
+  const [confirmCutKey, setConfirmCutKey] = useState<string | null>(null)
+  const [cutReason, setCutReason]         = useState('')
+
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
   const bg     = c ? 'rgba(42,21,71,0.4)'   : '#18181B'
 
@@ -252,7 +222,7 @@ export default function AdminTab() {
     setSettingsLoading(false)
   }, [supabase])
 
-  // Met à jour un seul flag — optimistic update puis écriture DB.
+  // Met à jour un seul réglage — optimistic update puis écriture DB.
   // La policy as_update_admin côté serveur garantit qu'un non-admin
   // ne peut pas écrire même si ce composant est affiché (RLS enforcement).
   async function toggleSetting(key: string) {
@@ -264,6 +234,91 @@ export default function AdminTab() {
       .update({ value: next ? 'true' : 'false' })
       .eq('key', key)
     setSettingsSaving(null)
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  //  CATALOGUE DE FEATURE FLAGS
+  // ════════════════════════════════════════════════════════════════════
+
+  /**
+   * Charge TOUT le catalogue. `select('*')` et non une liste de colonnes : une
+   * colonne ajoutée plus tard au catalogue doit arriver ici sans redéploiement,
+   * au même titre qu'une ligne.
+   */
+  const loadCatalogue = useCallback(async () => {
+    setCatalogueLoading(true)
+    const { data } = await supabase
+      .from('app_settings')
+      .select('*')
+      .in('kind', ['launch', 'kill'])
+      .order('group_key', { ascending: true })
+      .order('sort_order', { ascending: true })
+    setCatalogue((data ?? []) as FlagCatalogueRow[])
+    setCatalogueLoading(false)
+  }, [supabase])
+
+  /**
+   * Bascule d'un flag du catalogue.
+   *
+   * ⚠️ Trois choses à ne pas défaire ici :
+   *
+   * 1. `updated_by` n'est PAS écrit côté client. Le trigger
+   *    `trg_app_settings_actor` (migration 20260905000001) le renseigne depuis
+   *    `auth.uid()`, et seulement quand la VALEUR change. Le poser ici le
+   *    rendrait falsifiable par le client, alors que la base le tient déjà.
+   *
+   * 2. `reason` est écrit à la COUPURE et remis à `null` à la réactivation. Un
+   *    motif qui survit au retour à la normale mentirait sur l'état courant à la
+   *    coupure suivante.
+   *
+   * 3. La policy `as_update_admin` (`USING is_admin()`) reste la seule vraie
+   *    barrière : cet écran n'est qu'une commodité. Un non-admin qui forcerait le
+   *    rendu de ce composant se ferait refuser l'écriture par la base.
+   */
+  async function toggleFlag(key: string, next: boolean, reason: string | null) {
+    setCatalogue(prev => prev.map(r =>
+      r.key === key
+        ? { ...r, value: next ? 'true' : 'false', reason: next ? null : reason }
+        : r))
+    setSettingsSaving(key)
+
+    await supabase
+      .from('app_settings')
+      .update({ value: next ? 'true' : 'false', reason: next ? null : reason })
+      .eq('key', key)
+
+    setSettingsSaving(null)
+    setConfirmCutKey(null)
+    setCutReason('')
+    // Relecture : `updated_at` et `updated_by` sont posés par les triggers, le
+    // client ne peut pas les deviner — et ce sont eux qu'affiche la carte coupée.
+    await loadCatalogue()
+  }
+
+  /**
+   * Point d'entrée unique des interrupteurs du catalogue.
+   *
+   * Réactivation → directe, sans friction : rien ne doit ralentir un retour à la
+   * normale. Coupure d'un kill switch → passe par la confirmation + motif.
+   * Coupure d'un flag de LANCEMENT → directe aussi : refermer une feature pas
+   * encore ouverte n'est pas un incident.
+   */
+  function onCatalogueToggle(key: string) {
+    const row = catalogue.find(r => r.key === key)
+    if (!row) return
+
+    if (isOn(row) && row.kind === 'kill') {
+      setConfirmCutKey(key)
+      setCutReason('')
+      return
+    }
+    void toggleFlag(key, !isOn(row), null)
+  }
+
+  /** Confirmation d'une coupure. Le motif vide est refusé ICI AUSSI, pas seulement dans le `disabled`. */
+  function confirmCut(key: string) {
+    if (!canSubmitCut(cutReason)) return
+    void toggleFlag(key, false, cutReason.trim())
   }
 
   const load = useCallback(async () => {
@@ -362,7 +417,89 @@ export default function AdminTab() {
     return () => document.removeEventListener('keydown', onKey)
   }, [previewFullscreen])
 
-  useEffect(() => { load(); loadPatches(); loadSettings() }, [load, loadPatches, loadSettings])
+  useEffect(() => { load(); loadPatches(); loadSettings(); loadCatalogue() },
+    [load, loadPatches, loadSettings, loadCatalogue])
+
+  // ── Dérivés du catalogue ──────────────────────────────────────────────
+  // Recalculés à chaque rendu, via des fonctions PURES testées dans
+  // `lib/admin-flags.test.ts`. Le catalogue fait ~40 lignes : le mémoïser
+  // coûterait plus de code qu'il n'en économise de travail.
+  const { launch, kill, overlayMaster, overlayChildren } = partitionCatalogue(catalogue)
+  const cuts = cutKillSwitches(catalogue)
+  const overlayLocked = isChildLocked(overlayMaster)
+
+  /** Flag visé par la modale de confirmation, ou `null` si elle est fermée. */
+  const cutTarget = confirmCutKey
+    ? (catalogue.find(r => r.key === confirmCutKey) ?? null)
+    : null
+
+  /**
+   * Pseudo de l'admin qui a coupé, résolu depuis `profiles` — DÉJÀ chargé par ce
+   * panneau pour son tableau des comptes. Aucune requête ni jointure de plus : le
+   * seul écran qui affiche ces coupures est aussi le seul qui a la liste sous la
+   * main. Renvoie `null` si l'auteur est inconnu (compte supprimé, écriture
+   * service_role) — la carte omet alors la mention plutôt que d'afficher un UUID.
+   */
+  const adminName = (userId: string | null): string | null =>
+    userId ? (profiles.find(p => p.id === userId)?.username ?? null) : null
+
+  /**
+   * Carte d'un kill switch : l'interrupteur, ce qu'il casse, et — s'il est coupé —
+   * qui l'a coupé, quand, et pourquoi.
+   *
+   * @param child enfant d'overlay : indenté, et verrouillé si le maître est coupé.
+   */
+  function renderKillCard(row: FlagCatalogueRow, child = false) {
+    const on = isOn(row)
+    const locked = child && overlayLocked
+    const who = adminName(row.updated_by)
+    const when = relativeTime(row.updated_at, lang)
+
+    return (
+      <SettingToggle
+        key={row.key}
+        label={flagLabel(row, lang)}
+        description={flagDescription(row, lang)}
+        settingKey={row.key}
+        value={on}
+        saving={settingsSaving === row.key}
+        loading={catalogueLoading}
+        onToggle={onCatalogueToggle}
+        border={border}
+        bg={bg}
+        variant="kill"
+        stateLabel={on ? F.stateActive : F.stateCut}
+        locked={locked}
+        lockedHint={F.lockedByMaster}
+        indented={child}
+      >
+        {/* Ce que verra l'utilisateur — affiché en PERMANENCE, pas seulement
+            pendant la confirmation : l'admin doit pouvoir lire l'impact en
+            parcourant la liste, avant même de viser un interrupteur. */}
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 5 }}>
+          <span style={{ opacity: 0.75 }}>{F.impactLabel}</span>{' '}
+          {F.impact[offBehaviorKey(row)]}
+        </div>
+
+        {/* Traçabilité d'une coupure en cours. */}
+        {!on && when && (
+          <div style={{ fontSize: 11, color: '#E24B4A', marginTop: 6, fontWeight: 500 }}>
+            {(who ? F.cutBy.replace('{who}', who) : F.cutByUnknown).replace('{when}', when)}
+          </div>
+        )}
+        {!on && row.reason && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
+            {F.cutReason.replace('{reason}', row.reason)}
+          </div>
+        )}
+
+        {/* La confirmation d'une coupure ne vit PAS dans la carte : elle est
+            portalisée en modale, en bas de ce composant. Une carte qui se dépliait
+            faisait défiler la liste sous le curseur au moment précis où l'admin
+            s'apprête à couper quelque chose. */}
+      </SettingToggle>
+    )
+  }
 
   function startEdit(p: Profile) {
     setEditId(p.id)
@@ -1135,49 +1272,137 @@ export default function AdminTab() {
         )}
       </div>
 
-      {/* ── Section Économie Écailles ───────────────────────────────── */}
-      <div style={{ marginTop: 8 }}>
-        <div style={{
-          fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase',
-          letterSpacing: 1, fontWeight: 600, marginBottom: 12,
-        }}>{A.economy.title}</div>
+      {/* ── Feature flags — piloté par le CATALOGUE `app_settings` ──────
+          Il y avait ici la section « Économie Écailles » : trois interrupteurs
+          écrits en dur, avec leurs libellés dans le dico. Tout vient désormais de
+          la base — ajouter un flag est un INSERT, sans toucher à ce fichier. */}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <SettingToggle
-            label={A.settings.ecailles_enabled.label}
-            description={A.settings.ecailles_enabled.description}
-            settingKey="ecailles_enabled"
-            value={settings.ecailles_enabled}
-            saving={settingsSaving === 'ecailles_enabled'}
-            loading={settingsLoading}
-            onToggle={toggleSetting}
-            border={border}
-            bg={bg}
-          />
-          <SettingToggle
-            label={A.settings.shop_enabled.label}
-            description={A.settings.shop_enabled.description}
-            settingKey="shop_enabled"
-            value={settings.shop_enabled}
-            saving={settingsSaving === 'shop_enabled'}
-            loading={settingsLoading}
-            onToggle={toggleSetting}
-            border={border}
-            bg={bg}
-          />
-          <SettingToggle
-            label={A.settings.quests_enabled.label}
-            description={A.settings.quests_enabled.description}
-            settingKey="quests_enabled"
-            value={settings.quests_enabled}
-            saving={settingsSaving === 'quests_enabled'}
-            loading={settingsLoading}
-            onToggle={toggleSetting}
-            border={border}
-            bg={bg}
-          />
+      {/* Bandeau permanent : la seule chose qui empêche d'oublier une coupure.
+          Placé AVANT les sections, et visible tant qu'un kill switch est OFF. */}
+      {cuts.length > 0 && (
+        <div style={{
+          marginTop: 8, marginBottom: 20, padding: '12px 16px', borderRadius: 8,
+          background: 'rgba(226,75,74,0.1)', border: '1px solid rgba(226,75,74,0.45)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#E24B4A', marginBottom: 4 }}>
+            {cuts.length === 1
+              ? F.bannerOne
+              : F.bannerOther.replace('{count}', String(cuts.length))}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {cuts.map(r => flagLabel(r, lang)).join(' · ')}
+          </div>
         </div>
-      </div>
+      )}
+
+      {catalogueLoading && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+          {dico.common.loading}
+        </div>
+      )}
+
+      {!catalogueLoading && catalogue.length === 0 && (
+        <div style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>
+          {F.empty}
+        </div>
+      )}
+
+      {/* ── 🚀 Lancements ───────────────────────────────────────────────
+          Bascule SANS friction : ouvrir une feature est une annonce, pas un
+          incident, et la refermer avant lancement ne casse rien pour personne. */}
+      {launch.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{
+            fontSize: 12, color: '#EF9F27', textTransform: 'uppercase',
+            letterSpacing: 1, fontWeight: 700, marginBottom: 4,
+          }}>{F.launchTitle}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12 }}>{F.launchHint}</div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {launch.map(row => (
+              <SettingToggle
+                key={row.key}
+                label={flagLabel(row, lang)}
+                description={flagDescription(row, lang)}
+                settingKey={row.key}
+                value={isOn(row)}
+                saving={settingsSaving === row.key}
+                loading={catalogueLoading}
+                onToggle={onCatalogueToggle}
+                border={border}
+                bg={bg}
+                variant="launch"
+                stateLabel={isOn(row) ? F.stateLive : F.stateNotLaunched}
+                indented={row.parent_key !== null}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 🛑 Kill switches ───────────────────────────────────────────── */}
+      {(kill.length > 0 || overlayMaster) && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{
+            fontSize: 12, color: '#E24B4A', textTransform: 'uppercase',
+            letterSpacing: 1, fontWeight: 700, marginBottom: 4,
+          }}>{F.killTitle}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12 }}>{F.killHint}</div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {kill.map(row => renderKillCard(row))}
+          </div>
+
+          {/* Sous-section overlay : le maître, puis ses 18 enfants indentés.
+              Quand le maître est coupé, les enfants sont grisés et non cliquables
+              — même grammaire que le toggle maître de l'onglet Overlay dans l'app
+              WPF, pour que l'admin et l'utilisateur final lisent la même chose. */}
+          {overlayMaster && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{
+                fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase',
+                letterSpacing: 1, fontWeight: 600, marginBottom: 4,
+              }}>{F.overlayTitle}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10 }}>{F.overlayHint}</div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {renderKillCard(overlayMaster)}
+                {overlayChildren.map(row => renderKillCard(row, true))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Modale de confirmation d'une coupure ─────────────────────────
+          Portalisée sur `document.body` sous la garde `mounted`, comme la
+          prévisualisation ci-dessous : `document` n'existe pas au rendu serveur.
+
+          ⚠️ Le toggle NE BASCULE PAS tant que cette modale n'est pas confirmée —
+          `onCatalogueToggle` se contente de poser `confirmCutKey` et sort. La
+          réactivation, elle, ne passe jamais par ici : rien ne doit ralentir un
+          retour à la normale. */}
+      {mounted && cutTarget && createPortal(
+        <KillSwitchModal
+          flagLabel={flagLabel(cutTarget, lang)}
+          reason={cutReason}
+          saving={settingsSaving === cutTarget.key}
+          onReasonChange={setCutReason}
+          onConfirm={() => confirmCut(cutTarget.key)}
+          onCancel={() => { setConfirmCutKey(null); setCutReason('') }}
+          labels={{
+            cutTitle:             F.cutTitle,
+            cutReasonLabel:       F.cutReasonLabel,
+            cutReasonHint:        F.cutReasonHint,
+            cutReasonPlaceholder: F.cutReasonPlaceholder,
+            cutConfirm:           F.cutConfirm,
+            cutCancel:            F.cutCancel,
+            impactLabel:          F.impactLabel,
+            impactText:           F.impact[offBehaviorKey(cutTarget)],
+          }}
+        />,
+        document.body,
+      )}
 
       {/* ── Modal plein écran preview éditeur ────────────────────────────── */}
       {mounted && previewFullscreen && createPortal(

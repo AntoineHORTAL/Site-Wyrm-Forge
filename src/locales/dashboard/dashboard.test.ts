@@ -107,6 +107,11 @@ const INVARIANTS = new Set<string>([
   // Message natif de Supabase : côté EN, la valeur EST la clé. C'est précisément le
   // point du remappage — ne jamais « traduire » le texte français vers l'anglais.
   'Invalid login credentials',
+  // Titre de la section des coupures d'urgence du panneau admin. « Kill switch » est
+  // l'anglicisme consacré, employé tel quel en français jusque dans les migrations
+  // SQL du projet (20260728000001 le nomme déjà ainsi) — le traduire ici ferait
+  // diverger le vocabulaire de l'interface de celui du schéma.
+  '🛑 Kill switches',
   // Mots identiques dans les deux langues (« To-do lists » avec cette casse-ci est le
   // libellé de /profil ; « To-Do Lists » plus haut est celui de l'onglet).
   'Winrate', 'To-do lists', 'Email',
