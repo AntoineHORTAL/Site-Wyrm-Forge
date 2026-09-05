@@ -245,20 +245,93 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS riot_link_expires_at  TIMES
 - DELETE : refusé par défaut
 
 ### Table `app_settings`
-Réglages globaux clé/valeur.
-RLS : SELECT `authenticated`, UPDATE `is_admin()`, INSERT/DELETE bloqués côté client.
+Réglages globaux clé/valeur, **et catalogue de feature flags** depuis la migration `20260905000001_feature_flags_catalog.sql`.
 
-Valeurs en base (migrations cumulées) :
+RLS :
+- SELECT `authenticated` → **toutes** les lignes (`as_select_authenticated`, inchangée)
+- SELECT `anon` → **uniquement `is_public = true`** (`as_select_anon`, 20260905000001)
+- UPDATE `is_admin()` ; INSERT/DELETE bloqués côté client
 
-| key | value par défaut | Migration |
+> ⚠️ La policy `anon` est ce qui rend les flags lisibles **sans compte** : l'app WPF
+> fonctionne sans compte Wyrm Forge (`verify_jwt = false` sur les fonctions Riot,
+> cf. `config.toml`) et le site sert des pages publiques. Avant elle,
+> `ForgeService.GetAppFlagAsync` renvoyait `false` faute de JWT — un kill switch
+> aurait été invisible pour exactement les utilisateurs qu'on ne peut pas prévenir
+> autrement.
+
+#### Colonnes de catalogue (20260905000001)
+
+| Colonne | Rôle |
+|---|---|
+| `kind` | `'setting'` (réglage/tuning, hors catalogue) · `'launch'` (cat. 1, défaut `'false'`) · `'kill'` (cat. 2, défaut `'true'`) |
+| `surface` | `'web'` \| `'app'` \| `'shared'` — informatif ; aucun client ne filtre dessus |
+| `group_key` | Section du panneau admin (`ecailles`, `overlay`, `riot`, `ia`, `contenu`, `site`, `app`, `scenarios`) |
+| `parent_key` | FK auto-référente. **Un flag n'est actif que si tous ses ancêtres le sont** — résolution faite une fois par les clients |
+| `off_behavior` | `'hidden'` \| `'notice'` \| `'degraded'` — ce que voit l'utilisateur, affiché à l'admin **avant** la bascule |
+| `label_fr/en`, `desc_fr/en` | Libellés **portés par la base**, pas par le dico i18n → **ajouter un flag = un INSERT, sans déploiement** |
+| `sort_order` | Ordre dans le groupe (blocs de 100 par groupe) |
+| `reason` | Motif de coupure, obligatoire à l'extinction d'un kill switch, remis à `NULL` à la réactivation |
+| `is_public` | Lisible par `anon`. **Règle : tout flag est public, toute valeur de tuning reste privée** |
+
+Contrainte `app_settings_flag_metadata_complete` : un `kind <> 'setting'` DOIT avoir
+ses 4 libellés + `surface` + `group_key` + `off_behavior`. C'est le filet qui remplace
+l'erreur de compilation perdue en sortant les libellés du dico typé — un flag muet est
+un échec d'INSERT, pas un interrupteur sans texte dans le panneau.
+
+#### ⚠️ Sémantique de `updated_at` / `updated_by`
+
+Les deux triggers (`trg_app_settings_updated_at`, `trg_app_settings_actor`) portent
+`WHEN (NEW.value IS DISTINCT FROM OLD.value)` : ils répondent à « **quand, et par qui,
+la VALEUR a-t-elle changé ?** », ce qu'affiche le panneau admin (« coupé par X il y a
+12 min »). Une migration qui ne touche que des métadonnées de catalogue ne les réécrit
+donc pas. `updated_by` n'était **jamais** renseigné avant 20260905000001 (AdminTab ne
+posait que `value`) ; il l'est désormais côté base, ce qui couvre aussi toute écriture
+future par RPC ou Edge Function.
+
+#### Valeurs de tuning (`kind = 'setting'`, `is_public = false`)
+
+| key | value courante | Migration |
 |---|---|---|
-| `patch_auto_publish` | `'false'` | 20260530000009 |
-| `ecailles_enabled` | `'false'` | 20260606000001 |
-| `shop_enabled` | `'false'` | 20260606000001 |
-| `quests_enabled` | `'false'` | 20260606000001 |
+| `patch_auto_publish` | `'false'` | 20260530000009 — réglage de la génération de patch notes. Garde son interrupteur dédié dans la carte Patch notes d'AdminTab, hors des deux sections du catalogue |
 | `cap_daily_scales` | `'12'` | 20260607000001 (était '25' en 20260606000001) |
 | `streak_bonus_pct` | `'0'` | 20260606000011 (corrigé depuis '10' de 20260606000001) |
-| `live_game_enabled` | `'false'` | 20260728000001 — kill-switch de l'EF `riot-live-game` (spectator-v5), **livrée** depuis. ⚠️ La valeur affichée ici est celle **posée par la migration**, pas l'état courant du remote : ce flag se pilote à la main (le vérifier en base avant de conclure à une panne — un 403 sur `/live` est d'abord un kill-switch à `'false'`, pas un bug). |
+
+> Ces trois lignes sont désormais invisibles pour `anon`. C'est l'objectif que visait la
+> migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
+> reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
+
+#### Catalogue de flags — 39 lignes
+
+**Catégorie 1, lancement (5)** — `off_behavior = 'hidden'`, valeur `'false'` :
+`ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
+et `scenarios_enabled`.
+
+**Catégorie 2, kill switches (34)** — valeur `'true'` :
+
+| group_key | clés |
+|---|---|
+| `riot` | `riot_history_enabled` (EF riot-matches / riot-match-detail / riot-rank), `live_game_enabled`, `riot_link_enabled` |
+| `ia` | `matchup_ai_enabled` (**seul `'degraded'`** — le repli stats+radar existe déjà), `postgame_ai_enabled` |
+| `contenu` | `patch_notes_enabled`, `workshop_builds_enabled`, `workshop_jungle_enabled` |
+| `site` | `ads_enabled`, `player_search_enabled`, `prac_enabled` |
+| `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` |
+| `overlay` | `overlay_enabled` (maître) + **18 enfants**, parité 1:1 avec les propriétés `Show*` de `Models/OverlayConfig.cs` (app WPF) |
+
+> ⚠️ Les deux clés en gras gardent les seules features qui écrivent **hors du périmètre
+> de l'app, dans les fichiers du client League** (sets d'objets, page de runes). Ce sont
+> les kill switches à plus forte valeur du lot.
+
+**Overlay — pourquoi 18 et pas 19.** `OverlayConfig` porte 19 booléens ; `UseTimelineView`
+est volontairement absent du catalogue : ce n'est pas un toggle de visibilité mais un
+choix de **mode** exclusif (timers classiques ↔ frise). Le couper ne masquerait rien, il
+forcerait l'utilisateur dans l'autre mode. Les clés reprennent le nom exact de la
+propriété en snake_case (`ShowBaronTimer` → `overlay_show_baron_timer`), redondance
+« show » comprise : la correspondance doit rester mécanique et vérifiable.
+
+**Overlay — `off_behavior = 'hidden'`, jamais `'notice'`.** En jeu, personne ne lit un
+encart : ni place, ni attention, et un message flottant sur la map serait pire que le bug
+qu'on coupe. Un bloc coupé **ne se dessine pas**. L'explication vit dans l'onglet Overlay
+de l'app, où la case correspondante apparaît désactivée.
 
 ---
 
@@ -603,6 +676,10 @@ RLS : aucune policy client — SELECT/INSERT/UPDATE/DELETE via service_role uniq
 |---|---|---|
 | `cap_daily_scales` | `'12'` | Plafond d'Écailles gagnables par quêtes en un jour (recalibré en 20260607000001, était '25') |
 | `streak_bonus_pct` | `'0'` | Bonus streak en % par jour de streak (0 = désactivé) |
+
+> Ces deux clés sont `kind = 'setting'`, `is_public = false` depuis 20260905000001 :
+> elles ne sont **pas** lisibles par `anon` et n'apparaissent pas dans le catalogue de
+> flags du panneau admin. Voir § *Table `app_settings`* pour le modèle complet.
 
 #### Fonction `finalize_quest_claim` (M5)
 
