@@ -10,22 +10,34 @@ import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
    (`footer.legalLinks` et `footer.columns`, même ordre). */
 
 /* Liens légaux de la barre basse — routes réelles (src/app/{cgu,confidentialite,
-   mentions-legales}/page.tsx), contrairement aux colonnes ci-dessous encore en '#'. */
+   mentions-legales}/page.tsx). */
 const legalHrefs = ['/cgu', '/confidentialite', '/mentions-legales']
 
 /* Colonnes de liens du footer (les liens légaux vivent dans `legalHrefs` ci-dessus).
-   - Routes inexistantes pour l'instant → '#' (placeholder, à brancher plus tard)
-   - Liens fonctionnels : ancres de la home (#features, #communaute) + téléchargement
-   - Réseaux sociaux : '#' tant que les URLs ne sont pas fournies */
+   Appariées PAR POSITION à `footer.columns` de src/locales/landing.ts.
+
+   ⚠️ Plus AUCUN '#' ici : les 9 placeholders d'origine (Changelog, Guides, Builds,
+   Jungle paths, API Riot, Discord, Twitter/X, Reddit, YouTube) ont été soit
+   rebranchés sur une route qui existe vraiment, soit retirés. Un lien mort dans
+   un dossier envoyé à Riot Games coûte plus cher que le lien absent.
+
+   Ne PAS réintroduire de '#' : si une destination n'existe pas encore, retirer le
+   libellé du dictionnaire plutôt que d'ajouter un placeholder ici. */
 const columnHrefs: { href: string; download?: boolean }[][] = [
+  // Produit : Fonctionnalités · Télécharger · Tarifs · FAQ
   [
     { href: '/#features' },
     { href: WINDOWS_DOWNLOAD_URL, download: true },
-    { href: '/#communaute' },
-    { href: '#' },
+    { href: '/#tarifs' },
+    { href: '/#faq' },
   ],
-  [{ href: '#' }, { href: '#' }, { href: '#' }, { href: '#' }],
-  [{ href: '#' }, { href: '#' }, { href: '#' }, { href: '#' }],
+  // Ressources : Rechercher un joueur · Champions · Patch notes · Communauté
+  [
+    { href: '/matches' },
+    { href: '/champions' },
+    { href: '/patch-notes' },
+    { href: '/#communaute' },
+  ],
 ]
 
 function FooterLink({ label, href, download, c }: { label: string; href: string; download?: boolean; c: boolean }) {

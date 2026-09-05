@@ -1,7 +1,6 @@
 'use client'
 
 import { Fragment } from 'react'
-import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
@@ -110,7 +109,9 @@ function OverlayMock({ c }: { c: boolean }) {
   )
 }
 
-export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
+// La connexion est portée par le header (monté dans le layout racine, qui rend
+// lui-même la modale) : le Hero n'a plus de `onLogin` à recevoir.
+export default function Hero() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const { t } = useLanguage()
@@ -204,9 +205,11 @@ export default function Hero({ onLogin: _onLogin }: { onLogin?: () => void }) {
               <WindowsIcon />
               {h.ctaDownload}
             </a>
-            <Link href="/matches" className="wf-btn-secondary">
-              {h.ctaSearch}
-            </Link>
+            {/* Le bouton « Rechercher un joueur » (3ᵉ position, style secondaire)
+                a été retiré : il faisait doublon avec le lien « Joueurs » du
+                header — présent sur toutes les pages depuis que Nav vit dans le
+                layout racine — et sa place entre « Télécharger » et
+                « Fonctionnalités » n'avait pas de logique de lecture. */}
             <button className="wf-btn-secondary" onClick={() => scrollTo('features')}>
               {h.ctaFeatures}
             </button>

@@ -823,6 +823,43 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   max-width: 1180px;
   margin: 0 auto;
 }
+/* ─── Liste compacte des fonctionnalités (sous les 6 cartes mises en avant) ───
+   Une ligne par entrée : icône 16px + titre + description. Volontairement SANS
+   chrome de carte (pas de bordure, pas de fond) — c'est ce contraste avec
+   `.wf-card` qui crée la hiérarchie entre les 6 mises en avant et les 6 autres.
+   Rien n'est replié : aucun état, tout est dans le HTML servi. */
+.land-features-more {
+  max-width: 1180px;
+  margin: 40px auto 0;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+}
+.land-features-more-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.land-features-more-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px 32px;
+}
+.land-features-more-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+/* `flex-shrink: 0` : sans lui l'icône s'écrase quand le titre passe sur 2 lignes.
+   Le décalage de 2px l'aligne optiquement sur la première ligne du titre. */
+.land-features-more-icon {
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 2px;
+}
+
 .land-trust-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -842,9 +879,11 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
+/* Marque + 2 colonnes de liens (c'était 3 avant le retrait de la colonne
+   « Communauté », dont les 4 liens n'avaient aucune destination réelle). */
 .land-footer-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr 1fr;
   gap: 40px;
   max-width: 1180px;
   margin: 0 auto;
@@ -854,7 +893,8 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 
 @media (max-width: 900px) {
   .land-hero-grid     { grid-template-columns: 1fr; gap: 40px; }
-  .land-features-grid { grid-template-columns: repeat(2, 1fr); }
+  .land-features-grid      { grid-template-columns: repeat(2, 1fr); }
+  .land-features-more-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 820px) {
   .land-pricing-grid  { grid-template-columns: 1fr; max-width: 420px; }
@@ -863,8 +903,9 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   .land-footer-grid   { grid-template-columns: 1fr 1fr; gap: 32px; }
 }
 @media (max-width: 600px) {
-  .land-features-grid { grid-template-columns: 1fr; }
-  .land-trust-grid    { grid-template-columns: 1fr; }
+  .land-features-grid      { grid-template-columns: 1fr; }
+  .land-features-more-grid { grid-template-columns: 1fr; }
+  .land-trust-grid         { grid-template-columns: 1fr; }
 }
 @media (max-width: 460px) {
   .land-footer-grid   { grid-template-columns: 1fr; gap: 28px; }

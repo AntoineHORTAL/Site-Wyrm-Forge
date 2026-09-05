@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { landingFr, landingEn, landingDicts, formatPrice } from './landing'
+import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
+import { PRICING_TIERS, FREE_MONTHS_ON_ANNUAL, freeMonthsOnAnnual } from '@/lib/pricing-tiers'
 
 /**
  * `LandingDict = typeof landingFr` force déjà les mêmes CLÉS des deux côtés à la
@@ -22,6 +24,7 @@ describe('parité de structure FR / EN', () => {
     expect(landingEn.hero.badges).toHaveLength(landingFr.hero.badges.length)
     expect(landingEn.hero.overlay.stats).toHaveLength(landingFr.hero.overlay.stats.length)
     expect(landingEn.features.items).toHaveLength(landingFr.features.items.length)
+    expect(landingEn.features.more).toHaveLength(landingFr.features.more.length)
     expect(landingEn.community.items).toHaveLength(landingFr.community.items.length)
     expect(landingEn.pricing.tiers).toHaveLength(landingFr.pricing.tiers.length)
     expect(landingEn.faq.items).toHaveLength(landingFr.faq.items.length)
@@ -37,19 +40,59 @@ describe('parité de structure FR / EN', () => {
   })
 
   it('correspond aux cardinalités attendues par les composants', () => {
-    // Nav.tsx — NAV_SECTION_IDS (accueil, features, communaute, tarifs, telecharger, faq)
+    // Nav.tsx — un libellé par ancre de NAV_SECTION_IDS, appariés par POSITION.
+    // Assertion dérivée plutôt que codée en dur : ajouter une ancre sans son
+    // libellé (ou l'inverse) casse ici, pas en prod avec un `undefined`.
+    expect(landingFr.nav.links).toHaveLength(NAV_SECTION_IDS.length)
     expect(landingFr.nav.links).toHaveLength(6)
-    // Features.tsx — featureIcons / Community.tsx — trustIcons
-    expect(landingFr.features.items).toHaveLength(5)
+    // Features.tsx — deux listes, deux tableaux d'icônes indexés par position :
+    // `items` ↔ featureIcons (cartes pleines), `more` ↔ moreIcons (liste compacte).
+    expect(landingFr.features.items).toHaveLength(6)
+    expect(landingFr.features.more).toHaveLength(6)
+    // Community.tsx — trustIcons
     expect(landingFr.community.items).toHaveLength(3)
-    // Pricing.tsx — tiers (Apprenti, Forgeron, Maître)
+    // Pricing.tsx — un bloc de copy par palier de `PRICING_TIERS` (appariés par index)
+    expect(landingFr.pricing.tiers).toHaveLength(PRICING_TIERS.length)
     expect(landingFr.pricing.tiers).toHaveLength(3)
     // Hero.tsx — OverlayMock lit stats[0..5]
     expect(landingFr.hero.overlay.stats).toHaveLength(6)
-    // Footer.tsx — columnHrefs (3 colonnes de 4) / legalHrefs (3 routes)
-    expect(landingFr.footer.columns).toHaveLength(3)
+    // Footer.tsx — columnHrefs (2 colonnes de 4) / legalHrefs (3 routes)
+    expect(landingFr.footer.columns).toHaveLength(2)
     landingFr.footer.columns.forEach(col => expect(col.links).toHaveLength(4))
     expect(landingFr.footer.legalLinks).toHaveLength(3)
+  })
+
+  /**
+   * La barre centrée ne contient QUE des ancres — c'est ce qui rend le scroll-spy
+   * correct et le comportement des six liens uniforme. La recherche de joueur, qui
+   * navigue au lieu de scroller, vit dans le bloc de droite du header et dans le
+   * drawer, avec son propre libellé.
+   */
+  it('ne garde que des ancres dans la barre centrée', () => {
+    // Exactement les six <section id> de la home, dans l'ordre de la page
+    // (Hero, Features, Community, Pricing, FinalCTA, FAQ).
+    expect([...NAV_SECTION_IDS]).toEqual(['accueil', 'features', 'communaute', 'tarifs', 'telecharger', 'faq'])
+
+    // Aucune entrée ne doit ressembler à une route : une ancre qui commencerait
+    // par « / » serait cherchée par `getElementById` et ne ferait rien.
+    NAV_SECTION_IDS.forEach(id => expect(id.startsWith('/')).toBe(false))
+  })
+
+  /**
+   * La recherche de joueur est rendue à DEUX endroits (bloc de droite du header,
+   * drawer mobile) depuis un seul libellé et une seule destination. Ces assertions
+   * empêchent que l'un des deux dérive.
+   */
+  it('porte la recherche de joueur hors de la barre centrée', () => {
+    expect(PLAYER_SEARCH_HREF).toBe('/matches')
+
+    // Le libellé ne doit pas être resté dans `nav.links` : il y aurait alors DEUX
+    // entrées « Joueurs » à l'écran, dont une qui tenterait de scroller.
+    expect(landingFr.nav.links).not.toContain(landingFr.nav.players)
+    expect(landingEn.nav.links).not.toContain(landingEn.nav.players)
+
+    expect(landingFr.nav.players.trim()).not.toBe('')
+    expect(landingEn.nav.players).not.toBe(landingFr.nav.players)
   })
 
   it('ne laisse aucune chaîne vide', () => {
@@ -95,6 +138,57 @@ describe('parité de structure FR / EN', () => {
 })
 
 /**
+ * Grille tarifaire — les MONTANTS vivent dans `src/lib/pricing-tiers.ts`, la COPY
+ * dans le dictionnaire. Rien n'oblige les deux à rester d'accord : ces tests le font.
+ *
+ * L'enjeu n'est pas cosmétique. Le badge du bascule annuel affiche une promesse
+ * commerciale (« 2 mois offerts ») ; si un prix annuel bouge sans que le badge
+ * suive, le site annonce une remise qu'il n'accorde pas.
+ */
+describe('paliers tarifaires', () => {
+  it('pose des prix annuels ENTIERS, jamais un produit de facteur', () => {
+    // L'ancien ANNUAL_FACTOR = 0.9 donnait 32,40 € et 64,80 €. Les prix annuels
+    // sont désormais des valeurs commerciales fixes et arrondies.
+    expect(PRICING_TIERS.map(t => t.annual)).toEqual([0, 30, 60])
+    expect(PRICING_TIERS.map(t => t.monthly)).toEqual([0, 3, 6])
+    PRICING_TIERS.forEach(t => {
+      expect(Number.isInteger(t.annual), `prix annuel non entier sur ${t.name}`).toBe(true)
+    })
+  })
+
+  it('garde un seul palier gratuit, et le palier populaire est payant', () => {
+    expect(PRICING_TIERS.filter(t => t.monthly === 0)).toHaveLength(1)
+    expect(PRICING_TIERS[0].cta).toBe('download')
+    const popular = PRICING_TIERS.filter(t => t.popular)
+    expect(popular).toHaveLength(1)
+    expect(popular[0].monthly).toBeGreaterThan(0)
+  })
+
+  it("tient la promesse « 2 mois offerts » sur TOUS les paliers payants", () => {
+    const paid = PRICING_TIERS.filter(t => t.monthly > 0)
+    expect(paid.length).toBeGreaterThan(0)
+    paid.forEach(t => {
+      expect(
+        freeMonthsOnAnnual(t),
+        `l'annuel de ${t.name} (${t.annual}€) ne vaut pas ${FREE_MONTHS_ON_ANNUAL} mois offerts ` +
+        `sur ${t.monthly}€/mois — corriger le prix OU le libellé \`annualPerk\` du dictionnaire`,
+      ).toBe(FREE_MONTHS_ON_ANNUAL)
+    })
+    // Le gratuit n'a pas de remise à offrir.
+    expect(freeMonthsOnAnnual(PRICING_TIERS[0])).toBeNull()
+  })
+
+  it('annonce ce nombre de mois dans les DEUX langues', () => {
+    expect(landingFr.pricing.annualPerk).toContain(String(FREE_MONTHS_ON_ANNUAL))
+    expect(landingEn.pricing.annualPerk).toContain(String(FREE_MONTHS_ON_ANNUAL))
+    // Le badge ne doit plus annoncer de pourcentage : la remise réelle vaut 16,67 %,
+    // qu'aucun arrondi n'exprime honnêtement — d'où le passage aux mois offerts.
+    expect(landingFr.pricing.annualPerk).not.toContain('%')
+    expect(landingEn.pricing.annualPerk).not.toContain('%')
+  })
+})
+
+/**
  * Le symbole € ne se place pas du même côté selon la langue : « 2€ » en français,
  * « €2 » en anglais. C'est une convention typographique, pas un détail cosmétique —
  * et rien dans le typage ne l'empêche de régresser en silence, d'où ces tests.
@@ -111,9 +205,12 @@ describe('formatage des prix', () => {
   })
 
   it('omet les décimales sur un entier, en affiche deux sinon', () => {
-    // Prix annuels réellement affichés par Pricing.tsx (mensuel × 12 × 0,9)
-    expect(formatPrice(21.6, 'fr')).toBe('21,60€')
-    expect(formatPrice(54, 'en')).toBe('€54')
+    // Montants réellement affichés par Pricing.tsx : le prix annuel est un entier
+    // (30 € / 60 €), le « /mois » du mode annuel ne l'est pas (30 / 12 = 2,50 €).
+    expect(formatPrice(30, 'fr')).toBe('30€')
+    expect(formatPrice(2.5, 'fr')).toBe('2,50€')
+    expect(formatPrice(60, 'en')).toBe('€60')
+    expect(formatPrice(5, 'en')).toBe('€5')
   })
 
   it('garde le marqueur {amount} dans le gabarit des deux langues', () => {

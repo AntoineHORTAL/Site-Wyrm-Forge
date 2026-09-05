@@ -5,6 +5,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { formatPrice } from '@/locales/landing'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { PRICING_TIERS } from '@/lib/pricing-tiers'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -15,28 +16,14 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
-// Réduction annuelle (-10%, validé). Apprenti reste à 0€ dans les deux modes.
-const ANNUAL_FACTOR = 0.9
-
-// Structure des paliers : prix et CTA seulement. Nom affiché, tagline et features
-// sont traduits (src/locales/landing.ts, `pricing.tiers`, même ordre).
-// ⚠️ `name` ici est la valeur de `profiles.tier` en base, partagée avec l'app de
-// bureau — elle reste en français et n'est JAMAIS affichée : le libellé à l'écran
-// vient de `copy.name` (dico). Ne pas la traduire, elle sert de clé de palier.
-// ⚠️ Vitrine tarifaire — AUCUN paiement réel : Apprenti → téléchargement, payants désactivés.
-interface Tier {
-  /** Valeur `profiles.tier` — clé, jamais affichée telle quelle. */
-  name: string
-  monthly: number // 0 = gratuit
-  cta: 'download' | 'soon'
-  popular?: boolean
-}
-
-const tiers: Tier[] = [
-  { name: 'Apprenti', monthly: 0, cta: 'download' },
-  { name: 'Forgeron', monthly: 3, cta: 'soon' },
-  { name: 'Maître',   monthly: 6, cta: 'soon', popular: true },
-]
+// Les montants vivent dans `src/lib/pricing-tiers.ts` (module pur), pour que
+// `landing.test.ts` puisse vérifier sans jsdom que la promesse « 2 mois offerts »
+// correspond bien aux prix affichés.
+//
+// ⚠️ L'ancien `ANNUAL_FACTOR = 0.9` a été RETIRÉ : les prix annuels sont
+// désormais des valeurs fixes et arrondies (30 € / 60 €), pas le produit d'une
+// formule. Ne pas le réintroduire — il produisait des montants à deux décimales
+// (32,40 € / 64,80 €) et faisait dépendre un prix affiché d'un calcul flottant.
 
 // Le formatage des prix (séparateur décimal ET position du symbole €) vit dans
 // `formatPrice` (src/locales/landing.ts) — seule source de vérité, partagée par
@@ -105,16 +92,19 @@ export default function Pricing() {
           <button onClick={() => setAnnual(false)} style={segBtn(!annual)}>{p.monthly}</button>
           <button onClick={() => setAnnual(true)} style={segBtn(annual)}>
             {p.annual}
-            <span style={{ fontSize: 11, fontWeight: 700, color: annual ? 'inherit' : (c ? '#EF9F27' : '#7F77DD') }}>−10%</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: annual ? 'inherit' : (c ? '#EF9F27' : '#7F77DD') }}>{p.annualPerk}</span>
           </button>
         </div>
       </div>
 
       <div className="land-pricing-grid">
-        {tiers.map((tier, i) => {
+        {PRICING_TIERS.map((tier, i) => {
           const copy = p.tiers[i]
           const isFree = tier.monthly === 0
-          const perMonth = annual ? tier.monthly * ANNUAL_FACTOR : tier.monthly
+          // En mode annuel, le « /mois » affiché est le prix annuel ramené au mois
+          // (30 € → 2,50 €), pas le mensuel remisé : c'est le montant réellement
+          // engagé qui doit se lire, et les deux ne coïncident pas.
+          const perMonth = annual ? tier.annual / 12 : tier.monthly
           return (
             <div
               key={tier.name}
@@ -167,7 +157,7 @@ export default function Pricing() {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, minHeight: 16 }}>
                       {annual
-                        ? p.billedAnnually.replace('{price}', formatPrice(tier.monthly * 12 * ANNUAL_FACTOR, lang))
+                        ? p.billedAnnually.replace('{price}', formatPrice(tier.annual, lang))
                         : p.noCommitment}
                     </div>
                   </>
