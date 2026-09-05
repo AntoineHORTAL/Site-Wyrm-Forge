@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import RiotLinkBlock from '@/components/player/RiotLinkBlock'
+import { useFlag } from '@/components/providers/FeatureFlagsProvider'
+import { UnavailableNotice } from '@/components/dashboard/FeatureScreens'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { ddragonLocale } from '@/lib/intl'
 import { queueLabel } from '@/locales/dashboard/common'
@@ -86,6 +88,10 @@ export default function AccueilTab() {
   const c = theme === 'mythic'
   const supabase = createClient()
   const dico = useDashboard()
+  const C = dico.common
+  // Kill switches de cet onglet — voir les deux sections gardées dans le rendu.
+  const riotLinkEnabled    = useFlag('riot_link_enabled')
+  const riotHistoryEnabled = useFlag('riot_history_enabled')
   const lang = useLang()
   const tr = dico.accueil.accueil
 
@@ -395,8 +401,14 @@ export default function AccueilTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
       {/* ══ LIAISON COMPTE RIOT ═══════════════════════════════════════════ */}
-      {/* Affiché en premier — invitation à lier le compte avant tout usage */}
-      <RiotLinkBlock theme={theme} />
+      {/* Affiché en premier — invitation à lier le compte avant tout usage.
+          Kill switch `riot_link_enabled` (EF riot-link-init / riot-link-verify) :
+          coupé, le bloc devient un encart. Convention 'notice' et pas 'hidden' :
+          un compte DÉJÀ lié reste lié et continue d'alimenter le reste de l'app —
+          faire disparaître le bloc laisserait croire que la liaison a sauté. */}
+      {riotLinkEnabled
+        ? <RiotLinkBlock theme={theme} />
+        : <UnavailableNotice title={C.unavailableTitle} text={C.unavailableText} />}
 
       {/* ══ ROTATION ══════════════════════════════════════════════════════ */}
       <section>
@@ -468,6 +480,17 @@ export default function AccueilTab() {
       </section>
 
       {/* ══ MATCHES ═══════════════════════════════════════════════════════ */}
+      {/* Kill switch `riot_history_enabled` — le même qui garde, côté serveur, les
+          EF riot-matches / riot-match-detail / riot-rank. La garde est ici plutôt
+          que dans `loadMatches` pour que la section entière (saisie du Riot ID,
+          stats résumées, liste, scroll infini) disparaisse d'un bloc : n'en couper
+          que le chargement laisserait une section vide avec un scroll qui ne
+          charge rien, ce qui se lit comme une panne et non comme une coupure. */}
+      {!riotHistoryEnabled ? (
+        <section>
+          <UnavailableNotice title={C.unavailableTitle} text={C.unavailableText} />
+        </section>
+      ) : (
       <section>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
@@ -791,6 +814,7 @@ export default function AccueilTab() {
           </div>
         )}
       </section>
+      )}
     </div>
   )
 }

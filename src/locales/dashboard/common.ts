@@ -77,6 +77,14 @@ export const commonFr = {
   /* Repli pour un `queueId` absent de la table : l'id reste affiché, c'est la seule
      information dont on dispose et elle vaut mieux qu'un « Inconnu » muet. */
   queueUnknown: 'File #{id}',
+
+  /* ── Convention de coupure (`app_settings.off_behavior`) ──
+     Transverses au sens le plus fort du critère de ce fichier : le MÊME texte est
+     rendu par une dizaine d'onglets. C'est tout l'intérêt de la convention — une
+     feature coupée doit se lire à l'identique partout, sinon chaque écran
+     réinvente sa formulation et l'utilisateur ne reconnaît plus le motif. */
+  unavailableTitle: 'Temporairement indisponible',
+  unavailableText:  'Nous travaillons dessus. Cette fonctionnalité sera de retour sous peu.',
 }
 
 export type CommonDict = typeof commonFr
@@ -91,6 +99,8 @@ export const commonEn: CommonDict = {
   lossInitial: 'L',
   queues: queuesEn,
   queueUnknown: 'Queue #{id}',
+  unavailableTitle: 'Temporarily unavailable',
+  unavailableText:  'We are working on it. This feature will be back shortly.',
 }
 
 /**

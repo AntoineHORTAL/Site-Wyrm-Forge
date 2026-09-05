@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { isFlagEnabledServer } from '@/lib/feature-flags-server'
 import { pracPath } from '@/lib/prac'
 
 export const dynamic = 'force-dynamic'
@@ -50,6 +51,20 @@ export default async function PracLayout({ children }: { children: ReactNode }) 
     const host = (hdrs.get('host') ?? '').split(':')[0].toLowerCase()
     if (host !== pHost) redirect(siteRoot())
   }
+
+  // Kill switch `prac_enabled` — placé AVANT les requêtes d'identité, et pas dans
+  // le rendu. Deux raisons :
+  //   1. couper l'outil doit couper aussi ce qu'il interroge (`auth.getUser`,
+  //      `prac_admins`) — une coupure qui continue de sonder la base n'en est pas
+  //      une ;
+  //   2. `/prac/*` sert un outil INTERNE, `robots: noindex`. Contrairement aux
+  //      pages publiques, il n'y a ici personne à ménager : le repli est le même
+  //      redirect vers le site principal que pour un non-admin, et il ne révèle
+  //      rien de plus que ce que voit déjà un visiteur sans droits.
+  //
+  // Lecture SERVEUR : ce layout redirige avant tout rendu, `FeatureFlagsProvider`
+  // (client) arriverait trop tard.
+  if (!await isFlagEnabledServer('prac_enabled')) redirect(siteRoot())
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

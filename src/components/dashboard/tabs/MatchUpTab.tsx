@@ -20,6 +20,8 @@ import ModeSelector from '@/components/dashboard/matchup/ModeSelector'
 import ChampionPicker from '@/components/dashboard/matchup/ChampionPicker'
 import BuildPicker, { type SavedBuildDisplay } from '@/components/dashboard/matchup/BuildPicker'
 import StatRadar from '@/components/dashboard/matchup/StatRadar'
+import { useFlag } from '@/components/providers/FeatureFlagsProvider'
+import { UnavailableNotice } from '@/components/dashboard/FeatureScreens'
 
 // ════════════════════════════════════════════════════════════════════════════
 //  MatchUpTab — éditeur de scénario MatchUp (portage web du builder WPF)
@@ -62,6 +64,9 @@ interface BuildSummary {
 export default function MatchUpTab() {
   const { theme } = useTheme()
   const A = useDashboard().analyse
+  const C = useDashboard().common
+  // Kill switch de la seule partie IA — voir le bloc 'degraded' plus bas.
+  const matchupAiEnabled = useFlag('matchup_ai_enabled')
   const lang = useLang()
   const M = A.matchup
   const c = theme === 'mythic'
@@ -288,7 +293,17 @@ export default function MatchUpTab() {
         )}
       </div>
 
-      {/* Analyse IA (matchup-analyze) */}
+      {/* ── Analyse IA (matchup-analyze) — convention 'degraded' ──────────────
+          `matchup_ai_enabled` ne garde QUE ce bloc. Tout ce qui précède (choix des
+          champions, builds, comparaison de stats, radar) ne dépend d'aucune IA et
+          reste entier : c'est précisément ce qui fait de cet onglet le seul cas
+          'degraded' du catalogue — le repli n'est pas à inventer, il est déjà là.
+          Couper l'onglet en entier détruirait un outil qui fonctionne. */}
+      {!matchupAiEnabled ? (
+        <div style={{ marginTop: 28 }}>
+          <UnavailableNotice title={C.unavailableTitle} text={C.unavailableText} />
+        </div>
+      ) : (
       <div style={{ marginTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{M.analysisTitle}</div>
@@ -362,6 +377,7 @@ export default function MatchUpTab() {
           </div>
         )}
       </div>
+      )}
 
       {champTarget && (
         <ChampionPicker

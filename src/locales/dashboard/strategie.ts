@@ -152,6 +152,13 @@ const scenariosFr = {
     unnamedScenario: 'Scénario sans nom',
   },
 
+  /* Écran « bientôt » du flag de lancement `scenarios_enabled` (off_behavior
+     'hidden') : visible UNIQUEMENT sur accès direct, l'entrée de navigation
+     étant absente tant que la feature n'est pas ouverte. Pendant exact de
+     `ecailles.soonTitle` / `soonText`. */
+  soonTitle: 'Les Scénarios arrivent bientôt',
+  soonText:  'La planification de macro sur la carte — wards, rotations, zones d\'engagement — sera disponible prochainement.',
+
   /* ── Vue liste ── */
   list: {
     countOne: '{count} scénario sauvegardé',
@@ -314,6 +321,9 @@ export const strategieEn: StrategieDict = {
     defaults: {
       unnamedScenario: 'Untitled scenario',
     },
+
+    soonTitle: 'Scenarios are coming soon',
+    soonText:  'Macro planning on the map — wards, rotations, engage zones — will be available soon.',
 
     list: {
       countOne: '{count} saved scenario',

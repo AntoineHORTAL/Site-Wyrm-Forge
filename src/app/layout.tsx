@@ -4,6 +4,7 @@ import './globals.css'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { LanguageProvider } from '@/components/providers/LanguageProvider'
 import { SessionProvider } from '@/components/providers/SessionProvider'
+import { FeatureFlagsProvider } from '@/components/providers/FeatureFlagsProvider'
 import { DashboardNavProvider } from '@/components/providers/DashboardNavProvider'
 import SiteHeader from '@/components/nav/SiteHeader'
 import TestDbBanner from '@/components/dev/TestDbBanner'
@@ -67,6 +68,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             et deux providers = deux états = un switch qui ne se propage pas. */}
         <LanguageProvider>
           <ThemeProvider>
+            {/* Feature flags — AU-DESSUS de SessionProvider, et jamais dedans.
+                Ce provider ne doit dépendre d'AUCUN utilisateur : /matches,
+                /champions, /live et la vitrine sont publiques, et ce sont
+                précisément les visiteurs anonymes qu'on ne peut pas prévenir
+                autrement quand un kill switch tombe. La lecture anonyme est
+                permise par la policy `as_select_anon` (migration 20260905000001).
+
+                Au-dessus plutôt qu'à côté : SessionProvider n'en dépend pas, mais
+                le placer plus haut laisse la porte ouverte à ce qu'il consomme un
+                flag un jour, sans avoir à re-imbriquer tout le layout. */}
+            <FeatureFlagsProvider>
             {/* Session unique pour tout le site (utilisateur, profil, solde d'Écailles).
                 Elle vivait dans l'état de `page.tsx`, seul endroit où `Nav` était monté.
                 Ici, elle est chargée UNE fois et lue partout — le header en a besoin sur
@@ -82,6 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {children}
               </DashboardNavProvider>
             </SessionProvider>
+            </FeatureFlagsProvider>
           </ThemeProvider>
         </LanguageProvider>
       </body>

@@ -16,13 +16,15 @@ import MatchUpTab from './tabs/MatchUpTab'
 import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import ConsentBanner from './ConsentBanner'
+import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'
+import { useFlag } from '@/components/providers/FeatureFlagsProvider'
 import DashboardAdRail from '@/components/ads/DashboardAdRail'
 import { shouldShowAds } from '@/lib/ads'
 import { isPaidTier } from '@/lib/subscription'
 import Pricing from '@/components/landing/Pricing'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
-import type { DashTab, UserProfile } from '@/app/page'
+import type { DashTab, UserProfile } from '@/lib/session-types'
 
 /* ── Icons ── */
 const IconHome     = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -150,16 +152,44 @@ interface DashboardProps {
   balance?: number
   balanceLoading?: boolean
   onRefreshBalance?: () => void
-  ecaillesEnabled?: boolean
   forgeRequest?: number
 }
 
-export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, ecaillesEnabled = false, forgeRequest = 0 }: DashboardProps) {
+export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, forgeRequest = 0 }: DashboardProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const router = useRouter()
   const d = useDashboard()
   const tabTitles: PageTitles = d.nav.pageTitles
+
+  /**
+   * ── FEATURE FLAGS (catalogue `app_settings`, migration 20260905000001) ──
+   *
+   * Lus ICI, au routeur d'onglets, pour la même raison que la publicité l'est :
+   * c'est le seul endroit que TOUT le dashboard traverse. Un onglet qui porterait
+   * lui-même sa garde serait un onglet qu'on peut oublier de garder.
+   *
+   * Deux catégories, deux conventions (`off_behavior`) :
+   *  - LANCEMENT ('hidden')  → pas d'entrée de nav ; sur accès direct, l'écran
+   *                            « bientôt ». L'admin voit TOUJOURS tout.
+   *  - KILL SWITCH ('notice') → l'entrée reste, le contenu devient un encart.
+   */
+  const ecaillesEnabled  = useFlag('ecailles_enabled')
+  const scenariosEnabled = useFlag('scenarios_enabled')
+  const adsEnabled       = useFlag('ads_enabled')
+
+  const patchNotesEnabled     = useFlag('patch_notes_enabled')
+  const postgameAiEnabled     = useFlag('postgame_ai_enabled')
+  const workshopBuildsEnabled = useFlag('workshop_builds_enabled')
+  const workshopJungleEnabled = useFlag('workshop_jungle_enabled')
+
+  /** Encart de la convention 'notice' — même texte partout, c'est le point. */
+  const notice = (
+    <UnavailableNotice
+      title={d.common.unavailableTitle}
+      text={d.common.unavailableText}
+    />
+  )
 
   // Clic sur un onglet : si href, navigation externe — sinon changement d'activeTab
   const handleTabClick = (tab: TabDef) => {
@@ -188,7 +218,17 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
    * `profile` est déjà résolu ici. La colonne ne peut donc pas apparaître après
    * coup et pousser le contenu (CLS).
    */
-  const showAds = shouldShowAds(profile?.tier, isAdmin)
+  //
+  // Le kill switch `ads_enabled` s'ajoute aux deux verrous existants de
+  // `lib/ads.ts` (commercial + consentement RGPD) sans les remplacer : les trois
+  // doivent être ouverts. Il vit ici et pas dans `shouldShowAds` parce que ce
+  // module est PUR et testé comme tel — y injecter un état React lui ferait perdre
+  // exactement la propriété qui le rend vérifiable.
+  //
+  // Coupé, la colonne n'est pas rendue DU TOUT (pas d'encart « indisponible » :
+  // une place vide de 300 px annonçant l'absence de pub serait absurde). C'est le
+  // seul kill switch du lot dont la coupure n'a aucun rendu.
+  const showAds = shouldShowAds(profile?.tier, isAdmin) && adsEnabled
 
   return (
     <div className={`dash-layout${showAds ? ' dash-layout--ads' : ''}`}>
@@ -222,7 +262,11 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
               }}>{d.nav.groups[group.id]}</div>
             )}
             {group.tabs
-              .filter(tab => tab.id !== 'ecailles' || ecaillesEnabled || isAdmin)
+              // Convention 'hidden' des flags de LANCEMENT : l'entrée disparaît
+              // purement et simplement. L'admin garde les deux, c'est ce qui lui
+              // permet de recetter avant d'ouvrir au public.
+              .filter(tab => tab.id !== 'ecailles'  || ecaillesEnabled  || isAdmin)
+              .filter(tab => tab.id !== 'scenarios' || scenariosEnabled || isAdmin)
               .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
@@ -266,26 +310,34 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {activeTab === 'stats'            && <StatsTab />}
         {activeTab === 'jungle'           && <JunglePathTab />}
         {activeTab === 'builds'           && <BuildsTab />}
+        {/* Scénarios — DEUX verrous indépendants, dans cet ordre.
+            Le flag de LANCEMENT passe en premier : tant que la feature n'est pas
+            ouverte, proposer un écran « passe Pro » vendrait un accès qui n'existe
+            pour personne. Une fois lancée, le verrou commercial reprend la main. */}
         {activeTab === 'scenarios'        && (
-          isPro
-            ? <ScenariosTab />
-            : <LockedScreen
-                title={tabTitles.scenarios.title}
-                subtitle={tabTitles.scenarios.subtitle}
-                labels={d.nav.locked}
-                c={c} badge={d.nav.badges.pro}
+          !scenariosEnabled && !isAdmin
+            ? <ComingSoonScreen
+                title={d.strategie.scenarios.soonTitle}
+                text={d.strategie.scenarios.soonText}
               />
+            : isPro
+              ? <ScenariosTab />
+              : <LockedScreen
+                  title={tabTitles.scenarios.title}
+                  subtitle={tabTitles.scenarios.subtitle}
+                  labels={d.nav.locked}
+                  c={c} badge={d.nav.badges.pro}
+                />
         )}
-        {activeTab === 'workshop-builds'  && <WorkshopBuildsTab />}
-        {activeTab === 'workshop-jungle'  && <WorkshopJungleTab />}
-        {activeTab === 'patchnotes'       && <PatchNotesTab />}
+        {activeTab === 'workshop-builds'  && (workshopBuildsEnabled ? <WorkshopBuildsTab /> : notice)}
+        {activeTab === 'workshop-jungle'  && (workshopJungleEnabled ? <WorkshopJungleTab /> : notice)}
+        {activeTab === 'patchnotes'       && (patchNotesEnabled     ? <PatchNotesTab />     : notice)}
         {activeTab === 'ecailles'         && (
           <EcaillesTab
             isAdmin={isAdmin}
             balance={balance}
             balanceLoading={balanceLoading}
             onRefreshBalance={onRefreshBalance ?? (() => {})}
-            ecaillesEnabled={ecaillesEnabled}
             forgeRequest={forgeRequest}
           />
         )}
@@ -301,9 +353,13 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
             pourtant les crédits pour s'en servir. Le vrai garde est
             `canAfford` / `canAffordPostGame`, qui compare le solde au coût de
             l'action demandée — un solde non nul ne finance pas tout. */}
+        {/* MatchUp — convention 'degraded', le seul cas du lot. `matchup_ai_enabled`
+            n'est PAS lu ici : l'onglet reste entier (sélecteurs, radar, comparaison
+            de stats, tout ce qui ne dépend d'aucune IA) et ne remplace que son bloc
+            d'analyse. Le remplacer en bloc ici couperait un repli qui marche. */}
         {activeTab === 'matchup'  && <MatchUpTab />}
         {/* Post Game : une seule des 9 combinaisons prévues (simple × perso). */}
-        {activeTab === 'postgame' && <PostGameTab profile={profile} />}
+        {activeTab === 'postgame' && (postgameAiEnabled ? <PostGameTab profile={profile} /> : notice)}
 
         {/* Soon: Tournois */}
         {activeTab === 'tournois' && (
