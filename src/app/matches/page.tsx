@@ -15,7 +15,10 @@ export const metadata = {
 export default function MatchesSearchPage() {
   return (
     <main style={{
-      minHeight: '100vh', padding: '80px clamp(12px, 4vw, 40px)',
+      // 100vh − hauteur du header (voir `--nav-h` dans globals.css) : le header
+      // est dans le flux du layout racine, un 100vh brut ferait défiler la page
+      // de sa hauteur pour rien.
+      minHeight: 'calc(100vh - var(--nav-h))', padding: '80px clamp(12px, 4vw, 40px)',
       maxWidth: 720, margin: '0 auto', color: '#F5F2FA',
     }}>
       <h1 className="font-mythic" style={{

@@ -60,9 +60,35 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 ## 🟠 Architecture
 
 ### State & props
-- `activeTab: DashTab` est lifté dans `src/app/page.tsx` et passé en props à Nav et Dashboard
-- `DashTab` (type union) et `UserProfile` (interface) sont exportés depuis `src/app/page.tsx`
-- `effectiveTier` dans `page.tsx` pose le marqueur de RÔLE `'admin'` pour les admins côté affichage, peu importe la valeur en DB. Ce n'est pas un palier : il est déclaré dans `tiersFr`/`tiersEn` et dans les deux `TIER_COLORS`, mais reste hors de `TIER_ORDER` — donc jamais proposable ni écrivable dans `profiles.tier`
+> ⚠️ **Ce bloc a changé au chantier « rafraîchir la vitrine » (2026-09-03).** Le header a été
+> sorti de `src/app/page.tsx` vers le layout racine ; l'état qui le nourrissait a suivi. Les trois
+> puces d'origine (activeTab lifté dans page.tsx, types exportés depuis page.tsx, effectiveTier
+> calculé dans page.tsx) ne décrivent plus le code.
+
+- **Le header (`Nav`) est monté une seule fois, dans `src/app/layout.tsx`**, via
+  `src/components/nav/SiteHeader.tsx`. Il est donc présent sur TOUTES les routes — `/matches`,
+  `/champions`, `/patch-notes`, `/about`, `/tournois`, `/summoner`, `/live`, pages légales — et
+  plus seulement sur `/`. Seul `/prac` en est exclu (`HEADERLESS_PREFIXES` dans `SiteHeader`) :
+  sous-domaine interne, il porte déjà sa propre navigation.
+- **`SessionProvider`** (`src/components/providers/SessionProvider.tsx`, monté dans le layout
+  racine) détient utilisateur, profil, solde d'Écailles et flag `ecailles_enabled`, plus
+  `effectiveTier` (marqueur de RÔLE `'admin'` pour les admins, peu importe la valeur en DB — pas
+  un palier : déclaré dans `tiersFr`/`tiersEn` et dans les deux `TIER_COLORS`, mais hors de
+  `TIER_ORDER`, donc jamais proposable ni écrivable dans `profiles.tier`). ⚠️ **Un seul jeu
+  d'appels Supabase pour tout le site** : une page qui a besoin de la session la LIT
+  (`useSession()`), elle ne la recharge jamais. Le provider rend aussi `AuthModal`, puisque
+  `openAuth()` doit être appelable depuis le header, donc depuis n'importe quelle route.
+- **`DashboardNavProvider`** porte `activeTab` (que `page.tsx` REND et que le header PILOTE) et
+  `goToTab` : sur `/` c'est un changement d'état, ailleurs un `router.push('/?tab=…')`, que
+  `page.tsx` relit au montage (garde `DEEP_LINKABLE_TABS`). Sans ça, les onglets du drawer
+  mobile ne feraient rien hors de `/`.
+- `DashTab` (type union) et `UserProfile` (interface) vivent dans **`src/lib/session-types.ts`** —
+  module neutre, parce que les providers ne peuvent pas importer `page.tsx` (qui les importe déjà).
+  `page.tsx` les ré-exporte pour compatibilité.
+- Les liens centrés du header vivent dans **`src/lib/nav-links.ts`** (`NAV_LINKS`, module PUR
+  testable sans jsdom). Deux natures : `section` (ancre + scroll-spy) et `route` (vraie route
+  Next). « Joueurs » → `/matches` est le seul lien-route. `landing.test.ts` verrouille
+  l'appariement position-par-position avec `nav.links` du dictionnaire.
 
 ### Emplacements publicitaires (dashboard uniquement)
 

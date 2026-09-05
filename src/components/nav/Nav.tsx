@@ -10,9 +10,11 @@ import { tabGroups, type TabDef } from '@/components/dashboard/Dashboard'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { formatNumber } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
-import type { DashTab } from '@/app/page'
+import type { DashTab } from '@/lib/session-types'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { isPaidTier } from '@/lib/subscription'
+import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
+import { useFlag } from '@/components/providers/FeatureFlagsProvider'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   label: string; icon: React.ReactNode; onClick: () => void
@@ -36,6 +38,15 @@ function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   )
 }
 
+/* Loupe de la recherche de joueur — rendue dans le header ET dans le drawer, donc
+   extraite plutôt que dupliquée. `aria-hidden` : le libellé texte l'accompagne
+   toujours, l'icône n'apporte rien à un lecteur d'écran. */
+const SearchIcon = ({ size = 15 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+    <circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" />
+  </svg>
+)
+
 const CertifiedBadge = ({ size = 14, label }: { size?: number; label: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label={label} style={{ flexShrink: 0, display: 'block' }}>
     <circle cx="12" cy="12" r="10" fill="#3B82F6"/>
@@ -55,17 +66,26 @@ interface NavProps {
   onTabChange?: (tab: DashTab) => void
   balance?: number
   balanceLoading?: boolean
-  ecaillesEnabled?: boolean
   onNavigateToForge?: () => void
 }
 
-/* Sections de la vitrine visées par les liens centrés + le scroll-spy. Les id sont
-   structurels (ils doivent matcher les `id` des <section>) — seuls les libellés sont
-   traduits, via `nav.links` dans src/locales/landing.ts, dans CE MÊME ORDRE. */
-const NAV_SECTION_IDS = ['accueil', 'features', 'communaute', 'tarifs', 'telecharger', 'faq'] as const
+/* Les ancres de la vitrine (`NAV_SECTION_IDS`) et la destination de la recherche
+   de joueur (`PLAYER_SEARCH_HREF`) vivent dans `src/lib/nav-links.ts` — module pur,
+   pour que `landing.test.ts` puisse vérifier l'appariement libellés ↔ ancres sans
+   importer ce composant (ni next/image, ni tout l'arbre du dashboard) dans un
+   runner sans jsdom. */
 
-export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, ecaillesEnabled, onNavigateToForge }: NavProps) {
+export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, onNavigateToForge }: NavProps) {
   const { theme } = useTheme()
+  // Flag de LANCEMENT `ecailles_enabled` (off_behavior 'hidden') : sans lui, ni chip
+  // de solde ni entrée « Écailles » dans la navigation. L'admin voit toujours tout —
+  // c'est le mécanisme de recette avant lancement.
+  //
+  // Lu ici plutôt que reçu en prop depuis SiteHeader : la source de vérité est
+  // FeatureFlagsProvider. Le faire transiter par la session avait deux défauts —
+  // une lecture one-shot (une bascule admin n'atteignait un onglet ouvert qu'au
+  // rechargement) et, surtout, aucun flag du tout pour un visiteur anonyme.
+  const ecaillesEnabled = useFlag('ecailles_enabled')
   const c = theme === 'mythic'
   // Deux dicos, un seul état de langue (provider unique du layout racine) :
   // `t` pour la vitrine (mode visiteur), `d.nav` pour la zone connectée.
@@ -85,7 +105,10 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   const router = useRouter()
   const pathname = usePathname()
 
-  // Liens centrés de la vitrine. Scroll-spy actif uniquement là où les sections existent.
+  // Liens centrés de la vitrine : QUE des ancres de la home, donc tous scrollent.
+  // Les libellés sont appariés PAR POSITION sur `NAV_SECTION_IDS` (ordre garanti
+  // par landing.test.ts). La recherche de joueur n'est plus ici — voir le bloc
+  // `.nav-desktop` et l'entrée dédiée du drawer.
   const navLinks = NAV_SECTION_IDS.map((id, i) => ({ id, label: t.nav.links[i] }))
   const spyEnabled = mode === 'visitor' && pathname === '/'
 
@@ -94,6 +117,13 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
     setDrawerOpen(false)
     if (pathname === '/') document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
     else router.push(`/#${id}`)
+  }
+
+  // Recherche de joueur : même comportement depuis le header et depuis le drawer
+  // (fermer le drawer est sans effet quand il n'est pas ouvert).
+  const goToPlayerSearch = () => {
+    setDrawerOpen(false)
+    router.push(PLAYER_SEARCH_HREF)
   }
 
   useEffect(() => {
@@ -208,9 +238,31 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
         )}
 
         {/* ── DESKTOP right side ── */}
-        <div className="nav-desktop" style={{ gap: 20, alignItems: 'center', fontSize: 14 }}>
+        {/* gap 14 et non 20 : ce bloc porte désormais QUATRE éléments (recherche,
+            langue, connexion, téléchargement). Chaque pixel de largeur gagné ici
+            en vaut deux sur le seuil de bascule, la barre centrée étant centrée
+            sur le viewport — voir le calcul au-dessus des media queries du nav. */}
+        <div className="nav-desktop" style={{ gap: 14, alignItems: 'center', fontSize: 14 }}>
           {mode === 'visitor' ? (
             <>
+              {/* Recherche de joueur — PERMANENTE, et volontairement ICI plutôt qu'au
+                  centre. Au milieu des six ancres elle avait leur apparence exacte
+                  tout en faisant autre chose (naviguer, pas scroller) ; dans ce
+                  bloc d'actions — langue, connexion, téléchargement — sa nature se
+                  lit sans ornement. La loupe reste utile : elle dit « recherche »
+                  là où le libellé seul dirait juste « joueurs ». */}
+              <button
+                className="nav-players-compact nav-login-link"
+                onClick={goToPlayerSearch}
+                style={{
+                  alignItems: 'center', gap: 6, padding: 0,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 14, color: '#fff', whiteSpace: 'nowrap',
+                }}
+              >
+                <SearchIcon />
+                {t.nav.players}
+              </button>
               {/* Bascule FR / EN — pendant visiteur du switch du dropdown profil */}
               <LanguageSwitch />
               <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>{t.nav.login}</a>
@@ -454,13 +506,20 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
             {/* ── VISITOR NAVIGATION ── */}
             {mode === 'visitor' && (
               <div style={{ flex: 1, padding: '12px 0' }}>
-                {/* « Télécharger » (index 4) est déjà servi par le bouton du bas du drawer */}
+                {/* « Télécharger » est déjà servi par le bouton du bas du drawer.
+                    Filtré par `id`, jamais par index. */}
                 {navLinks
                   .filter(l => l.id !== 'telecharger')
                   .map(l => (
                     <DrawerLink key={l.id} label={l.label} onClick={() => goToSection(l.id)} c={c} />
                   ))}
                 <div style={{ height: 1, background: c ? 'rgba(186,117,23,0.15)' : '#27272A', margin: '8px 16px' }} />
+                {/* Recherche de joueur — entrée EXPLICITE. Elle était tirée de la
+                    liste des liens centrés tant qu'elle y figurait ; celle-ci ne
+                    contient plus que des ancres, le drawer doit donc la porter en
+                    propre. Séparée des ancres par le filet : comme dans le header,
+                    elle navigue au lieu de scroller. */}
+                <DrawerLink label={t.nav.players} onClick={goToPlayerSearch} c={c} />
                 <DrawerLink label={t.nav.login} onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
               </div>
             )}

@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import type { UserProfile } from '@/app/page'
+import type { UserProfile } from '@/lib/session-types'
 import {
   analyzePostGame, getPostGameQuota, canAffordPostGame, costOfCombo, hasLaneOpponent,
   postGameErrorText, comboLabel,

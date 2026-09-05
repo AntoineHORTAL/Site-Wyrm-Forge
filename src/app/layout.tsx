@@ -3,6 +3,9 @@ import Script from 'next/script'
 import './globals.css'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { LanguageProvider } from '@/components/providers/LanguageProvider'
+import { SessionProvider } from '@/components/providers/SessionProvider'
+import { DashboardNavProvider } from '@/components/providers/DashboardNavProvider'
+import SiteHeader from '@/components/nav/SiteHeader'
 import TestDbBanner from '@/components/dev/TestDbBanner'
 
 export const metadata: Metadata = {
@@ -64,7 +67,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             et deux providers = deux états = un switch qui ne se propage pas. */}
         <LanguageProvider>
           <ThemeProvider>
-            {children}
+            {/* Session unique pour tout le site (utilisateur, profil, solde d'Écailles).
+                Elle vivait dans l'état de `page.tsx`, seul endroit où `Nav` était monté.
+                Ici, elle est chargée UNE fois et lue partout — le header en a besoin sur
+                /matches, /champions, /patch-notes… autant que sur `/`, sans redemander
+                la session à chaque page. Le provider rend aussi la modale de connexion,
+                puisque `openAuth()` doit être appelable depuis le header. */}
+            <SessionProvider>
+              {/* Onglet actif du dashboard : `page.tsx` le rend, le header le pilote. */}
+              <DashboardNavProvider>
+                {/* Le header précède `children` dans le flux : c'est ce qui permet au
+                    Hero de remonter dessous (`marginTop: -64`) sans se le voir masquer. */}
+                <SiteHeader />
+                {children}
+              </DashboardNavProvider>
+            </SessionProvider>
           </ThemeProvider>
         </LanguageProvider>
       </body>

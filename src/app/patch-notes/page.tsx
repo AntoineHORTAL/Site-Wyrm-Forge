@@ -42,7 +42,8 @@ export default async function PatchNotesPage() {
 
   return (
     <main style={{
-      minHeight: '100vh',
+      // 100vh − hauteur du header du layout racine (cf. `--nav-h`, globals.css)
+      minHeight: 'calc(100vh - var(--nav-h))',
       background: '#130f1a',
       backgroundImage:
         'radial-gradient(900px 420px at 50% -120px, rgba(125,108,240,.2), transparent 70%), ' +

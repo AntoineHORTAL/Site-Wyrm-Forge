@@ -9,6 +9,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Hauteur du header (`.wf-nav`), mesurée : padding 12+12 + logo 38 + bordure.
+   Le header vit dans le LAYOUT RACINE depuis la sortie de `Nav` hors de page.tsx :
+   il occupe donc de la place dans le flux de TOUTES les routes. Une page
+   dimensionnée en `min-height: 100vh` dépasse alors le viewport de cette hauteur
+   et déclenche un scroll fantôme sur les pages courtes. Les pages concernées
+   soustraient cette variable — une seule valeur à corriger si le header change. */
+:root { --nav-h: 63px; }
+
 body {
   font-family: var(--font-sans);
   line-height: 1.6;
@@ -299,15 +307,46 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 }
 
 /* ─── NAV RESPONSIVE ─── */
-.nav-desktop { display: flex; }
+/* `margin-left: auto` et pas seulement le `space-between` du conteneur : entre 769
+   et 1199px, TROIS enfants sont dans le flux (logo, bloc droit, hamburger) et
+   `space-between` planterait le bloc droit au milieu de la barre, séparé du
+   hamburger. La marge auto le colle au hamburger, à droite, dans les trois régimes. */
+.nav-desktop { display: flex; margin-left: auto; }
 .nav-hamburger-btn { display: none; }
+/* Recherche de joueur dans le bloc de droite. Affichée à TOUTES les largeurs où
+   ce bloc l'est (donc au-dessus de 768px) : elle a quitté la barre centrée pour
+   rejoindre les actions, ce n'est plus un repli conditionnel.
+   `inline-flex` et non `flex` : le bouton porte une icône ET un libellé sur une
+   seule ligne, et reste aligné sur ses voisins du bloc. */
+.nav-players-compact { display: inline-flex; }
 @keyframes drawerIn {
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
-@media (max-width: 768px) {
-  .nav-desktop     { display: none !important; }
+
+/* ⚠️ DEUX seuils, pas un seul — et les chiffres viennent d'une mesure réelle
+   (Chrome, page servie, libellés FR qui sont les plus longs), pas d'une estimation :
+   logo 170px · liens centrés 493px · bloc droit 298px · padding 2×32px.
+
+   `.nav-center` est en `position: absolute` centré sur le VIEWPORT : il ne pousse
+   rien, il RECOUVRE. Le bloc de droite commence à `100vw − 32 − 298`, le centre
+   finit à `50vw + 246` → il faut ~1200px pour garder 24px de respiration entre les
+   deux. En dessous, la barre centrée chevauchait « Connexion » et le bouton or —
+   ce qui était DÉJÀ le cas avant l'ajout du lien « Joueurs » (seuil mesuré à
+   ~1110px à six liens, ~1180px à sept).
+
+   Sous ce seuil, la barre centrée passe dans le drawer et le hamburger apparaît.
+   La recherche de joueur, elle, ne bouge pas : elle vit dans le bloc de droite,
+   qui reste affiché jusqu'à 768px. */
+@media (max-width: 1279px) {
+  .nav-center        { display: none !important; }
   .nav-hamburger-btn { display: flex !important; }
+}
+
+/* Sous 769px, le bloc de droite entier (langue, connexion, téléchargement) passe
+   lui aussi dans le drawer — le lien compact part avec lui, le drawer le porte. */
+@media (max-width: 768px) {
+  .nav-desktop { display: none !important; }
 }
 
 /* ─── NAV : fond transparent en haut → --nav-bg + blur au scroll ─── */
@@ -315,6 +354,7 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   padding: 12px 32px;
   position: sticky;
   top: 0;
@@ -345,7 +385,9 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 .nav-center-links {
   display: flex;
   align-items: center;
-  gap: 20px;
+  /* 16 et non 20 : 4px × 6 intervalles = 24px gagnés sur la largeur du bloc, soit
+     ~25px de seuil de bascule en moins. Voir le calcul au-dessus des media queries. */
+  gap: 16px;
 }
 .nav-center-link {
   background: none;
@@ -355,6 +397,9 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   font-family: inherit;
   font-size: 14px;
   color: var(--text-muted);
+  /* Un libellé qui passerait sur deux lignes doublerait la hauteur du header et
+     fausserait le placement du point de scroll-spy. */
+  white-space: nowrap;
   transition: color 0.15s ease;
 }
 .nav-center-link:hover,
@@ -381,9 +426,8 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   box-shadow: 0 0 6px rgba(255,255,255,0.6);
   transition: transform 0.25s ease, opacity 0.2s ease;
 }
-@media (max-width: 768px) {
-  .nav-center { display: none; }
-}
+/* Le masquage de `.nav-center` vit désormais au seuil 1199px (voir § NAV RESPONSIVE) :
+   sous 768px il est déjà masqué depuis longtemps. */
 @media (prefers-reduced-motion: reduce) {
   .wf-nav { transition: none; }
   .nav-spy-dot { transition: opacity 0.2s ease; }
