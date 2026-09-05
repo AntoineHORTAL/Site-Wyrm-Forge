@@ -9,6 +9,7 @@ import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { cacheGet, cacheSet } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 const FN = 'patch-notes'
 
@@ -30,6 +31,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Kill switch `patch_notes_enabled` — avant même le rate limit, qui écrit
+    // un compteur : rien ne doit être consommé pour une feature coupée.
+    // isFeatureEnabled est fail-closed : une erreur DB retourne false.
+    const enabled = await isFeatureEnabled('patch_notes_enabled')
+    if (!enabled) {
+      return jsonResponse({ error: 'Les patch notes sont actuellement désactivées.' }, 403)
+    }
+
     // Rate limiting pour éviter l'abus même sur une route publique
     if (await isRateLimited(req, FN)) {
       return jsonResponse({ error: 'Trop de requêtes. Réessaie dans une minute.' }, 429)

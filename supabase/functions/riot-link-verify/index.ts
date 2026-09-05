@@ -11,6 +11,7 @@ import { handleCors, jsonResponse }      from '../_shared/cors.ts'
 import { getUser, requireSecret }        from '../_shared/auth.ts'
 import { isRateLimited }                 from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota } from '../_shared/circuit-breaker.ts'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 // Plateformes LoL valides — re-validation défensive du `platform` lu depuis le
 // pending JSONB avant toute construction d'URL Riot (anti-SSRF résiduel, même si
@@ -27,6 +28,19 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // ── Kill switch `riot_link_enabled` ───────────────────────────────────────
+    // Même flag que riot-link-init, vérifié avant l'auth pour la même raison.
+    //
+    // ⚠️ Couper en cours de parcours laisse une liaison ENTAMÉE (défi posé,
+    // icône à changer) sans étape de vérification. C'est voulu : le challenge
+    // expire de lui-même, et aucune donnée n'est écrite tant que `verify` n'a pas
+    // réussi. Rien à nettoyer, donc, et la liaison se reprend au retour.
+    // isFeatureEnabled est fail-closed : une erreur DB retourne false.
+    const enabled = await isFeatureEnabled('riot_link_enabled')
+    if (!enabled) {
+      return jsonResponse({ error: 'La liaison de compte Riot est actuellement désactivée.' }, 403)
+    }
+
     // ── Auth ──────────────────────────────────────────────────────────────────
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Authentification requise.' }, 401)

@@ -41,6 +41,7 @@ import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { getUser, requireSecret }   from '../_shared/auth.ts'
 import {
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
   buildPostGamePrompt, comboKey, DEPTHS, MODES, MAX_TOKENS,
   type PostGameDepth, type PostGameMode, type PlayerFacts, type MatchFacts,
 } from '../_shared/postgame-prompt.ts'
@@ -425,6 +426,20 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // ── Kill switch `postgame_ai_enabled` ─────────────────────────────────
+    //
+    // ⚠️ Ne coupe que le POST, pour la même raison qu'à `matchup-analyze` et
+    // bien que ce flag soit 'notice' et non 'degraded' : le GET lit le solde de
+    // « Chaleur de la Forge », qui est le MÊME pot que celui du match-up
+    // (`consume_ai_credits` / `usage_counters`). Couper la lecture du solde
+    // depuis ici casserait l'affichage des braises d'une feature qui, elle,
+    // n'est pas coupée. Le GET ne fait aucun appel Claude et n'écrit rien.
+    //
+    // isFeatureEnabled est fail-closed : une erreur DB retourne false.
+    if (req.method === 'POST' && !await isFeatureEnabled('postgame_ai_enabled')) {
+      return jsonResponse({ error: 'L\'analyse IA d\'après-partie est actuellement désactivée.' }, 403)
+    }
+
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Authentification requise.' }, 401)
 

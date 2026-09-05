@@ -43,6 +43,7 @@
 import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { getUser, requireSecret }   from '../_shared/auth.ts'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 // Pot de crédits « Chaleur de la Forge » : UNE seule clé de compteur, partagée
 // par toutes les features IA (MatchUp, PostGame, …). Pot fongible, premier
@@ -214,6 +215,21 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // ── Kill switch `matchup_ai_enabled` — SEUL cas 'degraded' du catalogue ──
+    //
+    // ⚠️ Ne coupe QUE le POST, c'est-à-dire l'analyse IA elle-même. Le GET est
+    // une lecture pure du solde de « Chaleur de la Forge », sans appel Claude et
+    // sans écriture — et ce solde est PARTAGÉ avec postgame-analyze. Couper le
+    // GET aveuglerait l'utilisateur sur des braises qu'il peut toujours dépenser
+    // en Post Game : une coupure de l'analyse de match-up abîmerait une autre
+    // feature, ce qui est exactement ce que 'degraded' existe pour éviter.
+    //
+    // Placé avant l'auth et avant la lecture du profil : à ce stade rien n'a
+    // encore coûté. isFeatureEnabled est fail-closed.
+    if (req.method === 'POST' && !await isFeatureEnabled('matchup_ai_enabled')) {
+      return jsonResponse({ error: 'L\'analyse IA de match-up est actuellement désactivée.' }, 403)
+    }
+
     // ── Auth (JWT obligatoire) ────────────────────────────────────────────
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Authentification requise.' }, 401)

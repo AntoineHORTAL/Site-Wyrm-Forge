@@ -11,6 +11,7 @@ import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative }
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 const FN = 'riot-match-detail'
 
@@ -53,6 +54,15 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // Kill switch `riot_history_enabled` — même flag que riot-matches et
+    // riot-rank : les trois forment une seule feature côté catalogue. Vérifié
+    // avant tout parsing, tout cache et tout appel Riot.
+    // isFeatureEnabled est fail-closed : une erreur DB retourne false.
+    const enabled = await isFeatureEnabled('riot_history_enabled')
+    if (!enabled) {
+      return jsonResponse({ error: 'L\'historique de parties est actuellement désactivé.' }, 403)
+    }
+
     const url        = new URL(req.url)
     const matchIdRaw = url.searchParams.get('matchId')
     const platform   = url.searchParams.get('platform') ?? 'euw1'

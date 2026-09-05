@@ -14,6 +14,7 @@ import { checkIpRateLimit, riotCacheBackend } from '../_shared/ip-rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
 import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
 import { harvestRankStats } from '../_shared/harvest-rank-stats.ts'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 const FN = 'riot-matches'
 
@@ -93,6 +94,17 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // Kill switch `riot_history_enabled` — vérifié EN PREMIER, avant même de
+    // parser les paramètres, même motif que shop-purchase et riot-live-game :
+    // économiser tout travail quand la fonctionnalité est coupée. Il garde les
+    // TROIS fonctions d'historique (riot-matches, riot-match-detail, riot-rank),
+    // qui sont une seule feature du point de vue du catalogue.
+    // isFeatureEnabled est fail-closed : une erreur DB retourne false.
+    const enabled = await isFeatureEnabled('riot_history_enabled')
+    if (!enabled) {
+      return jsonResponse({ error: 'L\'historique de parties est actuellement désactivé.' }, 403)
+    }
+
     const url        = new URL(req.url)
     const puuidParam  = url.searchParams.get('puuid')
     const gameNameRaw = url.searchParams.get('gameName')

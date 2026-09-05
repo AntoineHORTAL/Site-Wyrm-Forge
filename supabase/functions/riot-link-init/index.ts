@@ -12,6 +12,7 @@ import { handleCors, jsonResponse }      from '../_shared/cors.ts'
 import { getUser, requireSecret }        from '../_shared/auth.ts'
 import { isRateLimited }                 from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota } from '../_shared/circuit-breaker.ts'
+import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 // Icônes de profil par défaut (IDs 0–28) — universellement possédées par tous les
 // comptes. On pioche dans cet ensemble pour s'assurer que l'utilisateur peut
@@ -44,6 +45,16 @@ Deno.serve(async (req) => {
   if (cors) return cors
 
   try {
+    // ── Kill switch `riot_link_enabled` ───────────────────────────────────────
+    // Vérifié AVANT l'auth, comme shop-purchase et quest-claim : quand la
+    // liaison est coupée, valider le JWT est un aller-retour pour rien.
+    // Garde les DEUX étapes du parcours (init et verify) — c'est une seule
+    // feature côté catalogue. isFeatureEnabled est fail-closed.
+    const enabled = await isFeatureEnabled('riot_link_enabled')
+    if (!enabled) {
+      return jsonResponse({ error: 'La liaison de compte Riot est actuellement désactivée.' }, 403)
+    }
+
     // ── Auth ──────────────────────────────────────────────────────────────────
     const user = await getUser(req)
     if (!user) return jsonResponse({ error: 'Authentification requise.' }, 401)
