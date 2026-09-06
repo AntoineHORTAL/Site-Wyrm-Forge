@@ -121,6 +121,14 @@ const INVARIANTS = new Set<string>([
   // Lot 8 — noms de files que Riot n'a jamais traduits en français : ce sont les
   // libellés officiels tels quels dans les deux clients du jeu.
   'ARAM', 'Clash', 'URF', 'Arena', 'URF (pick)',
+  // Sous-onglets du panneau admin. « Patch notes » avec cette casse-ci est le libellé
+  // de la pastille (« Patch Notes » plus haut est celui de l'onglet du dashboard) ;
+  // « Feature flags » est l'anglicisme consacré, employé tel quel en français dans
+  // tout le projet — jusque dans le nom de la migration `feature_flags_catalog` et
+  // dans AGENTS.md. Le traduire ferait diverger l'interface du vocabulaire du schéma,
+  // exactement comme pour « Kill switches » ci-dessus. Seul « Utilisateurs » / « Users »
+  // se traduit réellement, et il n'est donc pas listé ici.
+  'Patch notes', 'Feature flags',
 ])
 
 interface Anomalies {

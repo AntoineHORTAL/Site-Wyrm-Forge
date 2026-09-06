@@ -13,9 +13,18 @@ import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import { TIER_ORDER, isPaidTier } from '@/lib/subscription'
 import SettingToggle from '@/components/dashboard/SettingToggle'
 import KillSwitchModal from '@/components/dashboard/KillSwitchModal'
+import LaunchModal from '@/components/dashboard/LaunchModal'
+import SubViewTabs from '@/components/dashboard/SubViewTabs'
+import CutBanner from '@/components/dashboard/CutBanner'
+import {
+  ADMIN_SUBTAB_IDS, DEFAULT_ADMIN_SUBTAB, CUT_BANNER_TARGET,
+  adminPanelLayout, subTabFromSearch, type AdminSubTab,
+} from '@/lib/admin-subtabs'
 import {
   partitionCatalogue, cutKillSwitches, canSubmitCut, isChildLocked,
   offBehaviorKey, relativeTime, flagLabel, flagDescription, isOn,
+  groupKillBySurface, SURFACE_ORDER, DEFAULT_KILL_SURFACE, isPendingLaunch,
+  launchPatch, applyLaunch, type SurfaceKey,
   type FlagCatalogueRow,
 } from '@/lib/admin-flags'
 import {
@@ -201,6 +210,21 @@ export default function AdminTab() {
   // `confirmCertifyId` : un seul élément confirmable à la fois, l'état porte sa clé.
   const [confirmCutKey, setConfirmCutKey] = useState<string | null>(null)
   const [cutReason, setCutReason]         = useState('')
+  /** Lancement en attente de confirmation. Même patron que `confirmCutKey`. */
+  const [confirmLaunchKey, setConfirmLaunchKey] = useState<string | null>(null)
+
+  // Sous-onglet actif. Le panneau empilait trois blocs sans rapport ; ils sont
+  // désormais commutés ici. ⚠️ Les quatre loaders restent au montage (voir le
+  // `useEffect` plus bas) — un sous-onglet ne commute que du JSX, il ne possède
+  // jamais son chargement, sinon le bandeau de coupures serait vide partout
+  // ailleurs que sur « flags ».
+  const [subTab, setSubTab] = useState<AdminSubTab>(DEFAULT_ADMIN_SUBTAB)
+
+  // Surface active DANS la section des kill switches. État local, non
+  // deep-linkable : c'est un filtre de lecture à l'intérieur d'une section, pas
+  // une destination qu'on partage — le lien d'incident vise `?subtab=flags`, et
+  // le bandeau global y nomme déjà les coupures, toutes surfaces confondues.
+  const [killSurface, setKillSurface] = useState<SurfaceKey>(DEFAULT_KILL_SURFACE)
 
   const border = c ? 'rgba(186,117,23,0.2)' : '#27272A'
   const bg     = c ? 'rgba(42,21,71,0.4)'   : '#18181B'
@@ -296,12 +320,40 @@ export default function AdminTab() {
   }
 
   /**
+   * Lancement d'une feature — `value` ET `kind` dans le MÊME UPDATE.
+   *
+   * ⚠️ Une seule écriture, jamais deux. Deux requêtes successives laisseraient,
+   * entre les deux, un flag soit ouvert au public tout en étant encore catalogué
+   * « lancement » (donc absent de la section qui permet de le couper), soit
+   * catalogué en kill switch alors qu'il est encore fermé. Le patch vient de
+   * `launchPatch()`, testé à part.
+   *
+   * Le trigger `trg_app_settings_actor` s'enclenche normalement : sa clause
+   * `WHEN (NEW.value IS DISTINCT FROM OLD.value)` ne regarde que `value`, et
+   * `value` change bien ici — rien dans le trigger ne suppose que c'est la
+   * SEULE colonne modifiée.
+   */
+  async function launchFlag(key: string) {
+    setCatalogue(prev => prev.map(r => (r.key === key ? applyLaunch(r) : r)))
+    setSettingsSaving(key)
+
+    await supabase.from('app_settings').update(launchPatch()).eq('key', key)
+
+    setSettingsSaving(null)
+    setConfirmLaunchKey(null)
+    // Relecture : le flag doit ressortir en kill switch, dans son groupe de
+    // surface, avec l'`updated_by` posé par le trigger.
+    await loadCatalogue()
+  }
+
+  /**
    * Point d'entrée unique des interrupteurs du catalogue.
    *
    * Réactivation → directe, sans friction : rien ne doit ralentir un retour à la
    * normale. Coupure d'un kill switch → passe par la confirmation + motif.
-   * Coupure d'un flag de LANCEMENT → directe aussi : refermer une feature pas
-   * encore ouverte n'est pas un incident.
+   *
+   * ⚠️ Un flag de LANCEMENT ne passe plus par ici : sa carte porte un bouton
+   * « Lancer », pas un interrupteur, et il est routé vers `onLaunchRequest`.
    */
   function onCatalogueToggle(key: string) {
     const row = catalogue.find(r => r.key === key)
@@ -313,6 +365,11 @@ export default function AdminTab() {
       return
     }
     void toggleFlag(key, !isOn(row), null)
+  }
+
+  /** Le bouton « Lancer » n'écrit rien : il ouvre la confirmation. */
+  function onLaunchRequest(key: string) {
+    setConfirmLaunchKey(key)
   }
 
   /** Confirmation d'une coupure. Le motif vide est refusé ICI AUSSI, pas seulement dans le `disabled`. */
@@ -410,6 +467,18 @@ export default function AdminTab() {
 
   useEffect(() => { setMounted(true) }, [])
 
+  // Deep-link `?tab=admin&subtab=…`, lu UNE FOIS au montage — même parti pris
+  // que `?tab=` dans `app/page.tsx` : l'URL n'est jamais réécrite au clic, pour
+  // rester cohérent avec le reste du dashboard qui ne le fait pas non plus.
+  // Une valeur inconnue retombe sur le défaut (garde dans `subTabFromSearch`).
+  //
+  // ⚠️ `AdminTab` est démonté à chaque changement d'onglet principal
+  // (`Dashboard.tsx` : `{activeTab === 'admin' && <AdminTab />}`), donc revenir
+  // sur l'admin relit le paramètre et réapplique le sous-onglet. C'est voulu :
+  // tant que l'URL porte `subtab=flags`, l'honorer reste cohérent avec ce
+  // qu'elle annonce — c'est l'ignorer qui surprendrait.
+  useEffect(() => { setSubTab(subTabFromSearch(window.location.search)) }, [])
+
   useEffect(() => {
     if (!previewFullscreen) return
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setPreviewFullscreen(null) }
@@ -427,6 +496,46 @@ export default function AdminTab() {
   const { launch, kill, overlayMaster, overlayChildren } = partitionCatalogue(catalogue)
   const cuts = cutKillSwitches(catalogue)
   const overlayLocked = isChildLocked(overlayMaster)
+
+  // Ce que le panneau montre. Fonction PURE (`lib/admin-subtabs.ts`) : c'est
+  // elle qui porte l'invariant « le bandeau ne dépend jamais du sous-onglet ».
+  const layout = adminPanelLayout(subTab, cuts.length)
+
+  /** Pastilles de sous-onglets. Le compteur rouge ne vit que sur « flags ». */
+  const subTabViews = ADMIN_SUBTAB_IDS.map(id => ({
+    id,
+    label: A.subtabs[id],
+    badge: id === 'flags' ? cuts.length : null,
+  }))
+
+  /** Kill switches répartis en trois groupes disjoints (Site / App / Site + App). */
+  const killBySurface = groupKillBySurface(kill)
+
+  /**
+   * Coupures EN COURS par surface — alimente le compteur de chaque pastille.
+   *
+   * Les sous-onglets masquent les deux tiers de la liste : sans ce compteur, une
+   * coupure sur une surface inactive ne se verrait plus dans la section. Le
+   * bandeau global la nomme toujours, mais il ne dit pas SOUS QUELLE pastille
+   * aller la chercher. Calculé sur `cuts`, donc overlay compris.
+   */
+  const cutsBySurface = groupKillBySurface(cuts)
+
+  /** Pastilles de surface, avec leur compteur de coupures. */
+  const surfaceViews = SURFACE_ORDER.map(s => ({
+    id: s,
+    label: F.surface[s],
+    badge: cutsBySurface[s].length,
+  }))
+
+  /** L'overlay est `surface='app'` : sa sous-section vit sous la pastille App. */
+  const showOverlay = killSurface === 'app' && overlayMaster !== null
+  const surfaceRows = killBySurface[killSurface]
+
+  /** Flag visé par la confirmation de lancement, ou `null`. */
+  const launchTarget = confirmLaunchKey
+    ? (catalogue.find(r => r.key === confirmLaunchKey) ?? null)
+    : null
 
   /** Flag visé par la modale de confirmation, ou `null` si elle est fermée. */
   const cutTarget = confirmCutKey
@@ -476,8 +585,14 @@ export default function AdminTab() {
         {/* Ce que verra l'utilisateur — affiché en PERMANENCE, pas seulement
             pendant la confirmation : l'admin doit pouvoir lire l'impact en
             parcourant la liste, avant même de viser un interrupteur. */}
-        <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 5 }}>
-          <span style={{ opacity: 0.75 }}>{F.impactLabel}</span>{' '}
+        {/* ⚠️ Mêmes couleurs que l'encart d'impact de `KillSwitchModal` — c'est
+            littéralement le même texte, il doit se lire pareil sur la carte et
+            dans la confirmation. `var(--text-dim)` + `opacity: .75` tombait à
+            2,62:1 en thème `classic` : le pire contraste du panneau, et sur la
+            ligne qui dit ce qu'une coupure va casser. Libellé en rouge clair
+            (7,43:1), valeur en gris neutre (7,13:1), dans les deux thèmes. */}
+        <div style={{ fontSize: 10, color: '#A5A3AE', marginTop: 5 }}>
+          <span style={{ color: '#E8908D' }}>{F.impactLabel}</span>{' '}
           {F.impact[offBehaviorKey(row)]}
         </div>
 
@@ -594,6 +709,38 @@ export default function AdminTab() {
         </div>
       </div>
 
+      {/* ── Bandeau de coupures ─────────────────────────────────────────
+          AU-DESSUS des sous-onglets, et rendu par le panneau lui-même : c'est
+          ce qui le rend visible quel que soit le sous-onglet actif. Le déplacer
+          à l'intérieur d'une section reviendrait à parier qu'un admin pressé
+          pense à cliquer dessus — le pari exact que ce bandeau existe pour ne
+          pas avoir à faire. Cliquable : il saute sur la section des flags. */}
+      {layout.showBanner && (
+        <CutBanner
+          cuts={cuts}
+          lang={lang}
+          labels={{ bannerOne: F.bannerOne, bannerOther: F.bannerOther, bannerJump: F.bannerJump }}
+          onJump={() => setSubTab(CUT_BANNER_TARGET)}
+        />
+      )}
+
+      {/* ── Sous-onglets ────────────────────────────────────────────────
+          Même barre de pastilles que l'onglet Écailles (`SubViewTabs`) : un
+          admin qui connaît la Forge reconnaît le geste, et l'app n'acquiert pas
+          un troisième vocabulaire de navigation. */}
+      <SubViewTabs
+        views={subTabViews}
+        active={subTab}
+        onSelect={setSubTab}
+        accent={c ? '#EF9F27' : '#7F77DD'}
+        activeBg={c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.15)'}
+        border={border}
+        ariaLabel={A.subtabs.ariaLabel}
+      />
+
+      {/* ══ Sous-onglet « Utilisateurs » ══════════════════════════════ */}
+      {layout.showUsers && (
+      <>
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
         {[
@@ -930,6 +1077,12 @@ export default function AdminTab() {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {/* ══ Sous-onglet « Patch notes » ═══════════════════════════════ */}
+      {layout.showPatchNotes && (
+      <>
       {/* ── Section Patch Notes ─────────────────────────────────────── */}
       <div style={{ marginTop: 8 }}>
         <div style={{
@@ -1272,28 +1425,20 @@ export default function AdminTab() {
         )}
       </div>
 
+      </>
+      )}
+
+      {/* ══ Sous-onglet « Feature flags » ═════════════════════════════ */}
+      {layout.showFlags && (
+      <>
       {/* ── Feature flags — piloté par le CATALOGUE `app_settings` ──────
           Il y avait ici la section « Économie Écailles » : trois interrupteurs
           écrits en dur, avec leurs libellés dans le dico. Tout vient désormais de
-          la base — ajouter un flag est un INSERT, sans toucher à ce fichier. */}
+          la base — ajouter un flag est un INSERT, sans toucher à ce fichier.
 
-      {/* Bandeau permanent : la seule chose qui empêche d'oublier une coupure.
-          Placé AVANT les sections, et visible tant qu'un kill switch est OFF. */}
-      {cuts.length > 0 && (
-        <div style={{
-          marginTop: 8, marginBottom: 20, padding: '12px 16px', borderRadius: 8,
-          background: 'rgba(226,75,74,0.1)', border: '1px solid rgba(226,75,74,0.45)',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#E24B4A', marginBottom: 4 }}>
-            {cuts.length === 1
-              ? F.bannerOne
-              : F.bannerOther.replace('{count}', String(cuts.length))}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {cuts.map(r => flagLabel(r, lang)).join(' · ')}
-          </div>
-        </div>
-      )}
+          ⚠️ Le bandeau de coupures NE VIT PLUS ICI — il est remonté au-dessus des
+          sous-onglets, hors de cette section. Ne pas le réintroduire dans ce
+          bloc : il redeviendrait invisible depuis les deux autres sections. */}
 
       {catalogueLoading && (
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
@@ -1320,6 +1465,9 @@ export default function AdminTab() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {launch.map(row => (
+              // Bouton « Lancer », plus un interrupteur : lancer est un geste à
+              // SENS UNIQUE (le flag devient un kill switch). Un interrupteur
+              // laisserait croire qu'on peut le rebasculer pour « délancer ».
               <SettingToggle
                 key={row.key}
                 label={flagLabel(row, lang)}
@@ -1328,11 +1476,12 @@ export default function AdminTab() {
                 value={isOn(row)}
                 saving={settingsSaving === row.key}
                 loading={catalogueLoading}
-                onToggle={onCatalogueToggle}
+                onToggle={onLaunchRequest}
                 border={border}
                 bg={bg}
                 variant="launch"
                 stateLabel={isOn(row) ? F.stateLive : F.stateNotLaunched}
+                actionLabel={isPendingLaunch(row) ? F.launchAction : undefined}
                 indented={row.parent_key !== null}
               />
             ))}
@@ -1349,21 +1498,50 @@ export default function AdminTab() {
           }}>{F.killTitle}</div>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12 }}>{F.killHint}</div>
 
+          {/* ── Sous-navigation par surface ───────────────────────────────
+              Trois pastilles DISJOINTES. `shared` a la sienne plutôt que d'être
+              dupliqué dans « Site » ET « App » : un flag rendu deux fois
+              donnerait deux interrupteurs pour une seule ligne en base, et sa
+              coupure serait comptée dans les deux onglets. Même raisonnement
+              que pour les groupes qu'elles remplacent — la base modélise la
+              surface comme UNE valeur, l'écran la reflète telle quelle.
+
+              ⚠️ Le compteur rouge de chaque pastille n'est pas décoratif : la
+              liste ne montre plus qu'une surface à la fois, donc une coupure
+              ailleurs sortirait du champ de vision. Le bandeau global la nomme
+              toujours, mais lui seul ne dit pas SOUS QUELLE pastille aller la
+              chercher. */}
+          <SubViewTabs
+            views={surfaceViews}
+            active={killSurface}
+            onSelect={setKillSurface}
+            accent={c ? '#EF9F27' : '#7F77DD'}
+            activeBg={c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.15)'}
+            border={border}
+            ariaLabel={F.surfaceAriaLabel}
+          />
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {kill.map(row => renderKillCard(row))}
+            {surfaceRows.map(row => renderKillCard(row))}
           </div>
+
+          {surfaceRows.length === 0 && !showOverlay && (
+            <div style={{ color: '#A5A3AE', fontSize: 12, fontStyle: 'italic' }}>
+              {F.surfaceEmpty}
+            </div>
+          )}
 
           {/* Sous-section overlay : le maître, puis ses 18 enfants indentés.
               Quand le maître est coupé, les enfants sont grisés et non cliquables
               — même grammaire que le toggle maître de l'onglet Overlay dans l'app
               WPF, pour que l'admin et l'utilisateur final lisent la même chose. */}
-          {overlayMaster && (
+          {showOverlay && overlayMaster && (
             <div style={{ marginTop: 20 }}>
               <div style={{
                 fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase',
                 letterSpacing: 1, fontWeight: 600, marginBottom: 4,
               }}>{F.overlayTitle}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10 }}>{F.overlayHint}</div>
+              <div style={{ fontSize: 11, color: '#A5A3AE', marginBottom: 10 }}>{F.overlayHint}</div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {renderKillCard(overlayMaster)}
@@ -1373,6 +1551,12 @@ export default function AdminTab() {
           )}
         </div>
       )}
+      </>
+      )}
+
+      {/* ── Modales ─────────────────────────────────────────────────────
+          Rendues HORS des sous-onglets : ce sont des surcouches portalisées sur
+          `document.body`, elles n'appartiennent à aucune section. */}
 
       {/* ── Modale de confirmation d'une coupure ─────────────────────────
           Portalisée sur `document.body` sous la garde `mounted`, comme la
@@ -1399,6 +1583,27 @@ export default function AdminTab() {
             cutCancel:            F.cutCancel,
             impactLabel:          F.impactLabel,
             impactText:           F.impact[offBehaviorKey(cutTarget)],
+          }}
+        />,
+        document.body,
+      )}
+
+      {/* ── Modale de confirmation d'un lancement ────────────────────────
+          Même portalisation que la coupure. Le bouton « Lancer » de la carte
+          n'écrit RIEN : il pose `confirmLaunchKey`, l'écriture n'a lieu qu'ici. */}
+      {mounted && launchTarget && createPortal(
+        <LaunchModal
+          flagLabel={flagLabel(launchTarget, lang)}
+          saving={settingsSaving === launchTarget.key}
+          onConfirm={() => void launchFlag(launchTarget.key)}
+          onCancel={() => setConfirmLaunchKey(null)}
+          labels={{
+            launchTitle:        F.launchModalTitle,
+            launchImpactLabel:  F.launchImpactLabel,
+            launchImpactText:   F.launchImpactText,
+            launchIrreversible: F.launchIrreversible,
+            launchConfirm:      F.launchConfirm,
+            launchCancel:       F.launchCancel,
           }}
         />,
         document.body,

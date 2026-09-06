@@ -79,12 +79,20 @@ export default function KillSwitchModal({
 
         {/* Ce que ça va casser — rappelé ICI et pas seulement sur la carte :
             c'est le dernier moment où l'admin peut encore reculer. */}
+        {/* ⚠️ Couleurs en dur, et non `var(--text-muted)` / `opacity` : le fond de
+            `.pn-modal-inner` est `#130f1a` FIXE (aucune surcharge par thème), donc
+            un texte piloté par une variable de thème voyait son contraste changer
+            sans que le fond bouge. En thème `classic`, le libellé tombait à
+            4,42:1 — sous le seuil AA. Fixer les deux extrémités du couple le
+            verrouille dans les deux thèmes.
+            Libellé en teinte claire du rouge (7,39:1), valeur en quasi-blanc
+            (15,93:1) : la valeur reste ce qu'on lit en premier dans l'encart. */}
         <div style={{
-          fontSize: 12, color: 'var(--text-muted)', marginBottom: 18,
+          fontSize: 12, color: '#F5F2FA', marginBottom: 18,
           padding: '10px 12px', borderRadius: 6,
           background: 'rgba(226,75,74,0.08)', border: '1px solid rgba(226,75,74,0.25)',
         }}>
-          <span style={{ opacity: 0.75 }}>{labels.impactLabel}</span>{' '}
+          <span style={{ color: '#E8908D' }}>{labels.impactLabel}</span>{' '}
           <span style={{ color: '#F5F2FA' }}>{labels.impactText}</span>
         </div>
 
@@ -108,7 +116,11 @@ export default function KillSwitchModal({
             color: '#F5F2FA', fontFamily: 'inherit', marginBottom: 6,
           }}
         />
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 20 }}>
+        {/* Note de bas de modale. `var(--text-dim)` tombait à 3,91:1 en thème
+            `classic` — illisible sur ce fond. Gris neutre opaque à 7,61:1 : bien
+            au-dessus d'AA, et volontairement en retrait du quasi-blanc de
+            l'encart pour garder la hiérarchie titre > impact > note. */}
+        <div style={{ fontSize: 11, color: '#A5A3AE', fontStyle: 'italic', marginBottom: 20 }}>
           {labels.cutReasonHint}
         </div>
 

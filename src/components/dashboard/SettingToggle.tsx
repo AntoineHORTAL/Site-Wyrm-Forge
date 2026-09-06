@@ -44,13 +44,25 @@ interface SettingToggleProps {
   lockedHint?: string
   /** Indentation d'un enfant sous son maître. */
   indented?:   boolean
+  /**
+   * Remplace l'interrupteur par un BOUTON D'ACTION portant ce libellé.
+   *
+   * Utilisé par les flags de lancement, qui ne sont pas réversibles : lancer une
+   * feature la fait passer en kill switch, il n'existe pas de geste inverse. Un
+   * interrupteur promettrait le contraire — on peut le rebasculer, donc on croit
+   * pouvoir « délancer ». Le reste de la carte (chrome, pastille d'état,
+   * `children`) est strictement identique : c'est la même liste, seul le
+   * contrôle change.
+   */
+  actionLabel?: string
   /** Contenu additionnel sous la description (impact, auteur de la coupure, motif). */
   children?:   ReactNode
 }
 
 export default function SettingToggle({
   label, description, settingKey, value, saving, loading, onToggle, border, bg,
-  variant = 'setting', stateLabel, locked = false, lockedHint, indented = false, children,
+  variant = 'setting', stateLabel, locked = false, lockedHint, indented = false,
+  actionLabel, children,
 }: SettingToggleProps) {
   const accent = VARIANT_ACCENT[variant]
   const disabled = saving || loading || locked
@@ -83,14 +95,43 @@ export default function SettingToggle({
             }}>{stateLabel}</span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{description}</div>
+        {/* ⚠️ `#A5A3AE` en dur, et non `var(--text-dim)` : cette variable
+            descendait à 3,67:1 en thème `classic` (5,21:1 en `mythic`), donc
+            sous le seuil AA de 4,5:1 pour du texte de 10-11 px. Le gris neutre
+            opaque tient 7,13:1 dans les DEUX thèmes.
+            Neutre et non teinté par variante : cette description est partagée
+            par les trois usages (réglage, lancement, kill switch) — la colorer
+            introduirait une distinction qui n'existe pas aujourd'hui. C'est le
+            même gris que les notes de bas des deux modales. */}
+        <div style={{ fontSize: 11, color: '#A5A3AE' }}>{description}</div>
         {locked && lockedHint && (
-          <div style={{ fontSize: 10, color: 'var(--text-dim)', fontStyle: 'italic', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: '#A5A3AE', fontStyle: 'italic', marginTop: 4 }}>
             {lockedHint}
           </div>
         )}
         {children}
       </div>
+      {actionLabel ? (
+        // Bouton d'action : pas d'`aria-pressed`, qui décrirait un état
+        // basculable. Ce bouton DÉCLENCHE quelque chose, il ne reflète rien.
+        <button
+          type="button"
+          onClick={() => onToggle(settingKey)}
+          disabled={disabled}
+          aria-label={`${actionLabel} — ${label}`}
+          style={{
+            flexShrink: 0,
+            padding: '8px 18px', borderRadius: 6,
+            fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+            background: accent, border: 'none', color: '#1A1A1A',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: saving || loading ? 0.6 : 1,
+            transition: 'opacity 0.15s',
+          }}
+        >
+          {saving ? '…' : actionLabel}
+        </button>
+      ) : (
       <button
         onClick={() => onToggle(settingKey)}
         disabled={disabled}
@@ -116,6 +157,7 @@ export default function SettingToggle({
           {saving ? '…' : (value ? '✓' : '')}
         </span>
       </button>
+      )}
     </div>
   )
 }

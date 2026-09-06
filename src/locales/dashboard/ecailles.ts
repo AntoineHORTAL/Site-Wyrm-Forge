@@ -21,6 +21,8 @@ export const ecaillesFr = {
   viewQuests: 'Quêtes',
   viewShop: 'Boutique',
   viewEquipment: 'Mon Équipement',
+  /* Nommage du groupe de pastilles pour les lecteurs d'écran (`SubViewTabs`). */
+  viewsAriaLabel: 'Sections de la Forge',
 
   /* Écran affiché aux non-admins quand le flag `ecailles_enabled` est à false. */
   soonTitle: 'La Forge arrive bientôt',
@@ -124,6 +126,7 @@ export const ecaillesEn: EcaillesDict = {
   viewQuests: 'Quests',
   viewShop: 'Shop',
   viewEquipment: 'My Equipment',
+  viewsAriaLabel: 'Forge sections',
 
   soonTitle: 'The Forge is coming soon',
   soonText: 'Scales, daily quests and the cosmetics shop will be available soon.',

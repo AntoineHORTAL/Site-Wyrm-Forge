@@ -111,6 +111,17 @@ export const adminFr = {
     subtitle: 'Accès réservé aux comptes admin — gestion des utilisateurs et abonnements.',
   },
 
+  /* Libellés des sous-onglets du panneau. Les CLÉS sont les `id` structurels de
+     `lib/admin-subtabs.ts` (`utilisateurs` | `patch-notes` | `flags`), également
+     acceptés dans `?subtab=` — elles ne se traduisent pas, seule la valeur le fait. */
+  subtabs: {
+    'utilisateurs': 'Utilisateurs',
+    'patch-notes':  'Patch notes',
+    'flags':        'Feature flags',
+    /* Nommage du groupe de pastilles pour les lecteurs d'écran. */
+    ariaLabel:      'Sections du panneau admin',
+  },
+
   /* Ligne de KPI — les clés suivent l'objet `stats` d'AdminTab. */
   kpis: {
     total:             'Comptes total',
@@ -236,6 +247,26 @@ export const adminFr = {
     overlayTitle: 'Overlay in-game',
     overlayHint:  'Le maître coupe tout. Les blocs ci-dessous se pilotent un par un.',
 
+    /* Sous-onglets de la section Kill switches. Les CLÉS sont les valeurs de
+       `app_settings.surface` — elles ne se traduisent pas, seul le libellé. */
+    surface: {
+      web:    'Site',
+      app:    'App',
+      shared: 'Site + App',
+    },
+    surfaceAriaLabel: 'Surfaces des kill switches',
+    surfaceEmpty:     'Aucun kill switch sur cette surface.',
+
+    /* Lancement d'une feature — bouton de la carte, puis modale de confirmation.
+       Pas de champ de motif ici : `reason` est le motif de COUPURE. */
+    launchAction:       'Lancer',
+    launchModalTitle:   'Lancer « {label} » ?',
+    launchImpactLabel:  'Après lancement :',
+    launchImpactText:   'la fonctionnalité devient visible pour tous les utilisateurs.',
+    launchIrreversible: 'Ce flag deviendra un kill switch. Le couper ensuite demandera un motif, et il ne redeviendra jamais un lancement.',
+    launchConfirm:      'Lancer',
+    launchCancel:       'Annuler',
+
     /* États affichés en pastille sur chaque carte. */
     stateNotLaunched: 'pas encore lancé',
     stateLive:        'en ligne',
@@ -245,6 +276,8 @@ export const adminFr = {
     /* Bandeau permanent. `{count}` = nombre de kill switches coupés. */
     bannerOne:   '⚠ 1 fonctionnalité actuellement coupée',
     bannerOther: '⚠ {count} fonctionnalités actuellement coupées',
+    /* Invite du bandeau, qui est cliquable et saute sur le sous-onglet des flags. */
+    bannerJump:  'Voir les kill switches →',
 
     /* Confirmation inline d'une coupure — même grammaire que `actions.confirmCertify`. */
     cutTitle:           'Couper « {label} » ?',
@@ -283,6 +316,13 @@ export const adminEn: AdminDict = {
   banner: {
     title:    'Admin panel',
     subtitle: 'Admin accounts only — user and subscription management.',
+  },
+
+  subtabs: {
+    'utilisateurs': 'Users',
+    'patch-notes':  'Patch notes',
+    'flags':        'Feature flags',
+    ariaLabel:      'Admin panel sections',
   },
 
   kpis: {
@@ -380,6 +420,22 @@ export const adminEn: AdminDict = {
     overlayTitle: 'In-game overlay',
     overlayHint:  'The master kills everything. The blocks below are controlled one by one.',
 
+    surface: {
+      web:    'Website',
+      app:    'Desktop app',
+      shared: 'Both',
+    },
+    surfaceAriaLabel: 'Kill switch surfaces',
+    surfaceEmpty:     'No kill switch on this surface.',
+
+    launchAction:       'Launch',
+    launchModalTitle:   'Launch "{label}"?',
+    launchImpactLabel:  'After launch:',
+    launchImpactText:   'the feature becomes visible to every user.',
+    launchIrreversible: 'This flag will become a kill switch. Turning it off later will require a reason, and it will never go back to being a launch.',
+    launchConfirm:      'Launch',
+    launchCancel:       'Cancel',
+
     stateNotLaunched: 'not launched yet',
     stateLive:        'live',
     stateActive:      'active',
@@ -387,6 +443,7 @@ export const adminEn: AdminDict = {
 
     bannerOne:   '⚠ 1 feature currently turned off',
     bannerOther: '⚠ {count} features currently turned off',
+    bannerJump:  'View kill switches →',
 
     cutTitle:           'Turn off "{label}"?',
     cutReasonLabel:     'Reason (required)',

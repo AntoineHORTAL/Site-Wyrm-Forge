@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useFlag, useFeatureFlags } from '@/components/providers/FeatureFlagsProvider'
 import { ComingSoonScreen } from '@/components/dashboard/FeatureScreens'
+import SubViewTabs from '@/components/dashboard/SubViewTabs'
 import BalanceHistory from '@/components/ecailles/BalanceHistory'
 import QuestsPanel from '@/components/ecailles/QuestsPanel'
 import ShopPanel from '@/components/ecailles/ShopPanel'
@@ -74,33 +75,18 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
 
   return (
     <div>
-      {/* ── Sélecteur de sous-vue ── */}
-      <div style={{
-        display: 'flex', gap: 4, marginBottom: 28,
-        background: 'rgba(255,255,255,0.03)', borderRadius: 10,
-        padding: 4, border: `1px solid ${border}`,
-        flexWrap: 'wrap',
-      }}>
-        {VIEWS.map(v => (
-          <button
-            key={v.id}
-            onClick={() => setView(v.id)}
-            style={{
-              flex: 1, minWidth: 110,
-              padding: '7px 12px', borderRadius: 7, fontSize: 13,
-              fontWeight: view === v.id ? 600 : 400,
-              fontFamily: 'inherit', cursor: 'pointer', border: 'none',
-              background: view === v.id
-                ? (c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.15)')
-                : 'transparent',
-              color: view === v.id ? accent : 'var(--text-muted)',
-              transition: 'all 0.15s',
-            }}
-          >
-            {v.label(d.ecailles)}
-          </button>
-        ))}
-      </div>
+      {/* ── Sélecteur de sous-vue ──
+          La barre vivait ici en styles inline ; elle est extraite dans
+          `SubViewTabs`, partagé avec le panneau admin. Rendu inchangé. */}
+      <SubViewTabs
+        views={VIEWS.map(v => ({ id: v.id, label: v.label(d.ecailles) }))}
+        active={view}
+        onSelect={setView}
+        accent={accent}
+        activeBg={c ? 'rgba(186,117,23,0.2)' : 'rgba(127,119,221,0.15)'}
+        border={border}
+        ariaLabel={d.ecailles.viewsAriaLabel}
+      />
 
       {view === 'balance'    && <BalanceHistory balance={balance} balanceLoading={balanceLoading} />}
       {view === 'quetes'     && <QuestsPanel questsEnabled={questsEnabled} onBalanceChange={onRefreshBalance} />}

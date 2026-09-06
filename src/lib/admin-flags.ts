@@ -203,3 +203,115 @@ export function relativeTime(iso: string | null, lang: Lang, now: Date = new Dat
   }
   return rtf.format(value, 'year')
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  REGROUPEMENT DES KILL SWITCHES PAR SURFACE
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ordre d'affichage des sous-groupes de la section « Kill switches ».
+ *
+ * `shared` en dernier, et non au milieu : les deux premiers groupes répondent à
+ * « qu'est-ce que je casse chez qui », le troisième est le cas qui casse
+ * partout. Le lire en dernier évite de le confondre avec l'un des deux autres.
+ */
+export const SURFACE_ORDER = ['web', 'app', 'shared'] as const
+
+export type SurfaceKey = typeof SURFACE_ORDER[number]
+
+/**
+ * Surface ouverte par défaut dans la section Kill switches.
+ *
+ * `web` plutôt que `shared` : le panneau est administré depuis le site, et une
+ * coupure côté site est celle que l'admin constate lui-même en premier. Le
+ * bandeau de coupures reste global, donc ce défaut ne cache jamais un incident
+ * survenu sur une autre surface — il choisit seulement par où commencer.
+ */
+export const DEFAULT_KILL_SURFACE: SurfaceKey = 'web'
+
+/**
+ * Surface d'affichage d'un flag.
+ *
+ * ⚠️ Une surface absente retombe sur `shared` plutôt que d'être écartée. La
+ * contrainte `app_settings_flag_metadata_complete` rend ce cas inatteignable
+ * (tout `kind <> 'setting'` a une surface), mais si elle venait à être
+ * contournée, un flag SANS groupe disparaîtrait du panneau — donc un kill
+ * switch qu'on ne pourrait plus couper. Mieux vaut le montrer dans le groupe le
+ * plus large que le perdre.
+ */
+export function surfaceOf(row: FlagCatalogueRow): SurfaceKey {
+  return row.surface === 'web' || row.surface === 'app' ? row.surface : 'shared'
+}
+
+export type KillBySurface = Record<SurfaceKey, FlagCatalogueRow[]>
+
+/**
+ * Répartit les kill switches en trois groupes DISJOINTS.
+ *
+ * ⚠️ `shared` est un groupe à part entière, pas une duplication dans « Site » et
+ * dans « App ». Une même clé rendue deux fois donnerait deux interrupteurs pour
+ * une seule ligne en base : deux contrôles d'apparence indépendante pour une
+ * valeur unique, et un décompte de coupures qui compterait double. La base
+ * modélise la surface comme UNE valeur, l'écran la reflète telle quelle.
+ *
+ * L'ordre interne de chaque groupe est celui reçu — `partitionCatalogue` a déjà
+ * trié par (group_key, sort_order).
+ */
+export function groupKillBySurface(kill: readonly FlagCatalogueRow[]): KillBySurface {
+  const out: KillBySurface = { web: [], app: [], shared: [] }
+  for (const row of kill) out[surfaceOf(row)].push(row)
+  return out
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  LANCEMENT D'UNE FEATURE — transition launch → kill
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Un flag attend-il son lancement ?
+ *
+ * Le test porte sur `kind`, PAS sur `kind === 'launch' && !isOn(row)`. Un flag
+ * `launch` déjà à `true` est un état hérité de l'ancien interrupteur réversible :
+ * le masquer laisserait ce flag bloqué à mi-chemin, visible nulle part et
+ * impossible à faire passer en kill switch. Il garde donc son bouton, qui
+ * termine la transition.
+ */
+export function isPendingLaunch(row: FlagCatalogueRow): boolean {
+  return row.kind === 'launch'
+}
+
+/**
+ * Ce qui est écrit en base pour lancer une feature — UNE SEULE écriture.
+ *
+ * ⚠️ `value` et `kind` partent ENSEMBLE, dans le même UPDATE. Les séparer en
+ * deux requêtes ouvrirait une fenêtre où le flag serait soit ouvert au public en
+ * étant encore catalogué comme lancement (donc absent de la section qui permet
+ * de le couper), soit catalogué en kill switch alors qu'il est encore fermé. Les
+ * deux états sont incohérents et le second est un kill switch fantôme.
+ *
+ * `reason` est remis à `null` : cette colonne est le MOTIF DE COUPURE, relu tel
+ * quel par la carte d'un flag coupé. Y écrire une note de lancement afficherait
+ * « Motif : … » avec le texte d'une mise en ligne le jour d'un incident. C'est
+ * aussi pourquoi la modale de lancement ne propose aucun champ de motif.
+ */
+export interface LaunchPatch {
+  value: 'true'
+  kind: 'kill'
+  reason: null
+}
+
+export function launchPatch(): LaunchPatch {
+  return { value: 'true', kind: 'kill', reason: null }
+}
+
+/**
+ * Applique le lancement à une ligne, pour la mise à jour optimiste du panneau.
+ *
+ * ⚠️ `off_behavior` n'est PAS touché : le flag garde la convention de coupure
+ * déjà posée en base par la migration de catalogue. Les cinq flags de lancement
+ * actuels portent tous `hidden` (vérifié en base) — aucun n'est `NULL`, la
+ * contrainte de métadonnées complètes reste donc satisfaite après transition.
+ */
+export function applyLaunch(row: FlagCatalogueRow): FlagCatalogueRow {
+  return { ...row, ...launchPatch() }
+}
