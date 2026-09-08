@@ -49,9 +49,14 @@ export type KitStatus = KitChainStatus | 'annule'
  * `KitOrderCard` qui rend) et un test qui en fabrique sans monter ni l'un ni
  * l'autre.
  *
- * `player_snapshot` en est ABSENT volontairement : la carte ne l'affiche pas au
- * lot 1 et le `select` ne le tire pas. L'ajouter ici avant d'en avoir besoin
- * ferait croire qu'il est chargé.
+ * `player_snapshot` en est ABSENT volontairement : le panneau ADMIN ne l'affiche
+ * pas et son `select` ne le tire pas, donc le déclarer ici ferait croire qu'il
+ * est toujours chargé.
+ *
+ * ⚠️ `KitTab` (surface cliente, lot 2) le tire, LUI — c'est l'écho du snapshot
+ * figé qu'il montre au client. Il élargit donc le type localement
+ * (`KitOrderRow & { player_snapshot }`) plutôt que de l'ajouter ici : c'est
+ * l'appelant qui sait ce qu'il a demandé.
  */
 export interface KitOrderRow {
   id: string

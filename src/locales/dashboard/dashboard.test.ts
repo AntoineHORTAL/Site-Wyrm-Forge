@@ -20,6 +20,8 @@ import {
 } from './admin'
 import { ADMIN_SUBTAB_IDS } from '@/lib/admin-subtabs'
 import { KIT_STATUS_CHAIN } from '@/lib/kit-orders'
+import { KIT_FORMULAS } from '@/lib/kit-snapshot'
+import { kitProgressMessage, kitRpcError } from './kit'
 import { queueLabel } from './common'
 import {
   riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,
@@ -140,6 +142,11 @@ const INVARIANTS = new Set<string>([
   // traduisible (`{label}`) étant interpolé depuis `kits.statuses`, qui est bien
   // traduit des deux côtés.
   'Kits', 'Client', '→ {label}', '← {label}',
+  // Kit sur mesure (lot 2). « Kit », « Solo » et « Duo » s'écrivent pareil dans
+  // les deux langues — « Duo » est en plus le terme employé tel quel par Riot
+  // (file « Solo/Duo »). Les deux gabarits ne portent AUCUN mot : `{price}` est
+  // une devise déjà formatée par `Intl`, `{n}/{max}` un compteur de caractères.
+  'Kit', 'Solo', 'Duo', '{price}', '{n}/{max}',
 ])
 
 interface Anomalies {
@@ -204,8 +211,8 @@ describe('dico dashboard — parité FR / EN', () => {
     // Une zone oubliée dans index.ts n'existerait nulle part à l'exécution, alors que
     // son module compilerait très bien tout seul.
     expect(Object.keys(dashboardFr).sort()).toEqual([
-      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'nav', 'profil',
-      'strategie', 'workshop',
+      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'kit', 'nav',
+      'profil', 'strategie', 'workshop',
     ])
   })
 
@@ -768,6 +775,79 @@ describe('dico admin — tables d\'affichage des valeurs métier', () => {
     // blanc — une erreur inattendue doit rester diagnosticable.
     const inconnu = 'connection terminated unexpectedly'
     expect(kitErrorLabel(dashboardFr.admin, inconnu)).toBe(inconnu)
+  })
+
+  /**
+   * ⚠️ FRONTIÈRE MÉTIER — surface CLIENTE du kit (lot 2).
+   *
+   * `kit.existing.progress` couvre les mêmes 8 valeurs de `kit_orders.status`
+   * que `admin.kits.statuses`, mais dans un AUTRE registre : l'admin lit l'état
+   * interne (« Découverte faite »), le client lit ce qui l'attend (« On
+   * construit ton kit »). Ce ne sont donc pas des doublons — et les deux tables
+   * doivent rester complètes indépendamment l'une de l'autre.
+   */
+  it('a un message d\'avancement client pour chacun des 8 statuts', () => {
+    const attendu = [...KIT_STATUS_CHAIN, 'annule'].sort()
+    expect(Object.keys(dashboardFr.kit.existing.progress).sort()).toEqual(attendu)
+    expect(Object.keys(dashboardEn.kit.existing.progress).sort()).toEqual(attendu)
+  })
+
+  it('ne montre JAMAIS une valeur technique au client', () => {
+    // Le client ne doit jamais lire « session_faite » ni « acompte_paye ».
+    //
+    // ⚠️ Le test porte sur les valeurs en SNAKE_CASE, pas sur le mot nu : « Ta
+    // demande est enregistrée » contient légitimement « demande », qui est aussi
+    // le nom du statut. C'est le souligné qui trahit une valeur machine — un
+    // message client n'en contient jamais.
+    const techniques = [...KIT_STATUS_CHAIN, 'annule'].filter(s => s.includes('_'))
+    expect(techniques.length, 'aucun statut composé à surveiller ?').toBeGreaterThan(0)
+
+    for (const status of [...KIT_STATUS_CHAIN, 'annule']) {
+      for (const dict of [dashboardFr.kit, dashboardEn.kit]) {
+        const msg = kitProgressMessage(dict, status)
+        expect(msg, status).toBeTruthy()
+        expect(msg, status).not.toBe(status)
+        for (const t of techniques) expect(msg, `${status} laisse fuir ${t}`).not.toContain(t)
+      }
+    }
+
+    // Statut inconnu → repli sur `demande`, le DEFAULT de la colonne. Jamais un
+    // écran vide, jamais la valeur brute.
+    expect(kitProgressMessage(dashboardFr.kit, 'statut_inexistant'))
+      .toBe(dashboardFr.kit.existing.progress.demande)
+  })
+
+  it('a un libellé pour chaque formule vendue', () => {
+    // `KIT_FORMULAS` pilote AUSSI la grille de prix et le bloc binôme : une
+    // formule ajoutée sans libellé rendrait une carte anonyme.
+    expect(Object.keys(dashboardFr.kit.formulas).sort()).toEqual([...KIT_FORMULAS].sort())
+    expect(Object.keys(dashboardEn.kit.formulas).sort()).toEqual([...KIT_FORMULAS].sort())
+  })
+
+  /**
+   * Les codes levés par `kit_request_order` (migration 20260909000001). Testés
+   * ENVELOPPÉS, parce que c'est la forme réelle : PostgREST n'expose jamais un
+   * `RAISE EXCEPTION` plpgsql nu.
+   */
+  it('traduit les erreurs de dépôt côté client, y compris enveloppées', () => {
+    for (const code of Object.keys(dashboardFr.kit.errors)) {
+      const brut = `unexpected error: ${code} (SQLSTATE P0001)`
+      expect(kitRpcError(dashboardFr.kit, brut), `FR : ${code}`).not.toContain(code)
+      expect(kitRpcError(dashboardEn.kit, brut), `EN : ${code}`).not.toContain(code)
+    }
+  })
+
+  it('rend un message de dépôt inconnu tel quel', () => {
+    const inconnu = 'network unreachable'
+    expect(kitRpcError(dashboardFr.kit, inconnu)).toBe(inconnu)
+  })
+
+  it('annonce au client autant d\'étapes qu\'il en verra', () => {
+    // 4 étapes annoncées, pas 8 : la machine interne sépare les encaissements,
+    // ce qui ne concerne pas la promesse commerciale. Si l'une des deux listes
+    // bouge, c'est une décision — pas un effet de bord.
+    expect(dashboardFr.kit.pitch.steps).toHaveLength(4)
+    expect(dashboardEn.kit.pitch.steps).toHaveLength(4)
   })
 
   /**

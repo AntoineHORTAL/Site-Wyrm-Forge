@@ -596,17 +596,112 @@ délibérément, pour deux raisons :
 À tenir au lot 2 : c'est la surface CLIENTE qui lira
 `useFlag('kit_sur_mesure_enabled')`. Et le verrou de ce qui coûte reste la garde
 `is_admin()` des trois RPC — un flag est de la présentation, jamais une barrière.
-- Tests SQL : `supabase/tests/20260908000001_kit_orders_test.sql` — **un seul
-  script à coller dans le SQL Editor**, qui résout lui-même les trois identités
-  (l'admin est pris dans `admin_users`, jamais dans `prac_admins` : `is_admin()`
-  ne lit que la première) et rend une table de 22 lignes `✅`/`❌`. `ROLLBACK`
-  final, rien ne persiste. Aucune méta-commande psql : `\gset` n'existe pas dans
-  le SQL Editor web.
+- Tests SQL : **deux scripts**, chacun à coller en entier dans le SQL Editor,
+  qui résolvent eux-mêmes leurs identités (l'admin est pris dans `admin_users`,
+  jamais dans `prac_admins` : `is_admin()` ne lit que la première) et rendent une
+  table `✅`/`❌`. `ROLLBACK` final, rien ne persiste. Aucune méta-commande psql :
+  `\gset` n'existe pas dans le SQL Editor web.
+  - `20260908000001_kit_orders_test.sql` — machine d'états, RLS, privilèges (22 lignes).
+  - `20260909000001_kit_request_order_test.sql` — dépôt client, flag serveur,
+    bornes du snapshot, correction admin, non-régression des gardes du lot 1
+    (29 lignes).
+
+> ⚠️ Le second script **bascule `kit_sur_mesure_enabled`** dans sa transaction :
+> le service n'étant pas lancé, le flag vaut `'false'` et tous les dépôts
+> échoueraient sur `kit_service_disabled` sans prouver le chemin nominal. Le
+> `ROLLBACK` restaure la valeur d'origine — raison de plus pour ne le jouer que
+> sur le projet de TEST.
+
+### 🟢 Lot 2 — surface cliente (migration 20260909000001)
+
+**`kit_request_order(p_snapshot jsonb) RETURNS uuid`** — la PREMIÈRE fonction du
+module accordée à un non-admin. Ouvre un dossier en `demande` pour `auth.uid()`.
+Gardes, dans l'ordre : `auth.uid()` non nul → **flag `kit_sur_mesure_enabled`
+relu EN BASE** → forme et taille du snapshot (`kit_assert_snapshot`, objet JSON,
+≤ 4096 octets) → `uq_kit_orders_active` (un seul dossier actif).
+
+> ⚠️ La relecture du flag dans la fonction est le cœur du dispositif. `useFlag()`
+> ne masque qu'un onglet ; une RPC accordée à `authenticated` est appelable au
+> `curl`. Sans elle, le flag ne serait qu'un rideau et le service serait ouvert
+> avant son lancement. Ligne absente ⇒ refus (fail-closed, aligné sur
+> `flagFallback` pour un flag de lancement).
+
+Ce que le lot 2 ne change PAS : aucune policy INSERT/UPDATE/DELETE n'est ajoutée,
+`kit_set_status` reste admin-only (le client ne fait pas avancer son dossier et
+ne peut donc pas se l'annuler — l'admin le fait pour lui), `kit_order_events`
+reste illisible pour lui.
+
+**`created_by` porte désormais deux sémantiques** : l'admin via `kit_open_order`,
+ou le client via `kit_request_order`. Pas de migration de colonne — la distinction
+se lit exactement en comparant `created_by` à `user_id` (égaux ⇒ dépôt client).
+
+**`kit_set_details` a gagné `p_player_snapshot jsonb`** (4ᵉ paramètre, admin
+seul), pour corriger un Riot ID mal tapé qui serait sinon définitif. L'ancienne
+signature à 3 arguments est **DROPPÉE** dans la migration : un `DEFAULT` ajouté
+crée une surcharge, et un appel à 3 arguments deviendrait ambigu (42725).
+
+> Le gel reste **structurel** : `player_snapshot` est écrit une fois, il n'existe
+> aucun chemin client de réécriture, et rien ne relit `profiles.riot_rank` après
+> coup. Le gel protège contre la RELECTURE LIVE, pas contre une correction tracée.
+
+### 🔴 `REVOKE … FROM PUBLIC` NE SUFFIT PAS — migration 20260909000002
+Les tests du lot 2 (T7/T13b/T13c) ont montré que les **cinq** fonctions du module
+étaient exécutables par `anon`, alors que les deux migrations portaient bien leur
+`REVOKE EXECUTE … FROM PUBLIC`. La révocation ne révoquait rien : les
+`ALTER DEFAULT PRIVILEGES` du projet Supabase accordent EXECUTE **nominativement**
+à `anon` et `authenticated`, et `FROM PUBLIC` ne touche pas un grant nominatif.
+
+C'est exactement le bug que `20260731000002_revoke_definer_anon.sql` avait déjà
+diagnostiqué, documenté, et clos par une « Note pour les migrations futures » —
+que les migrations du kit n'ont pas suivie.
+
+**Règle, pour toute nouvelle fonction du schéma `public` :**
+```sql
+REVOKE ALL ON FUNCTION … FROM PUBLIC;
+REVOKE ALL ON FUNCTION … FROM anon[, authenticated];   -- selon la cible
+GRANT  EXECUTE ON FUNCTION … TO <rôle voulu>;
+```
+Sonde de contrôle avec la clé anon : `PGRST202` = absente · `42501` = barrière OK ·
+**tout autre code = la fonction s'est exécutée**. Un `REVOKE FROM PUBLIC` seul
+passe la relecture de code mais pas la sonde.
+
+> ⚠️ Le trou n'est pas propre au kit. Un balayage du 2026-09-09 trouve ~20
+> migrations avec `REVOKE … ON FUNCTION … FROM PUBLIC` sans `FROM anon` (prac,
+> tournois, quêtes, `purchase_cosmetic`…), dont une partie seulement est
+> rattrapée par 20260731000002 / 20260614000003 / 20260901000002. Toutes gardent
+> une garde applicative interne — érosion de la défense en profondeur, pas porte
+> ouverte. **Audit dédié à planifier.**
+
+> 💡 La migration 20260909000002 se **vérifie elle-même** : un bloc `DO` final
+> interroge `has_function_privilege` et fait ÉCHOUER le `db push` si l'état visé
+> n'est pas atteint — dans les deux sens (anon encore ouvert, ou `authenticated`
+> révoqué de travers). Une révocation qui ne révoque rien étant précisément le
+> bug réparé ici, la relire dans le fichier ne prouvait rien.
+
+**Côté site** : onglet dashboard `kit` (`DashTab`, `NAV_TAB_IDS`, `tabGroups`),
+masqué par `useFlag('kit_sur_mesure_enabled')` avec bypass admin — même
+convention `'hidden'` qu'Écailles et Scénarios, gardée AUSSI sur le deep-link
+`?tab=kit`. Composant `tabs/KitTab.tsx`, dico `locales/dashboard/kit.ts`, contrat
+et validation dans le module PUR `lib/kit-snapshot.ts` (`kit-snapshot.test.ts`).
+
+> ⚠️ `KitTab` filtre `.eq('user_id', user.id)` en plus de la RLS. Ce n'est PAS
+> une redondance : `ko_select` dit `is_admin() OR auth.uid() = user_id`, donc
+> pour un ADMIN elle laisse passer TOUS les dossiers. Sans ce filtre, un admin
+> qui ouvre l'onglet pour recetter verrait le dossier d'un autre présenté comme
+> le sien.
+
+**Formule duo (110 €) : aucun modèle en base.** `kit_orders` porte un seul
+`user_id` et `uq_kit_orders_active` est par utilisateur. Le binôme vit dans
+`player_snapshot.partner` (`{riot_gamename, riot_tagline, role}`), déclaratif et
+sans compte : il n'a ni dossier ni visibilité, et rien ne l'empêche d'en ouvrir
+un de son côté. Choix assumé — le modéliser demanderait `partner_user_id` et une
+révision de l'index d'unicité.
+
+**Réservation** : simple lien externe, préremplí par `buildBookingUrl` depuis
+`NEXT_PUBLIC_KIT_BOOKING_URL` (`name`, `email`). Variable absente ⇒ aucun bouton
+n'est rendu, l'écran bascule sur le contact manuel.
 
 ### Reste à faire (lots suivants)
-- **Lot 2** — formulaire client de capture (remplit `player_snapshot`, ouvre en
-  `demande`) + lien de booking externe (Cal.com/Calendly ; aucun embryon de
-  calendrier dans le repo).
 - **Lot 3** — e-mail « kit trouvé » : réutiliser `_shared/resend.ts` et le patron
   claim-then-send de `prac-notify`, déclenché par le bouton admin (pas un Database
   Webhook — on évite le plombage Vault/`pg_net` du Lot 5E).

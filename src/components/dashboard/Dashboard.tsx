@@ -15,6 +15,7 @@ import PatchNotesTab from './tabs/PatchNotesTab'
 import MatchUpTab from './tabs/MatchUpTab'
 import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
+import KitTab from './tabs/KitTab'
 import ConsentBanner from './ConsentBanner'
 import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'
 import { useFlag } from '@/components/providers/FeatureFlagsProvider'
@@ -43,6 +44,10 @@ const IconScenarios= () => <svg width="17" height="17" viewBox="0 0 24 24" fill=
 // Parchemin avec marteau — évoque les notes de forge/patch
 const IconPatchNotes = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
 const IconEcailles = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6c-2 3-3 5-1 8"/><path d="M12 6c2 3 3 5 1 8"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+
+// Enclume + étincelle : le kit est « forgé » pour un joueur. Même famille
+// visuelle que les autres icônes du fichier — trait de 2, bouts arrondis.
+const IconKit = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14h11a4 4 0 0 0 4-4V8"/><path d="M4 14v2a2 2 0 0 0 2 2h9"/><path d="M7 18v2"/><path d="M14 18v2"/><path d="M17 4l1.5 2.5L21 8l-2.5 1.5L17 12l-1.5-2.5L13 8l2.5-1.5z"/></svg>
 
 export type TabDef = {
   /**
@@ -91,6 +96,7 @@ export const tabGroups: TabGroup[] = [
       { id: 'stats',      icon: <IconStats /> },
       { id: 'patchnotes', icon: <IconPatchNotes /> },
       { id: 'ecailles',   icon: <IconEcailles /> },
+      { id: 'kit',        icon: <IconKit /> },
       { id: 'champions',  icon: <IconChamps />, href: '/champions' },
     ],
   },
@@ -176,6 +182,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
    */
   const ecaillesEnabled  = useFlag('ecailles_enabled')
   const scenariosEnabled = useFlag('scenarios_enabled')
+  const kitEnabled       = useFlag('kit_sur_mesure_enabled')
   const adsEnabled       = useFlag('ads_enabled')
 
   const patchNotesEnabled     = useFlag('patch_notes_enabled')
@@ -267,6 +274,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
               // permet de recetter avant d'ouvrir au public.
               .filter(tab => tab.id !== 'ecailles'  || ecaillesEnabled  || isAdmin)
               .filter(tab => tab.id !== 'scenarios' || scenariosEnabled || isAdmin)
+              .filter(tab => tab.id !== 'kit'       || kitEnabled       || isAdmin)
               .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
@@ -304,6 +312,21 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
           </div>
         )}
 
+        {/* Kit sur mesure — flag de LANCEMENT, convention `'hidden'`.
+            L'entrée de sidebar a déjà disparu pour un non-admin ; cette garde
+            couvre le deep-link `?tab=kit`, qui contourne la navigation. L'admin
+            voit toujours l'onglet : c'est ce qui lui permet de recetter le
+            parcours client avant d'ouvrir le service au public.
+            ⚠️ Ce n'est PAS la barrière : `kit_request_order` relit le flag en
+            base, et c'est elle qui refuse un dépôt service fermé. */}
+        {activeTab === 'kit'              && (
+          !kitEnabled && !isAdmin
+            ? <ComingSoonScreen
+                title={d.kit.soonTitle}
+                text={d.kit.soonText}
+              />
+            : <KitTab />
+        )}
         {activeTab === 'admin'            && <AdminTab />}
         {activeTab === 'accueil'          && <AccueilTab />}
         {activeTab === 'todo'             && <TodoTab />}

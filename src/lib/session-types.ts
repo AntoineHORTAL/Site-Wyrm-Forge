@@ -24,6 +24,7 @@ export type DashTab =
   | 'tournois'
   | 'patchnotes'
   | 'ecailles'
+  | 'kit'
   | 'admin'
   | 'tarifs'
 

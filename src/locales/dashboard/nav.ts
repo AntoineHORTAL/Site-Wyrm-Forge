@@ -24,7 +24,7 @@
  */
 export const NAV_TAB_IDS = [
   'admin',
-  'accueil', 'todo', 'stats', 'patchnotes', 'ecailles', 'champions',
+  'accueil', 'todo', 'stats', 'patchnotes', 'ecailles', 'kit', 'champions',
   'jungle', 'builds', 'scenarios',
   'workshop-builds', 'workshop-jungle',
   'matchup', 'postgame',
@@ -51,6 +51,7 @@ const tabsFr: Record<NavTabId, TabLabel> = {
   stats:              { label: 'Stats',            short: 'Stats' },
   patchnotes:         { label: 'Patch Notes',      short: 'Patchs' },
   ecailles:           { label: 'La Forge',         short: 'La Forge' },
+  kit:                { label: 'Kit sur mesure',   short: 'Kit' },
   champions:          { label: 'Champions',        short: 'Champions' },
   jungle:             { label: 'Jungle Path',      short: 'Jungle' },
   builds:             { label: 'Builder',          short: 'Builder' },
@@ -69,6 +70,7 @@ const tabsEn: Record<NavTabId, TabLabel> = {
   stats:              { label: 'Stats',            short: 'Stats' },
   patchnotes:         { label: 'Patch Notes',      short: 'Patches' },
   ecailles:           { label: 'The Forge',        short: 'The Forge' },
+  kit:                { label: 'Custom kit',       short: 'Kit' },
   champions:          { label: 'Champions',        short: 'Champions' },
   jungle:             { label: 'Jungle Path',      short: 'Jungle' },
   builds:             { label: 'Builder',          short: 'Builder' },
@@ -158,6 +160,7 @@ const pageTitlesFr = {
   tournois:          { title: 'Tournois',         subtitle: 'Bientôt disponible' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'Résumés des mises à jour League of Legends' },
   ecailles:          { title: 'La Forge',         subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
+  kit:               { title: 'Kit sur mesure',   subtitle: 'Un accompagnement construit pour ton jeu' },
   tarifs:            { title: 'Tarifs',           subtitle: 'Choisis ou renouvelle ton abonnement' },
 }
 
@@ -178,6 +181,7 @@ const pageTitlesEn: Record<PageTitleId, { title: string; subtitle: string }> = {
   tournois:          { title: 'Tournaments',      subtitle: 'Coming soon' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'League of Legends update summaries' },
   ecailles:          { title: 'The Forge',        subtitle: 'Scales, daily quests and cosmetics shop' },
+  kit:               { title: 'Custom kit',       subtitle: 'Coaching built around your game' },
   tarifs:            { title: 'Pricing',          subtitle: 'Choose or renew your subscription' },
 }
 

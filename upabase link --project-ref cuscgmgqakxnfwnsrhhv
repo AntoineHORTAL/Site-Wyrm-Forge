@@ -1,0 +1,421 @@
+warning: in the working copy of 'src/components/dashboard/Dashboard.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/kit-orders.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/session-types.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/AGENTS.md b/AGENTS.md[m
+[1mindex f18a75f..e1ca75a 100644[m
+[1m--- a/AGENTS.md[m
+[1m+++ b/AGENTS.md[m
+[36m@@ -596,17 +596,112 @@[m [mdélibérément, pour deux raisons :[m
+ À tenir au lot 2 : c'est la surface CLIENTE qui lira[m
+ `useFlag('kit_sur_mesure_enabled')`. Et le verrou de ce qui coûte reste la garde[m
+ `is_admin()` des trois RPC — un flag est de la présentation, jamais une barrière.[m
+[31m-- Tests SQL : `supabase/tests/20260908000001_kit_orders_test.sql` — **un seul[m
+[31m-  script à coller dans le SQL Editor**, qui résout lui-même les trois identités[m
+[31m-  (l'admin est pris dans `admin_users`, jamais dans `prac_admins` : `is_admin()`[m
+[31m-  ne lit que la première) et rend une table de 22 lignes `✅`/`❌`. `ROLLBACK`[m
+[31m-  final, rien ne persiste. Aucune méta-commande psql : `\gset` n'existe pas dans[m
+[31m-  le SQL Editor web.[m
+[32m+[m[32m- Tests SQL : **deux scripts**, chacun à coller en entier dans le SQL Editor,[m
+[32m+[m[32m  qui résolvent eux-mêmes leurs identités (l'admin est pris dans `admin_users`,[m
+[32m+[m[32m  jamais dans `prac_admins` : `is_admin()` ne lit que la première) et rendent une[m
+[32m+[m[32m  table `✅`/`❌`. `ROLLBACK` final, rien ne persiste. Aucune méta-commande psql :[m
+[32m+[m[32m  `\gset` n'existe pas dans le SQL Editor web.[m
+[32m+[m[32m  - `20260908000001_kit_orders_test.sql` — machine d'états, RLS, privilèges (22 lignes).[m
+[32m+[m[32m  - `20260909000001_kit_request_order_test.sql` — dépôt client, flag serveur,[m
+[32m+[m[32m    bornes du snapshot, correction admin, non-régression des gardes du lot 1[m
+[32m+[m[32m    (29 lignes).[m
+[32m+[m
+[32m+[m[32m> ⚠️ Le second script **bascule `kit_sur_mesure_enabled`** dans sa transaction :[m
+[32m+[m[32m> le service n'étant pas lancé, le flag vaut `'false'` et tous les dépôts[m
+[32m+[m[32m> échoueraient sur `kit_service_disabled` sans prouver le chemin nominal. Le[m
+[32m+[m[32m> `ROLLBACK` restaure la valeur d'origine — raison de plus pour ne le jouer que[m
+[32m+[m[32m> sur le projet de TEST.[m
+[32m+[m
+[32m+[m[32m### 🟢 Lot 2 — surface cliente (migration 20260909000001)[m
+[32m+[m
+[32m+[m[32m**`kit_request_order(p_snapshot jsonb) RETURNS uuid`** — la PREMIÈRE fonction du[m
+[32m+[m[32mmodule accordée à un non-admin. Ouvre un dossier en `demande` pour `auth.uid()`.[m
+[32m+[m[32mGardes, dans l'ordre : `auth.uid()` non nul → **flag `kit_sur_mesure_enabled`[m
+[32m+[m[32mrelu EN BASE** → forme et taille du snapshot (`kit_assert_snapshot`, objet JSON,[m
+[32m+[m[32m≤ 4096 octets) → `uq_kit_orders_active` (un seul dossier actif).[m
+[32m+[m
+[32m+[m[32m> ⚠️ La relecture du flag dans la fonction est le cœur du dispositif. `useFlag()`[m
+[32m+[m[32m> ne masque qu'un onglet ; une RPC accordée à `authenticated` est appelable au[m
+[32m+[m[32m> `curl`. Sans elle, le flag ne serait qu'un rideau et le service serait ouvert[m
+[32m+[m[32m> avant son lancement. Ligne absente ⇒ refus (fail-closed, aligné sur[m
+[32m+[m[32m> `flagFallback` pour un flag de lancement).[m
+[32m+[m
+[32m+[m[32mCe que le lot 2 ne change PAS : aucune policy INSERT/UPDATE/DELETE n'est ajoutée,[m
+[32m+[m[32m`kit_set_status` reste admin-only (le client ne fait pas avancer son dossier et[m
+[32m+[m[32mne peut donc pas se l'annuler — l'admin le fait pour lui), `kit_order_events`[m
+[32m+[m[32mreste illisible pour lui.[m
+[32m+[m
+[32m+[m[32m**`created_by` porte désormais deux sémantiques** : l'admin via `kit_open_order`,[m
+[32m+[m[32mou le client via `kit_request_order`. Pas de migration de colonne — la distinction[m
+[32m+[m[32mse lit exactement en comparant `created_by` à `user_id` (égaux ⇒ dépôt client).[m
+[32m+[m
+[32m+[m[32m**`kit_set_details` a gagné `p_player_snapshot jsonb`** (4ᵉ paramètre, admin[m
+[32m+[m[32mseul), pour corriger un Riot ID mal tapé qui serait sinon définitif. L'ancienne[m
+[32m+[m[32msignature à 3 arguments est **DROPPÉE** dans la migration : un `DEFAULT` ajouté[m
+[32m+[m[32mcrée une surcharge, et un appel à 3 arguments deviendrait ambigu (42725).[m
+[32m+[m
+[32m+[m[32m> Le gel reste **structurel** : `player_snapshot` est écrit une fois, il n'existe[m
+[32m+[m[32m> aucun chemin client de réécriture, et rien ne relit `profiles.riot_rank` après[m
+[32m+[m[32m> coup. Le gel protège contre la RELECTURE LIVE, pas contre une correction tracée.[m
+[32m+[m
+[32m+[m[32m### 🔴 `REVOKE … FROM PUBLIC` NE SUFFIT PAS — migration 20260909000002[m
+[32m+[m[32mLes tests du lot 2 (T7/T13b/T13c) ont montré que les **cinq** fonctions du module[m
+[32m+[m[32métaient exécutables par `anon`, alors que les deux migrations portaient bien leur[m
+[32m+[m[32m`REVOKE EXECUTE … FROM PUBLIC`. La révocation ne révoquait rien : les[m
+[32m+[m[32m`ALTER DEFAULT PRIVILEGES` du projet Supabase accordent EXECUTE **nominativement**[m
+[32m+[m[32mà `anon` et `authenticated`, et `FROM PUBLIC` ne touche pas un grant nominatif.[m
+[32m+[m
+[32m+[m[32mC'est exactement le bug que `20260731000002_revoke_definer_anon.sql` avait déjà[m
+[32m+[m[32mdiagnostiqué, documenté, et clos par une « Note pour les migrations futures » —[m
+[32m+[m[32mque les migrations du kit n'ont pas suivie.[m
+[32m+[m
+[32m+[m[32m**Règle, pour toute nouvelle fonction du schéma `public` :**[m
+[32m+[m[32m```sql[m
+[32m+[m[32mREVOKE ALL ON FUNCTION … FROM PUBLIC;[m
+[32m+[m[32mREVOKE ALL ON FUNCTION … FROM anon[, authenticated];   -- selon la cible[m
+[32m+[m[32mGRANT  EXECUTE ON FUNCTION … TO <rôle voulu>;[m
+[32m+[m[32m```[m
+[32m+[m[32mSonde de contrôle avec la clé anon : `PGRST202` = absente · `42501` = barrière OK ·[m
+[32m+[m[32m**tout autre code = la fonction s'est exécutée**. Un `REVOKE FROM PUBLIC` seul[m
+[32m+[m[32mpasse la relecture de code mais pas la sonde.[m
+[32m+[m
+[32m+[m[32m> ⚠️ Le trou n'est pas propre au kit. Un balayage du 2026-09-09 trouve ~20[m
+[32m+[m[32m> migrations avec `REVOKE … ON FUNCTION … FROM PUBLIC` sans `FROM anon` (prac,[m
+[32m+[m[32m> tournois, quêtes, `purchase_cosmetic`…), dont une partie seulement est[m
+[32m+[m[32m> rattrapée par 20260731000002 / 20260614000003 / 20260901000002. Toutes gardent[m
+[32m+[m[32m> une garde applicative interne — érosion de la défense en profondeur, pas porte[m
+[32m+[m[32m> ouverte. **Audit dédié à planifier.**[m
+[32m+[m
+[32m+[m[32m> 💡 La migration 20260909000002 se **vérifie elle-même** : un bloc `DO` final[m
+[32m+[m[32m> interroge `has_function_privilege` et fait ÉCHOUER le `db push` si l'état visé[m
+[32m+[m[32m> n'est pas atteint — dans les deux sens (anon encore ouvert, ou `authenticated`[m
+[32m+[m[32m> révoqué de travers). Une révocation qui ne révoque rien étant précisément le[m
+[32m+[m[32m> bug réparé ici, la relire dans le fichier ne prouvait rien.[m
+[32m+[m
+[32m+[m[32m**Côté site** : onglet dashboard `kit` (`DashTab`, `NAV_TAB_IDS`, `tabGroups`),[m
+[32m+[m[32mmasqué par `useFlag('kit_sur_mesure_enabled')` avec bypass admin — même[m
+[32m+[m[32mconvention `'hidden'` qu'Écailles et Scénarios, gardée AUSSI sur le deep-link[m
+[32m+[m[32m`?tab=kit`. Composant `tabs/KitTab.tsx`, dico `locales/dashboard/kit.ts`, contrat[m
+[32m+[m[32met validation dans le module PUR `lib/kit-snapshot.ts` (`kit-snapshot.test.ts`).[m
+[32m+[m
+[32m+[m[32m> ⚠️ `KitTab` filtre `.eq('user_id', user.id)` en plus de la RLS. Ce n'est PAS[m
+[32m+[m[32m> une redondance : `ko_select` dit `is_admin() OR auth.uid() = user_id`, donc[m
+[32m+[m[32m> pour un ADMIN elle laisse passer TOUS les dossiers. Sans ce filtre, un admin[m
+[32m+[m[32m> qui ouvre l'onglet pour recetter verrait le dossier d'un autre présenté comme[m
+[32m+[m[32m> le sien.[m
+[32m+[m
+[32m+[m[32m**Formule duo (110 €) : aucun modèle en base.** `kit_orders` porte un seul[m
+[32m+[m[32m`user_id` et `uq_kit_orders_active` est par utilisateur. Le binôme vit dans[m
+[32m+[m[32m`player_snapshot.partner` (`{riot_gamename, riot_tagline, role}`), déclaratif et[m
+[32m+[m[32msans compte : il n'a ni dossier ni visibilité, et rien ne l'empêche d'en ouvrir[m
+[32m+[m[32mun de son côté. Choix assumé — le modéliser demanderait `partner_user_id` et une[m
+[32m+[m[32mrévision de l'index d'unicité.[m
+[32m+[m
+[32m+[m[32m**Réservation** : simple lien externe, préremplí par `buildBookingUrl` depuis[m
+[32m+[m[32m`NEXT_PUBLIC_KIT_BOOKING_URL` (`name`, `email`). Variable absente ⇒ aucun bouton[m
+[32m+[m[32mn'est rendu, l'écran bascule sur le contact manuel.[m
+ [m
+ ### Reste à faire (lots suivants)[m
+[31m-- **Lot 2** — formulaire client de capture (remplit `player_snapshot`, ouvre en[m
+[31m-  `demande`) + lien de booking externe (Cal.com/Calendly ; aucun embryon de[m
+[31m-  calendrier dans le repo).[m
+ - **Lot 3** — e-mail « kit trouvé » : réutiliser `_shared/resend.ts` et le patron[m
+   claim-then-send de `prac-notify`, déclenché par le bouton admin (pas un Database[m
+   Webhook — on évite le plombage Vault/`pg_net` du Lot 5E).[m
+[1mdiff --git a/src/components/dashboard/Dashboard.tsx b/src/components/dashboard/Dashboard.tsx[m
+[1mindex 453d742..e5c0e98 100644[m
+[1m--- a/src/components/dashboard/Dashboard.tsx[m
+[1m+++ b/src/components/dashboard/Dashboard.tsx[m
+[36m@@ -15,6 +15,7 @@[m [mimport PatchNotesTab from './tabs/PatchNotesTab'[m
+ import MatchUpTab from './tabs/MatchUpTab'[m
+ import PostGameTab from './tabs/PostGameTab'[m
+ import EcaillesTab from './tabs/EcaillesTab'[m
+[32m+[m[32mimport KitTab from './tabs/KitTab'[m
+ import ConsentBanner from './ConsentBanner'[m
+ import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'[m
+ import { useFlag } from '@/components/providers/FeatureFlagsProvider'[m
+[36m@@ -44,6 +45,10 @@[m [mconst IconScenarios= () => <svg width="17" height="17" viewBox="0 0 24 24" fill=[m
+ const IconPatchNotes = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>[m
+ const IconEcailles = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6c-2 3-3 5-1 8"/><path d="M12 6c2 3 3 5 1 8"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>[m
+ [m
+[32m+[m[32m// Enclume + étincelle : le kit est « forgé » pour un joueur. Même famille[m
+[32m+[m[32m// visuelle que les autres icônes du fichier — trait de 2, bouts arrondis.[m
+[32m+[m[32mconst IconKit = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14h11a4 4 0 0 0 4-4V8"/><path d="M4 14v2a2 2 0 0 0 2 2h9"/><path d="M7 18v2"/><path d="M14 18v2"/><path d="M17 4l1.5 2.5L21 8l-2.5 1.5L17 12l-1.5-2.5L13 8l2.5-1.5z"/></svg>[m
+[32m+[m
+ export type TabDef = {[m
+   /**[m
+    * Identifiant TECHNIQUE de l'onglet — jamais traduit. Il pilote l'état[m
+[36m@@ -91,6 +96,7 @@[m [mexport const tabGroups: TabGroup[] = [[m
+       { id: 'stats',      icon: <IconStats /> },[m
+       { id: 'patchnotes', icon: <IconPatchNotes /> },[m
+       { id: 'ecailles',   icon: <IconEcailles /> },[m
+[32m+[m[32m      { id: 'kit',        icon: <IconKit /> },[m
+       { id: 'champions',  icon: <IconChamps />, href: '/champions' },[m
+     ],[m
+   },[m
+[36m@@ -176,6 +182,7 @@[m [mexport default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro[m
+    */[m
+   const ecaillesEnabled  = useFlag('ecailles_enabled')[m
+   const scenariosEnabled = useFlag('scenarios_enabled')[m
+[32m+[m[32m  const kitEnabled       = useFlag('kit_sur_mesure_enabled')[m
+   const adsEnabled       = useFlag('ads_enabled')[m
+ [m
+   const patchNotesEnabled     = useFlag('patch_notes_enabled')[m
+[36m@@ -267,6 +274,7 @@[m [mexport default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro[m
+               // permet de recetter avant d'ouvrir au public.[m
+               .filter(tab => tab.id !== 'ecailles'  || ecaillesEnabled  || isAdmin)[m
+               .filter(tab => tab.id !== 'scenarios' || scenariosEnabled || isAdmin)[m
+[32m+[m[32m              .filter(tab => tab.id !== 'kit'       || kitEnabled       || isAdmin)[m
+               .map(tab => ([m
+               <SidebarBtn[m
+                 key={tab.id} tab={tab}[m
+[36m@@ -304,6 +312,21 @@[m [mexport default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro[m
+           </div>[m
+         )}[m
+ [m
+[32m+[m[32m        {/* Kit sur mesure — flag de LANCEMENT, convention `'hidden'`.[m
+[32m+[m[32m            L'entrée de sidebar a déjà disparu pour un non-admin ; cette garde[m
+[32m+[m[32m            couvre le deep-link `?tab=kit`, qui contourne la navigation. L'admin[m
+[32m+[m[32m            voit toujours l'onglet : c'est ce qui lui permet de recetter le[m
+[32m+[m[32m            parcours client avant d'ouvrir le service au public.[m
+[32m+[m[32m            ⚠️ Ce n'est PAS la barrière : `kit_request_order` relit le flag en[m
+[32m+[m[32m            base, et c'est elle qui refuse un dépôt service fermé. */}[m
+[32m+[m[32m        {activeTab === 'kit'              && ([m
+[32m+[m[32m          !kitEnabled && !isAdmin[m
+[32m+[m[32m            ? <ComingSoonScreen[m
+[32m+[m[32m                title={d.kit.soonTitle}[m
+[32m+[m[32m                text={d.kit.soonText}[m
+[32m+[m[32m              />[m
+[32m+[m[32m            : <KitTab />[m
+[32m+[m[32m        )}[m
+         {activeTab === 'admin'            && <AdminTab />}[m
+         {activeTab === 'accueil'          && <AccueilTab />}[m
+         {activeTab === 'todo'             && <TodoTab />}[m
+[1mdiff --git a/src/lib/kit-orders.ts b/src/lib/kit-orders.ts[m
+[1mindex 18dd4d1..0d13c1c 100644[m
+[1m--- a/src/lib/kit-orders.ts[m
+[1m+++ b/src/lib/kit-orders.ts[m
+[36m@@ -49,9 +49,14 @@[m [mexport type KitStatus = KitChainStatus | 'annule'[m
+  * `KitOrderCard` qui rend) et un test qui en fabrique sans monter ni l'un ni[m
+  * l'autre.[m
+  *[m
+[31m- * `player_snapshot` en est ABSENT volontairement : la carte ne l'affiche pas au[m
+[31m- * lot 1 et le `select` ne le tire pas. L'ajouter ici avant d'en avoir besoin[m
+[31m- * ferait croire qu'il est chargé.[m
+[32m+[m[32m * `player_snapshot` en est ABSENT volontairement : le panneau ADMIN ne l'affiche[m
+[32m+[m[32m * pas et son `select` ne le tire pas, donc le déclarer ici ferait croire qu'il[m
+[32m+[m[32m * est toujours chargé.[m
+[32m+[m[32m *[m
+[32m+[m[32m * ⚠️ `KitTab` (surface cliente, lot 2) le tire, LUI — c'est l'écho du snapshot[m
+[32m+[m[32m * figé qu'il montre au client. Il élargit donc le type localement[m
+[32m+[m[32m * (`KitOrderRow & { player_snapshot }`) plutôt que de l'ajouter ici : c'est[m
+[32m+[m[32m * l'appelant qui sait ce qu'il a demandé.[m
+  */[m
+ export interface KitOrderRow {[m
+   id: string[m
+[1mdiff --git a/src/lib/session-types.ts b/src/lib/session-types.ts[m
+[1mindex 3b7db11..6c73473 100644[m
+[1m--- a/src/lib/session-types.ts[m
+[1m+++ b/src/lib/session-types.ts[m
+[36m@@ -24,6 +24,7 @@[m [mexport type DashTab =[m
+   | 'tournois'[m
+   | 'patchnotes'[m
+   | 'ecailles'[m
+[32m+[m[32m  | 'kit'[m
+   | 'admin'[m
+   | 'tarifs'[m
+ [m
+[1mdiff --git a/src/locales/dashboard/dashboard.test.ts b/src/locales/dashboard/dashboard.test.ts[m
+[1mindex e0e14a5..3fe6246 100644[m
+[1m--- a/src/locales/dashboard/dashboard.test.ts[m
+[1m+++ b/src/locales/dashboard/dashboard.test.ts[m
+[36m@@ -20,6 +20,8 @@[m [mimport {[m
+ } from './admin'[m
+ import { ADMIN_SUBTAB_IDS } from '@/lib/admin-subtabs'[m
+ import { KIT_STATUS_CHAIN } from '@/lib/kit-orders'[m
+[32m+[m[32mimport { KIT_FORMULAS } from '@/lib/kit-snapshot'[m
+[32m+[m[32mimport { kitProgressMessage, kitRpcError } from './kit'[m
+ import { queueLabel } from './common'[m
+ import {[m
+   riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,[m
+[36m@@ -140,6 +142,11 @@[m [mconst INVARIANTS = new Set<string>([[m
+   // traduisible (`{label}`) étant interpolé depuis `kits.statuses`, qui est bien[m
+   // traduit des deux côtés.[m
+   'Kits', 'Client', '→ {label}', '← {label}',[m
+[32m+[m[32m  // Kit sur mesure (lot 2). « Kit », « Solo » et « Duo » s'écrivent pareil dans[m
+[32m+[m[32m  // les deux langues — « Duo » est en plus le terme employé tel quel par Riot[m
+[32m+[m[32m  // (file « Solo/Duo »). Les deux gabarits ne portent AUCUN mot : `{price}` est[m
+[32m+[m[32m  // une devise déjà formatée par `Intl`, `{n}/{max}` un compteur de caractères.[m
+[32m+[m[32m  'Kit', 'Solo', 'Duo', '{price}', '{n}/{max}',[m
+ ])[m
+ [m
+ interface Anomalies {[m
+[36m@@ -204,8 +211,8 @@[m [mdescribe('dico dashboard — parité FR / EN', () => {[m
+     // Une zone oubliée dans index.ts n'existerait nulle part à l'exécution, alors que[m
+     // son module compilerait très bien tout seul.[m
+     expect(Object.keys(dashboardFr).sort()).toEqual([[m
+[31m-      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'nav', 'profil',[m
+[31m-      'strategie', 'workshop',[m
+[32m+[m[32m      'accueil', 'admin', 'analyse', 'builds', 'common', 'ecailles', 'kit', 'nav',[m
+[32m+[m[32m      'profil', 'strategie', 'workshop',[m
+     ])[m
+   })[m
+ [m
+[36m@@ -770,6 +777,79 @@[m [mdescribe('dico admin — tables d\'affichage des valeurs métier', () => {[m
+     expect(kitErrorLabel(dashboardFr.admin, inconnu)).toBe(inconnu)[m
+   })[m
+ [m
+[32m+[m[32m  /**[m
+[32m+[m[32m   * ⚠️ FRONTIÈRE MÉTIER — surface CLIENTE du kit (lot 2).[m
+[32m+[m[32m   *[m
+[32m+[m[32m   * `kit.existing.progress` couvre les mêmes 8 valeurs de `kit_orders.status`[m
+[32m+[m[32m   * que `admin.kits.statuses`, mais dans un AUTRE registre : l'admin lit l'état[m
+[32m+[m[32m   * interne (« Découverte faite »), le client lit ce qui l'attend (« On[m
+[32m+[m[32m   * construit ton kit »). Ce ne sont donc pas des doublons — et les deux tables[m
+[32m+[m[32m   * doivent rester complètes indépendamment l'une de l'autre.[m
+[32m+[m[32m   */[m
+[32m+[m[32m  it('a un message d\'avancement client pour chacun des 8 statuts', () => {[m
+[32m+[m[32m    const attendu = [...KIT_STATUS_CHAIN, 'annule'].sort()[m
+[32m+[m[32m    expect(Object.keys(dashboardFr.kit.existing.progress).sort()).toEqual(attendu)[m
+[32m+[m[32m    expect(Object.keys(dashboardEn.kit.existing.progress).sort()).toEqual(attendu)[m
+[32m+[m[32m  })[m
+[32m+[m
+[32m+[m[32m  it('ne montre JAMAIS une valeur technique au client', () => {[m
+[32m+[m[32m    // Le client ne doit jamais lire « session_faite » ni « acompte_paye ».[m
+[32m+[m[32m    //[m
+[32m+[m[32m    // ⚠️ Le test porte sur les valeurs en SNAKE_CASE, pas sur le mot nu : « Ta[m
+[32m+[m[32m    // demande est enregistrée » contient légitimement « demande », qui est aussi[m
+[32m+[m[32m    // le nom du statut. C'est le souligné qui trahit une valeur machine — un[m
+[32m+[m[32m    // message client n'en contient jamais.[m
+[32m+[m[32m    const techniques = [...KIT_STATUS_CHAIN, 'annule'].filter(s => s.includes('_'))[m
+[32m+[m[32m    expect(techniques.length, 'aucun statut composé à surveiller ?').toBeGreaterThan(0)[m
+[32m+[m
+[32m+[m[32m    for (const status of [...KIT_STATUS_CHAIN, 'annule']) {[m
+[32m+[m[32m      for (const dict of [dashboardFr.kit, dashboardEn.kit]) {[m
+[32m+[m[32m        const msg = kitProgressMessage(dict, status)[m
+[32m+[m[32m        expect(msg, status).toBeTruthy()[m
+[32m+[m[32m        expect(msg, status).not.toBe(status)[m
+[32m+[m[32m        for (const t of techniques) expect(msg, `${status} laisse fuir ${t}`).not.toContain(t)[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Statut inconnu → repli sur `demande`, le DEFAULT de la colonne. Jamais un[m
+[32m+[m[32m    // écran vide, jamais la valeur brute.[m
+[32m+[m[32m    expect(kitProgressMessage(dashboardFr.kit, 'statut_inexistant'))[m
+[32m+[m[32m      .toBe(dashboardFr.kit.existing.progress.demande)[m
+[32m+[m[32m  })[m
+[32m+[m
+[32m+[m[32m  it('a un libellé pour chaque formule vendue', () => {[m
+[32m+[m[32m    // `KIT_FORMULAS` pilote AUSSI la grille de prix et le bloc binôme : une[m
+[32m+[m[32m    // formule ajoutée sans libellé rendrait une carte anonyme.[m
+[32m+[m[32m    expect(Object.keys(dashboardFr.kit.formulas).sort()).toEqual([...KIT_FORMULAS].sort())[m
+[32m+[m[32m    expect(Object.keys(dashboardEn.kit.formulas).sort()).toEqual([...KIT_FORMULAS].sort())[m
+[32m+[m[32m  })[m
+[32m+[m
+[32m+[m[32m  /**[m
+[32m+[m[32m   * Les codes levés par `kit_request_order` (migration 20260909000001). Testés[m
+[32m+[m[32m   * ENVELOPPÉS, parce que c'est la forme réelle : PostgREST n'expose jamais un[m
+[32m+[m[32m   * `RAISE EXCEPTION` plpgsql nu.[m
+[32m+[m[32m   */[m
+[32m+[m[32m  it('traduit les erreurs de dépôt côté client, y compris enveloppées', () => {[m
+[32m+[m[32m    for (const code of Object.keys(dashboardFr.kit.errors)) {[m
+[32m+[m[32m      const brut = `unexpected error: ${code} (SQLSTATE P0001)`[m
+[32m+[m[32m      expect(kitRpcError(dashboardFr.kit, brut), `FR : ${code}`).not.toContain(code)[m
+[32m+[m[32m      expect(kitRpcError(dashboardEn.kit, brut), `EN : ${code}`).not.toContain(code)[m
+[32m+[m[32m    }[m
+[32m+[m[32m  })[m
+[32m+[m
+[32m+[m[32m  it('rend un message de dépôt inconnu tel quel', () => {[m
+[32m+[m[32m    const inconnu = 'network unreachable'[m
+[32m+[m[32m    expect(kitRpcError(dashboardFr.kit, inconnu)).toBe(inconnu)[m
+[32m+[m[32m  })[m
+[32m+[m
+[32m+[m[32m  it('annonce au client autant d\'étapes qu\'il en verra', () => {[m
+[32m+[m[32m    // 4 étapes annoncées, pas 8 : la machine interne sépare les encaissements,[m
+[32m+[m[32m    // ce qui ne concerne pas la promesse commerciale. Si l'une des deux listes[m
+[32m+[m[32m    // bouge, c'est une décision — pas un effet de bord.[m
+[32m+[m[32m    expect(dashboardFr.kit.pitch.steps).toHaveLength(4)[m
+[32m+[m[32m    expect(dashboardEn.kit.pitch.steps).toHaveLength(4)[m
+[32m+[m[32m  })[m
+[32m+[m
+   /**[m
+    * ⚠️ FRONTIÈRE MÉTIER : `TIERS` pilote à la fois les boutons de l'éditeur, le[m
+    * comptage par tier et la valeur ÉCRITE dans `profiles.tier`. Le panneau admin rend[m
+[1mdiff --git a/src/locales/dashboard/index.ts b/src/locales/dashboard/index.ts[m
+[1mindex b7cdfb6..e137881 100644[m
+[1m--- a/src/locales/dashboard/index.ts[m
+[1m+++ b/src/locales/dashboard/index.ts[m
+[36m@@ -32,6 +32,7 @@[m [mimport { analyseFr,   analyseEn }   from './analyse'[m
+ import { adminFr,     adminEn }     from './admin'[m
+ import { profilFr,    profilEn }    from './profil'[m
+ import { ecaillesFr,  ecaillesEn }  from './ecailles'[m
+[32m+[m[32mimport { kitFr,       kitEn }       from './kit'[m
+ [m
+ export const dashboardFr = {[m
+   common:    commonFr,[m
+[36m@@ -44,6 +45,7 @@[m [mexport const dashboardFr = {[m
+   admin:     adminFr,[m
+   profil:    profilFr,[m
+   ecailles:  ecaillesFr,[m
+[32m+[m[32m  kit:       kitFr,[m
+ }[m
+ [m
+ export type DashboardDict = typeof dashboardFr[m
+[36m@@ -59,6 +61,7 @@[m [mexport const dashboardEn: DashboardDict = {[m
+   admin:     adminEn,[m
+   profil:    profilEn,[m
+   ecailles:  ecaillesEn,[m
+[32m+[m[32m  kit:       kitEn,[m
+ }[m
+ [m
+ export const dashboardDicts: Record<Lang, DashboardDict> = {[m
+[1mdiff --git a/src/locales/dashboard/nav.ts b/src/locales/dashboard/nav.ts[m
+[1mindex 53427eb..09431ca 100644[m
+[1m--- a/src/locales/dashboard/nav.ts[m
+[1m+++ b/src/locales/dashboard/nav.ts[m
+[36m@@ -24,7 +24,7 @@[m
+  */[m
+ export const NAV_TAB_IDS = [[m
+   'admin',[m
+[31m-  'accueil', 'todo', 'stats', 'patchnotes', 'ecailles', 'champions',[m
+[32m+[m[32m  'accueil', 'todo', 'stats', 'patchnotes', 'ecailles', 'kit', 'champions',[m
+   'jungle', 'builds', 'scenarios',[m
+   'workshop-builds', 'workshop-jungle',[m
+   'matchup', 'postgame',[m
+[36m@@ -51,6 +51,7 @@[m [mconst tabsFr: Record<NavTabId, TabLabel> = {[m
+   stats:              { label: 'Stats',            short: 'Stats' },[m
+   patchnotes:         { label: 'Patch Notes',      short: 'Patchs' },[m
+   ecailles:           { label: 'La Forge',         short: 'La Forge' },[m
+[32m+[m[32m  kit:                { label: 'Kit sur mesure',   short: 'Kit' },[m
+   champions:          { label: 'Champions',        short: 'Champions' },[m
+   jungle:             { label: 'Jungle Path',      short: 'Jungle' },[m
+   builds:             { label: 'Builder',          short: 'Builder' },[m
+[36m@@ -69,6 +70,7 @@[m [mconst tabsEn: Record<NavTabId, TabLabel> = {[m
+   stats:              { label: 'Stats',            short: 'Stats' },[m
+   patchnotes:         { label: 'Patch Notes',      short: 'Patches' },[m
+   ecailles:           { label: 'The Forge',        short: 'The Forge' },[m
+[32m+[m[32m  kit:                { label: 'Custom kit',       short: 'Kit' },[m
+   champions:          { label: 'Champions',        short: 'Champions' },[m
+   jungle:             { label: 'Jungle Path',      short: 'Jungle' },[m
+   builds:             { label: 'Builder',          short: 'Builder' },[m
+[36m@@ -158,6 +160,7 @@[m [mconst pageTitlesFr = {[m
+   tournois:          { title: 'Tournois',         subtitle: 'Bientôt disponible' },[m
+   patchnotes:        { title: 'Patch Notes',      subtitle: 'Résumés des mises à jour League of Legends' },[m
+   ecailles:          { title: 'La Forge',         subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },[m
+[32m+[m[32m  kit:               { title: 'Kit sur mesure',   subtitle: 'Un accompagnement construit pour ton jeu' },[m
+   tarifs:            { title: 'Tarifs',           subtitle: 'Choisis ou renouvelle ton abonnement' },[m
+ }[m
+ [m
+[36m@@ -178,6 +181,7 @@[m [mconst pageTitlesEn: Record<PageTitleId, { title: string; subtitle: string }> = {[m
+   tournois:          { title: 'Tournaments',      subtitle: 'Coming soon' },[m
+   patchnotes:        { title: 'Patch Notes',      subtitle: 'League of Legends update summaries' },[m
+   ecailles:          { title: 'The Forge',        subtitle: 'Scales, daily quests and cosmetics shop' },[m
+[32m+[m[32m  kit:               { title: 'Custom kit',       subtitle: 'Coaching built around your game' },[m
+   tarifs:            { title: 'Pricing',          subtitle: 'Choose or renew your subscription' },[m
+ }[m
+ [m

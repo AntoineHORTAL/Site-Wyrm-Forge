@@ -32,6 +32,7 @@ import { analyseFr,   analyseEn }   from './analyse'
 import { adminFr,     adminEn }     from './admin'
 import { profilFr,    profilEn }    from './profil'
 import { ecaillesFr,  ecaillesEn }  from './ecailles'
+import { kitFr,       kitEn }       from './kit'
 
 export const dashboardFr = {
   common:    commonFr,
@@ -44,6 +45,7 @@ export const dashboardFr = {
   admin:     adminFr,
   profil:    profilFr,
   ecailles:  ecaillesFr,
+  kit:       kitFr,
 }
 
 export type DashboardDict = typeof dashboardFr
@@ -59,6 +61,7 @@ export const dashboardEn: DashboardDict = {
   admin:     adminEn,
   profil:    profilEn,
   ecailles:  ecaillesEn,
+  kit:       kitEn,
 }
 
 export const dashboardDicts: Record<Lang, DashboardDict> = {
