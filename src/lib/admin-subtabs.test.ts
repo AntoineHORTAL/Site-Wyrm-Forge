@@ -16,7 +16,7 @@ import {
  */
 
 describe('garde du deep-link ?subtab=', () => {
-  it('accepte les trois identifiants du panneau', () => {
+  it('accepte les quatre identifiants du panneau', () => {
     for (const id of ADMIN_SUBTAB_IDS) {
       expect(parseAdminSubTab(id), id).toBe(id)
       expect(isAdminSubTab(id), id).toBe(true)
@@ -67,9 +67,12 @@ describe('garde du deep-link ?subtab=', () => {
 
 describe('composition du panneau', () => {
   it('affiche exactement une section à la fois', () => {
+    // ⚠️ Ce tableau doit lister TOUS les drapeaux de `AdminPanelLayout` hors
+    // bandeau. Un `showX` ajouté sans être recensé ici laisserait passer deux
+    // sections rendues en même temps — le cas que ce test existe pour attraper.
     for (const sub of ADMIN_SUBTAB_IDS) {
       const l = adminPanelLayout(sub, 0)
-      const shown = [l.showUsers, l.showPatchNotes, l.showFlags].filter(Boolean)
+      const shown = [l.showUsers, l.showPatchNotes, l.showFlags, l.showKits].filter(Boolean)
       expect(shown, sub).toHaveLength(1)
     }
   })
@@ -78,6 +81,7 @@ describe('composition du panneau', () => {
     expect(adminPanelLayout('utilisateurs', 0).showUsers).toBe(true)
     expect(adminPanelLayout('patch-notes', 0).showPatchNotes).toBe(true)
     expect(adminPanelLayout('flags', 0).showFlags).toBe(true)
+    expect(adminPanelLayout('kits', 0).showKits).toBe(true)
   })
 })
 

@@ -21,6 +21,11 @@ import {
   adminPanelLayout, subTabFromSearch, type AdminSubTab,
 } from '@/lib/admin-subtabs'
 import {
+  KIT_OPEN_STATUSES,
+  type KitStatus, type KitOrderRow, type KitOrderEvent, type KitConfirmKind,
+} from '@/lib/kit-orders'
+import KitOrderCard from '@/components/dashboard/KitOrderCard'
+import {
   partitionCatalogue, cutKillSwitches, canSubmitCut, isChildLocked,
   offBehaviorKey, relativeTime, flagLabel, flagDescription, isOn,
   groupKillBySurface, SURFACE_ORDER, DEFAULT_KILL_SURFACE, isPendingLaunch,
@@ -29,6 +34,7 @@ import {
 } from '@/lib/admin-flags'
 import {
   profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
+  kitStatusLabel, kitErrorLabel,
   type AdminDict, type AdminSettingKey,
 } from '@/locales/dashboard/admin'
 
@@ -79,6 +85,20 @@ interface PatchNote {
   created_at: string
   published_at: string | null
 }
+
+// `KitOrderRow` et `KitOrderEvent` vivent dans `lib/kit-orders.ts` : ce panneau
+// les charge, `KitOrderCard` les rend, et son test en fabrique sans monter ni
+// l'un ni l'autre. Même emplacement et même raison que `FlagCatalogueRow`.
+
+/**
+ * Timeline vide, partagée par toutes les cartes repliées.
+ *
+ * Constante de module et non un `[]` littéral dans le JSX : le littéral créerait
+ * un tableau neuf à chaque rendu, donc une prop `events` toujours « nouvelle »
+ * pour les N-1 cartes dont la timeline est fermée. Une seule est ouverte à la
+ * fois — c'est le cas général, pas un cas limite.
+ */
+const EMPTY_EVENTS: readonly KitOrderEvent[] = []
 
 // Alias de la liste canonique de `lib/subscription.ts`. Le nom `TIERS` est
 // CONSERVÉ : il est importé par `locales/dashboard/dashboard.test.ts`, qui en
@@ -141,6 +161,10 @@ const FMT_DATE: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', y
  * Les deux libellés viennent du dico ; la DATE est formatée dans la langue affichée
  * depuis le Lot 8 (`lib/intl`), d'où le paramètre `lang`.
  */
+// Les deux helpers de style des boutons du sous-onglet Kits ont suivi le rendu
+// dans `components/dashboard/KitOrderCard.tsx` : ils n'ont de sens qu'auprès des
+// boutons qu'ils habillent.
+
 function expiryLabel(iso: string | null, labels: AdminDict['expiry'], lang: Lang): string {
   if (!iso) return labels.lifetime
   const d = new Date(iso)
@@ -158,6 +182,8 @@ export default function AdminTab() {
   const A = dico.admin
   /** Châssis du panneau de flags. Les LIBELLÉS des flags, eux, viennent de la base. */
   const F = A.flags
+  /** Sous-onglet « Kits ». */
+  const K = A.kits
 
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading]   = useState(true)
@@ -218,6 +244,40 @@ export default function AdminTab() {
   // `useEffect` plus bas) — un sous-onglet ne commute que du JSX, il ne possède
   // jamais son chargement, sinon le bandeau de coupures serait vide partout
   // ailleurs que sur « flags ».
+  // ── Sous-onglet « Kits » (service Kit sur mesure) ──────────────────────
+  const [kits, setKits]               = useState<KitOrderRow[]>([])
+  const [kitsLoading, setKitsLoading] = useState(false)
+  /** id du dossier dont une action est en vol — désactive SES boutons, pas ceux des autres. */
+  const [kitBusyId, setKitBusyId]     = useState<string | null>(null)
+  /**
+   * Message d'erreur BRUT tel que renvoyé par PostgREST, jamais le libellé
+   * traduit. La résolution (`kitErrorLabel`) se fait au RENDU : c'est ce qui
+   * garde les fonctions de chargement indépendantes du dictionnaire — sinon `A`
+   * entrerait dans les dépendances de `loadKits` et un changement de langue
+   * relancerait les cinq requêtes du panneau. Effet de bord bienvenu : une
+   * erreur affichée suit la langue si on la change.
+   */
+  const [kitError, setKitError]       = useState<string | null>(null)
+  /**
+   * Confirmation ouverte : QUEL dossier, et POUR QUEL geste.
+   *
+   * ⚠️ UNE valeur, pas deux états indépendants. Avec `confirmCancelId` et
+   * `confirmRollbackId` séparés, une même carte pouvait afficher les deux
+   * questions à la fois — « Revenir à X ? » et « Annuler ce dossier ? » côte à
+   * côte, avec deux boutons « Confirmer » que rien ne distingue. Ici, ouvrir
+   * l'une ferme l'autre par construction.
+   */
+  const [kitConfirm, setKitConfirm] = useState<{ id: string; kind: KitConfirmKind } | null>(null)
+  /** Dossier dont la timeline est dépliée, et son contenu. Un seul à la fois. */
+  const [timelineFor, setTimelineFor] = useState<string | null>(null)
+  const [timeline, setTimeline]       = useState<KitOrderEvent[]>([])
+  const [priceEditId, setPriceEditId] = useState<string | null>(null)
+  const [priceDraft, setPriceDraft]   = useState('')
+  /** Formulaire d'ouverture d'un dossier. */
+  const [openClientId, setOpenClientId] = useState('')
+  const [openStatus, setOpenStatus]     = useState<KitStatus>('acompte_paye')
+  const [opening, setOpening]           = useState(false)
+
   const [subTab, setSubTab] = useState<AdminSubTab>(DEFAULT_ADMIN_SUBTAB)
 
   // Surface active DANS la section des kill switches. État local, non
@@ -406,6 +466,119 @@ export default function AdminTab() {
     setPatchesLoading(false)
   }, [supabase])
 
+  // ════════════════════════════════════════════════════════════════════
+  //  KITS SUR MESURE
+  // ════════════════════════════════════════════════════════════════════
+
+  /**
+   * Charge tous les dossiers. Pas de pagination : le service se vend à l'unité
+   * avec un accompagnement humain derrière — la table restera à deux chiffres
+   * pendant longtemps. Le jour où ce ne sera plus vrai, c'est un `.range()` ici.
+   *
+   * La policy `ko_select` renvoie TOUT à un admin, et seulement ses propres
+   * lignes à un non-admin : cet écran n'ajoute aucun filtre, il n'en a pas besoin.
+   */
+  const loadKits = useCallback(async () => {
+    setKitsLoading(true)
+    const { data, error } = await supabase
+      .from('kit_orders')
+      .select('id, user_id, status, price_total_cents, admin_note, created_at, updated_at')
+      .order('created_at', { ascending: false })
+    if (error) setKitError(error.message)
+    setKits((data ?? []) as KitOrderRow[])
+    setKitsLoading(false)
+  }, [supabase])
+
+  /**
+   * Fait passer un dossier d'un état à l'autre.
+   *
+   * ⚠️ Passe par la RPC `kit_set_status`, JAMAIS par un `.update()`. Ce n'est pas
+   * une préférence de style : aucune policy UPDATE n'existe sur `kit_orders`, un
+   * update direct serait refusé par la base. La fonction re-vérifie `is_admin()`
+   * et la validité de la transition, et écrit la ligne d'audit dans la même
+   * transaction — trois choses qu'un update client ne peut pas faire.
+   *
+   * Pas de mise à jour optimiste, contrairement à `toggleFlag` : là-bas l'écriture
+   * ne peut pas être refusée métier (un booléen bascule toujours), ici elle peut
+   * l'être (`invalid_transition`). Peindre l'état visé avant la réponse afficherait
+   * un dossier « terminé » qui ne l'est pas.
+   */
+  async function advanceKit(id: string, next: KitStatus) {
+    setKitBusyId(id)
+    setKitError(null)
+    const { error } = await supabase.rpc('kit_set_status', {
+      p_order_id: id, p_next_status: next,
+    })
+    setKitBusyId(null)
+    setKitConfirm(null)
+    if (error) { setKitError(error.message); return }
+    await loadKits()
+    // La timeline dépliée vient de gagner une ligne — la relire, sinon elle
+    // mentirait jusqu'au prochain repli/dépli.
+    if (timelineFor === id) await loadTimeline(id)
+  }
+
+  /** Ouvre un dossier. `kit_open_order` refuse un second dossier ACTIF pour le même client. */
+  async function openKitOrder() {
+    if (!openClientId) return
+    setOpening(true)
+    setKitError(null)
+    const { error } = await supabase.rpc('kit_open_order', {
+      p_user_id: openClientId,
+      p_status:  openStatus,
+    })
+    setOpening(false)
+    if (error) { setKitError(error.message); return }
+    setOpenClientId('')
+    await loadKits()
+  }
+
+  /**
+   * Enregistre le prix total, en CENTIMES.
+   *
+   * L'admin saisit des euros ; la base ne stocke que des centimes (jamais de
+   * flottant sur de l'argent). La conversion se fait ici, une fois, avec un
+   * `Math.round` : `19.99 * 100` vaut `1998.9999…` en virgule flottante.
+   * Une saisie vide ou non numérique est ignorée plutôt que d'envoyer un NaN.
+   */
+  async function saveKitPrice(id: string) {
+    const euros = Number(priceDraft.replace(',', '.'))
+    if (!Number.isFinite(euros) || euros <= 0) { setPriceEditId(null); return }
+    setKitBusyId(id)
+    setKitError(null)
+    const { error } = await supabase.rpc('kit_set_details', {
+      p_order_id: id, p_price_total_cents: Math.round(euros * 100),
+    })
+    setKitBusyId(null)
+    setPriceEditId(null)
+    if (error) { setKitError(error.message); return }
+    await loadKits()
+  }
+
+  /**
+   * Charge la timeline d'un dossier. Chargée À LA DEMANDE et pour un seul
+   * dossier : la tirer pour toutes les lignes du tableau multiplierait les
+   * requêtes pour de l'information que l'admin ne regarde qu'en cas de doute.
+   *
+   * `kit_order_events` n'est lisible que par `is_admin()` (policy
+   * `koe_select_admin`) — le client ne voit jamais sa propre timeline.
+   */
+  async function loadTimeline(id: string) {
+    const { data } = await supabase
+      .from('kit_order_events')
+      .select('id, from_status, to_status, actor, note, created_at')
+      .eq('kit_order_id', id)
+      .order('created_at', { ascending: false })
+    setTimeline((data ?? []) as KitOrderEvent[])
+  }
+
+  async function toggleTimeline(id: string) {
+    if (timelineFor === id) { setTimelineFor(null); setTimeline([]); return }
+    setTimelineFor(id)
+    setTimeline([])
+    await loadTimeline(id)
+  }
+
   async function generate() {
     setGenerating(true)
     setGenResult(null)
@@ -486,8 +659,12 @@ export default function AdminTab() {
     return () => document.removeEventListener('keydown', onKey)
   }, [previewFullscreen])
 
-  useEffect(() => { load(); loadPatches(); loadSettings(); loadCatalogue() },
-    [load, loadPatches, loadSettings, loadCatalogue])
+  // Tout est chargé AU MONTAGE, pas à l'ouverture du sous-onglet correspondant.
+  // C'est l'idiome déjà en place ici, et il évite le piège du chargement
+  // paresseux : une liste restée vide parce que personne n'a cliqué sur l'onglet
+  // qui la remplit. Cinq requêtes légères pour un écran réservé aux admins.
+  useEffect(() => { load(); loadPatches(); loadSettings(); loadCatalogue(); loadKits() },
+    [load, loadPatches, loadSettings, loadCatalogue, loadKits])
 
   // ── Dérivés du catalogue ──────────────────────────────────────────────
   // Recalculés à chaque rendu, via des fonctions PURES testées dans
@@ -1551,6 +1728,170 @@ export default function AdminTab() {
           )}
         </div>
       )}
+      </>
+      )}
+
+      {/* ══ Sous-onglet « Kits » ══════════════════════════════════════
+          Service « Kit sur mesure » — lot 1 (V0 interne). L'admin encaisse et
+          fixe les RDV à la main ; cet écran ne fait que suivre le dossier.
+
+          ⚠️ TOUTE écriture passe par une RPC SECURITY DEFINER. Il n'existe
+          aucune policy INSERT/UPDATE/DELETE sur `kit_orders` : un `.update()`
+          depuis ce composant serait refusé par la base. C'est délibéré, et c'est
+          la correction de la dette des Scénarios (verrou purement client) —
+          voir l'en-tête de la migration 20260908000001. Ne pas « simplifier »
+          ces appels en écritures directes.
+
+          ⚠️ CE SOUS-ONGLET NE LIT PAS `kit_sur_mesure_enabled`, ET C'EST VOULU.
+          Ce flag de lancement (migration 20260908000002, `off_behavior='hidden'`)
+          ne gouverne QUE la surface UTILISATEUR FINAL — la page de commande et
+          l'entrée de navigation qui arrivent au lot 2. Le panneau admin doit
+          rester ouvert quel que soit son état, pour deux raisons :
+
+            1. C'est là que se préparent les dossiers AVANT le lancement. Un flag
+               qui fermerait aussi l'admin rendrait la recette impossible : on ne
+               pourrait pas vérifier que le parcours fonctionne avant de l'ouvrir
+               au public, ce qui est exactement l'usage d'un flag de lancement.
+            2. C'est la convention DÉJÀ en vigueur ici — `EcaillesTab` rend la
+               Forge à un admin même quand `ecailles_enabled` est à `false`
+               (« recette avant lancement », cf. `feature-flags.test.ts`). Brancher
+               ce sous-onglet sur le flag introduirait une exception à cette règle.
+
+          Corollaire à tenir au LOT 2 : c'est la surface cliente qui devra lire
+          `useFlag('kit_sur_mesure_enabled')`, pas celle-ci. Et le vrai verrou de
+          ce qui coûte reste la garde `is_admin()` des trois RPC — un flag est de
+          la présentation, jamais une barrière. */}
+      {layout.showKits && (
+      <>
+      <div style={{
+        fontSize: 12, color: c ? '#EF9F27' : '#7F77DD', textTransform: 'uppercase',
+        letterSpacing: 1, fontWeight: 700, marginBottom: 4,
+      }}>{K.title}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 16 }}>{K.hint}</div>
+
+      {kitError && (
+        <div style={{
+          fontSize: 12, color: '#E24B4A', marginBottom: 12,
+          padding: '8px 12px', borderRadius: 8,
+          border: '1px solid rgba(226,75,74,0.3)', background: 'rgba(226,75,74,0.08)',
+        }}>
+          {K.errorPrefix.replace('{message}', kitErrorLabel(A, kitError))}
+        </div>
+      )}
+
+      {/* ── Ouvrir un dossier ────────────────────────────────────────────
+          Le sélecteur de client réutilise `profiles`, DÉJÀ chargé par ce panneau
+          pour le tableau des comptes — aucune requête supplémentaire, exactement
+          le raisonnement d'`adminName()` pour les auteurs de coupures. */}
+      <div style={{
+        marginBottom: 24, padding: 14, borderRadius: 10,
+        border: `1px solid ${border}`, background: bg,
+        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{K.openClientLabel}</label>
+          <select
+            value={openClientId}
+            onChange={e => setOpenClientId(e.target.value)}
+            style={{
+              padding: '7px 10px', borderRadius: 7, fontSize: 13, fontFamily: 'inherit',
+              border: `1px solid ${border}`, background: c ? 'rgba(20,10,35,0.6)' : '#27272A', color: 'inherit',
+            }}
+          >
+            <option value="">{K.openClientEmpty}</option>
+            {profiles.map(p => (
+              <option key={p.id} value={p.id}>{p.username}{p.email ? ` — ${p.email}` : ''}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{K.openStatusLabel}</label>
+          {/* Deux entrées seulement — `kit_open_order` refuse tout autre état de
+              départ. Les proposer toutes ferait cliquer sur une option que la
+              base rejette. */}
+          <select
+            value={openStatus}
+            onChange={e => setOpenStatus(e.target.value as KitStatus)}
+            style={{
+              padding: '7px 10px', borderRadius: 7, fontSize: 13, fontFamily: 'inherit',
+              border: `1px solid ${border}`, background: c ? 'rgba(20,10,35,0.6)' : '#27272A', color: 'inherit',
+            }}
+          >
+            {KIT_OPEN_STATUSES.map(s => (
+              <option key={s} value={s}>{kitStatusLabel(A, s)}</option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void openKitOrder()}
+          disabled={!openClientId || opening}
+          style={{
+            padding: '8px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600,
+            fontFamily: 'inherit', border: 'none',
+            cursor: (!openClientId || opening) ? 'not-allowed' : 'pointer',
+            opacity: (!openClientId || opening) ? 0.5 : 1,
+            background: c ? '#EF9F27' : '#7F77DD', color: c ? '#1A1A1A' : '#FFFFFF',
+          }}
+        >
+          {opening ? K.opening : K.openAction}
+        </button>
+      </div>
+
+      {kitsLoading && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{dico.common.loading}</div>
+      )}
+
+      {!kitsLoading && kits.length === 0 && (
+        <div style={{ color: 'var(--text-dim)', fontSize: 13, fontStyle: 'italic' }}>
+          {K.empty}
+        </div>
+      )}
+
+      {/* ── Les dossiers ─────────────────────────────────────────────────
+          Une CARTE par dossier plutôt qu'une ligne de tableau : chacune porte
+          jusqu'à trois actions, une édition de prix et une timeline dépliable.
+          Le tableau des comptes s'en sort avec des lignes parce qu'il n'a qu'un
+          bouton par ligne. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {kits.map(order => (
+          <KitOrderCard
+            key={order.id}
+            order={order}
+            /* Résolu depuis `profiles`, DÉJÀ chargé par ce panneau pour le
+               tableau des comptes — aucune requête ni jointure de plus, même
+               raisonnement qu'`adminName` pour les auteurs de coupure. */
+            clientName={profiles.find(p => p.id === order.user_id)?.username ?? null}
+            labels={K}
+            statusLabel={s => kitStatusLabel(A, s)}
+            lang={lang}
+            busy={kitBusyId === order.id}
+            confirm={kitConfirm?.id === order.id ? kitConfirm.kind : null}
+            priceEditing={priceEditId === order.id}
+            priceDraft={priceDraft}
+            timelineOpen={timelineFor === order.id}
+            /* `EMPTY_EVENTS` et non `[]` : un littéral créerait un tableau neuf
+               à chaque rendu de chaque carte, donc une prop toujours « nouvelle »
+               pour les N-1 cartes dont la timeline est repliée. */
+            events={timelineFor === order.id ? timeline : EMPTY_EVENTS}
+            actorName={adminName}
+            accent={c ? '#EF9F27' : '#7F77DD'}
+            border={border}
+            bg={bg}
+            inputBg={c ? 'rgba(20,10,35,0.6)' : '#27272A'}
+            onAdvance={next => void advanceKit(order.id, next)}
+            onConfirmRequest={kind => setKitConfirm({ id: order.id, kind })}
+            onConfirmDismiss={() => setKitConfirm(null)}
+            onPriceEdit={draft => { setPriceEditId(order.id); setPriceDraft(draft) }}
+            onPriceDraft={setPriceDraft}
+            onPriceSave={() => void saveKitPrice(order.id)}
+            onPriceDismiss={() => setPriceEditId(null)}
+            onToggleTimeline={() => void toggleTimeline(order.id)}
+          />
+        ))}
+      </div>
       </>
       )}
 

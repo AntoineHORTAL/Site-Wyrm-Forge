@@ -14,7 +14,12 @@ import {
   type PostGameError, type PostGameResult,
 } from '@/lib/postgame/api'
 import { balanceLabel, needLabel } from './analyse'
-import { profileRoleLabel, patchStatusLabel, patchGenReasonLabel } from './admin'
+import {
+  profileRoleLabel, patchStatusLabel, patchGenReasonLabel,
+  kitStatusLabel, kitErrorLabel,
+} from './admin'
+import { ADMIN_SUBTAB_IDS } from '@/lib/admin-subtabs'
+import { KIT_STATUS_CHAIN } from '@/lib/kit-orders'
 import { queueLabel } from './common'
 import {
   riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,
@@ -129,6 +134,12 @@ const INVARIANTS = new Set<string>([
   // exactement comme pour « Kill switches » ci-dessus. Seul « Utilisateurs » / « Users »
   // se traduit réellement, et il n'est donc pas listé ici.
   'Patch notes', 'Feature flags',
+  // Sous-onglet « Kits » et libellés du service Kit sur mesure. « Kit » et
+  // « Client » s'écrivent de la même façon dans les deux langues ; les deux
+  // gabarits d'action ne portent qu'une flèche et un marqueur, le seul mot
+  // traduisible (`{label}`) étant interpolé depuis `kits.statuses`, qui est bien
+  // traduit des deux côtés.
+  'Kits', 'Client', '→ {label}', '← {label}',
 ])
 
 interface Anomalies {
@@ -696,6 +707,67 @@ describe('dico admin — tables d\'affichage des valeurs métier', () => {
 
   it('a un libellé pour chaque motif renvoyé par patch-notes-generator', () => {
     expect(Object.keys(dashboardFr.admin.patches.reasons).sort()).toEqual([...PATCH_GEN_REASONS].sort())
+  })
+
+  /**
+   * ⚠️ FRONTIÈRE MÉTIER : `ADMIN_SUBTAB_IDS` pilote à la fois les pastilles
+   * rendues, la valeur acceptée dans `?subtab=` et le calcul d'`adminPanelLayout`.
+   * Un id ajouté sans libellé afficherait une pastille VIDE — cliquable, mais
+   * anonyme. La contrainte de type ne l'attrape pas : `subtabs` porte aussi
+   * `ariaLabel`, donc ce n'est pas un `Record<AdminSubTab, string>` exact.
+   */
+  it('a un libellé FR et EN pour chaque sous-onglet du panneau', () => {
+    for (const id of ADMIN_SUBTAB_IDS) {
+      expect(dashboardFr.admin.subtabs[id], `libellé FR manquant : ${id}`).toBeTruthy()
+      expect(dashboardEn.admin.subtabs[id], `libellé EN manquant : ${id}`).toBeTruthy()
+    }
+  })
+
+  it('ne laisse aucun libellé de sous-onglet orphelin', () => {
+    // L'inverse : un libellé qui survit à la suppression de son id. Il ne
+    // casserait rien, mais il ferait croire à une section qui n'existe plus.
+    const declared = Object.keys(dashboardFr.admin.subtabs).filter(k => k !== 'ariaLabel')
+    expect(declared.sort()).toEqual([...ADMIN_SUBTAB_IDS].sort())
+  })
+
+  /**
+   * `kit_orders.status` porte un CHECK à 8 valeurs (migration 20260908000001).
+   * Un statut ajouté côté SQL sans entrée ici s'afficherait BRUT dans la pastille
+   * de `KitOrderCard` — `kitStatusLabel` rend la valeur telle quelle plutôt qu'un
+   * vide, ce qui est le bon repli mais reste une régression visible.
+   */
+  it('a un libellé pour chacun des 8 statuts de kit_orders, et aucun orphelin', () => {
+    const attendu = [...KIT_STATUS_CHAIN, 'annule'].sort()
+    expect(Object.keys(dashboardFr.admin.kits.statuses).sort()).toEqual(attendu)
+    expect(Object.keys(dashboardEn.admin.kits.statuses).sort()).toEqual(attendu)
+  })
+
+  it('traduit chaque statut de kit dans les DEUX langues', () => {
+    for (const status of [...KIT_STATUS_CHAIN, 'annule']) {
+      expect(kitStatusLabel(dashboardFr.admin, status), `FR : ${status}`).not.toBe(status)
+      expect(kitStatusLabel(dashboardEn.admin, status), `EN : ${status}`).not.toBe(status)
+    }
+  })
+
+  /**
+   * Les cinq erreurs métier levées par les fonctions SQL du kit. Le résolveur
+   * les cherche PAR INCLUSION dans `error.message` (une exception plpgsql
+   * n'arrive jamais nue) — d'où le test avec un message enveloppé, qui est la
+   * forme réelle, et non le code seul.
+   */
+  it('traduit les erreurs métier des RPC kit, y compris enveloppées', () => {
+    for (const code of Object.keys(dashboardFr.admin.kits.errors)) {
+      const brut = `unexpected error: ${code} (SQLSTATE P0001)`
+      expect(kitErrorLabel(dashboardFr.admin, brut), `FR : ${code}`).not.toContain(code)
+      expect(kitErrorLabel(dashboardEn.admin, brut), `EN : ${code}`).not.toContain(code)
+    }
+  })
+
+  it('rend un message inconnu TEL QUEL plutôt qu\'un vide', () => {
+    // Même règle que `patchStatusLabel` : mieux vaut un texte non traduit qu'un
+    // blanc — une erreur inattendue doit rester diagnosticable.
+    const inconnu = 'connection terminated unexpectedly'
+    expect(kitErrorLabel(dashboardFr.admin, inconnu)).toBe(inconnu)
   })
 
   /**

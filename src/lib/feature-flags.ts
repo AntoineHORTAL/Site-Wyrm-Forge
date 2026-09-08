@@ -35,7 +35,11 @@ export interface FlagRow {
  * tard et absent d'ici ne crée pas de fuite : si le bundle ne connaît pas la clé,
  * c'est qu'il n'embarque pas la feature qu'elle garde.
  *
- * Strictement alignée sur `ColdStartClosed` de `Services/FeatureFlagService.cs`.
+ * Alignée sur `ColdStartClosed` de `Services/FeatureFlagService.cs` pour tout ce
+ * que les DEUX clients embarquent. Un flag `surface='web'` n'a rien à y faire :
+ * l'app WPF ne connaît pas la feature, donc ne peut pas la laisser fuir — c'est
+ * la règle énoncée juste au-dessus, appliquée dans l'autre sens.
+ * `kit_sur_mesure_enabled` est le premier de ce genre.
  */
 export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
   'ecailles_enabled',
@@ -43,6 +47,9 @@ export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
   'quests_enabled',
   'cosmetics_enabled',
   'scenarios_enabled',
+  // Service « Kit sur mesure » (migration 20260908000002). `surface='web'` :
+  // aucune brique côté app de bureau, donc aucun pendant dans `ColdStartClosed`.
+  'kit_sur_mesure_enabled',
 ])
 
 /**

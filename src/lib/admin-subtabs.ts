@@ -5,6 +5,7 @@
  * comptes, CRUD des patch notes, et le catalogue de feature flags. Ils ne
  * partagent aucun état — `load()`, `loadPatches()` et `loadCatalogue()` sont
  * indépendants — d'où un découpage qui suit une couture déjà présente.
+ * `loadKits()` (service « Kit sur mesure ») s'y ajoute sur la même couture.
  *
  * Tout ce qui décide QUOI afficher vit ici plutôt que dans `AdminTab` : c'est ce
  * qui rend l'invariant du bandeau (ci-dessous) testable sans monter le panneau,
@@ -18,8 +19,13 @@
  *
  * ⚠️ Ces `id` sont STRUCTURELS — état local et valeur acceptée dans `?subtab=`.
  * Ils ne sont jamais traduits ; les libellés vivent dans `locales/dashboard/admin`.
+ *
+ * `kits` est AJOUTÉ EN FIN de liste, et non inséré à côté d'`utilisateurs` par
+ * affinité thématique : la position des trois pastilles existantes est déjà
+ * apprise. Un nouvel onglet qui décale les autres fait rater le clic pendant
+ * quelques jours — le même argument que celui qui garde `utilisateurs` en tête.
  */
-export const ADMIN_SUBTAB_IDS = ['utilisateurs', 'patch-notes', 'flags'] as const
+export const ADMIN_SUBTAB_IDS = ['utilisateurs', 'patch-notes', 'flags', 'kits'] as const
 
 export type AdminSubTab = typeof ADMIN_SUBTAB_IDS[number]
 
@@ -57,6 +63,7 @@ export interface AdminPanelLayout {
   showUsers: boolean
   showPatchNotes: boolean
   showFlags: boolean
+  showKits: boolean
 }
 
 /**
@@ -77,5 +84,6 @@ export function adminPanelLayout(subtab: AdminSubTab, cutCount: number): AdminPa
     showUsers:      subtab === 'utilisateurs',
     showPatchNotes: subtab === 'patch-notes',
     showFlags:      subtab === 'flags',
+    showKits:       subtab === 'kits',
   }
 }

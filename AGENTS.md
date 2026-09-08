@@ -300,11 +300,20 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 39 lignes
+#### Catalogue de flags — 40 lignes
 
-**Catégorie 1, lancement (5)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (6)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
-et `scenarios_enabled`.
+`scenarios_enabled` ; et `kit_sur_mesure_enabled` (migration `20260908000002`,
+`group_key = 'site'`, `sort_order = 630`).
+
+> ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
+> Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
+> dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Les cinq autres
+> restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
+> listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
+> dans l'autre sens.
 
 **Catégorie 2, kill switches (34)** — valeur `'true'` :
 
@@ -450,6 +459,161 @@ Index `idx_rss_collected` sur `(collected_at)` — purges temporelles.
 - **Site React** : appel `get_rank_avg()` pour comparaison de performance joueur vs bucket de rang
 - **App WPF** : peut appeler `get_rank_avg()` via la même Edge Function ou appel direct Supabase RPC
 - **Lignes brutes** : inaccessibles aux deux clients — service_role uniquement
+
+---
+
+## 🟡 Base de données — Kit sur mesure (`kit_orders`, migration 20260908000001)
+
+Service payant d'accompagnement personnalisé, **add-on ponctuel orthogonal à
+`profiles.tier`**. Lot 1 livré : V0 interne, sans paiement en ligne — l'admin
+encaisse et fixe les RDV à la main, le dossier est suivi en base.
+
+### ⚠️ « Légion » n'est PAS le patron d'add-on de ce module
+`légion` n'est qu'une **valeur de `profiles.tier`** : aucune table, aucun
+entitlement, aucune ligne de migration. C'est une chaîne dans `TIER_ORDER`
+(`lib/subscription.ts`), `TIER_COLORS` et `tiersFr`/`tiersEn`, rien d'autre. Un
+palier est **exclusif** (une colonne, une valeur) ; un kit doit coexister avec
+n'importe quel palier, `apprenti` compris, et se répéter dans le temps. Le
+découplage réellement copié ici est celui de `prac_admins` (20260626000001) :
+table isolée, RLS stricte, écritures par fonction `SECURITY DEFINER`.
+
+### Table `kit_orders`
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK, default `gen_random_uuid()` |
+| `user_id` | `uuid` | NOT NULL | FK → `profiles(id)` ON DELETE CASCADE — le client |
+| `created_by` | `uuid` | NOT NULL | FK → `auth.users` — l'admin qui a ouvert le dossier (pendant d'`added_by` sur `tracked_players`) |
+| `status` | `text` | NOT NULL | default `'demande'` — CHECK à 8 valeurs, voir la machine d'états |
+| `player_snapshot` | `jsonb` | NOT NULL | default `'{}'` — **gel** de l'état du joueur à la prise du pack |
+| `price_total_cents` | `integer` | nullable | prix total en CENTIMES, CHECK `> 0`. Jamais de flottant sur de l'argent |
+| `admin_note` | `text` | nullable | ⚠️ **lisible par le client** (voir RLS) |
+| `created_at` / `updated_at` | `timestamptz` | NOT NULL | `updated_at` par `trg_kit_orders_updated_at` → `fn_set_updated_at()` |
+
+Index : `idx_kit_orders_user` (FK), `idx_kit_orders_created` (tri du tableau admin),
+et **`uq_kit_orders_active`** — index UNIQUE **partiel** sur `(user_id)`
+`WHERE status NOT IN ('termine','annule')`. Un client peut avoir plusieurs
+dossiers dans le temps, mais **un seul actif** : deux dossiers en cours
+signifieraient deux acomptes encaissés pour un seul accompagnement. Idiome de
+`uq_ledger_ref` (20260606000002).
+
+### Contrat JSONB `player_snapshot`
+`{ riot_puuid, riot_gamename, riot_tagline, riot_platform, riot_rank, role, captured_at }` —
+toutes les clés optionnelles. **Une COPIE, jamais une jointure vers `profiles`** :
+`profiles.riot_rank` est choisi par l'utilisateur et change quand il veut, une
+jointure renverrait le rang d'aujourd'hui et viderait de son sens la mesure de
+progression que ce service vend. `{}` = pas encore capturé (rempli au lot 2).
+
+### Machine d'états — 8 états, 17 transitions
+
+```
+demande ⇄ acompte_paye ⇄ decouverte_faite ⇄ kit_trouve ⇄ solde_paye ⇄ session_faite → termine
+   └───────────┴──────────────┴─────────────┴────────────┴──────────────┘ → annule
+```
+
+6 avancées + 5 retours d'un cran + 6 annulations. Tout le reste →
+`invalid_transition`. Deux règles à ne pas défaire :
+- **`termine` est terminal DANS LES DEUX SENS** — pas de dé-clôture. C'est ce qui
+  rend stable la liste des preneurs du pack ; un remboursement est une écriture
+  comptable (lot 4), pas un retour d'état.
+- **`annule` est terminal** — un client qui revient ouvre un nouveau dossier, que
+  `uq_kit_orders_active` autorise puisque l'ancien est clos.
+
+Valeurs FR **sans accent** à dessein : `profiles.tier = 'maître'` oblige déjà
+`lib/subscription.ts` à normaliser avant toute comparaison, on ne réintroduit pas
+ce problème sur une valeur que SQL, TypeScript et les URL manipulent.
+
+### Table `kit_order_events` — journal d'audit
+Une ligne par transition (`from_status` NULL = ouverture), écrite par
+`kit_set_status` **dans la même transaction** que l'UPDATE : le statut et sa trace
+ne peuvent pas diverger. Colonnes : `id` (bigint identity), `kit_order_id`
+(FK CASCADE), `from_status`, `to_status`, `actor` (nullable — une écriture
+`service_role` future n'a pas d'utilisateur), `note`, `created_at`.
+
+### RLS
+- `kit_orders` SELECT : `public.is_admin() OR (select auth.uid()) = user_id`
+- `kit_order_events` SELECT : **`is_admin()` seul** — le client ne voit pas sa
+  timeline (retours arrière et notes internes)
+- **Aucune policy INSERT / UPDATE / DELETE** sur les deux tables
+- `REVOKE ALL FROM anon, authenticated` **avant** `GRANT SELECT TO authenticated` —
+  sans le REVOKE, les DEFAULT PRIVILEGES de Supabase laisseraient le refus reposer
+  sur l'absence de policy plutôt que sur un privilège. C'est l'oubli que
+  `20260901000003` a dû réparer a posteriori sur `scenarios`, écrit dès le départ ici
+
+> ⚠️ `admin_note` vit sur `kit_orders`, dont le CLIENT lit sa propre ligne : une
+> note interne y est lisible par PostgREST même si l'UI ne l'affiche jamais. Ce
+> qui doit rester interne va dans `kit_order_events.note`.
+
+### Fonctions SECURITY DEFINER — le seul chemin d'écriture
+Toutes `SET search_path = public`, `REVOKE EXECUTE FROM PUBLIC` + `GRANT authenticated`,
+et toutes gardées par `public.is_admin()` en interne (`is_admin()` est **sans
+argument** et lit `auth.uid()`, cf. 20260530000007).
+
+| Fonction | Rôle |
+|---|---|
+| `kit_open_order(p_user_id, p_snapshot, p_status, p_price_total_cents, p_admin_note)` | Ouvre un dossier. `p_status` ∈ `{'demande','acompte_paye'}` seulement — jamais au milieu de la chaîne. Mappe `unique_violation` → `kit_order_already_active` |
+| `kit_set_status(p_order_id, p_next_status, p_note)` | La machine d'états. `SELECT … FOR UPDATE` sérialise le double-clic. Retourne le nouveau statut |
+| `kit_set_details(p_order_id, p_price_total_cents, p_admin_note)` | Édition partielle (`NULL` = ne change pas ce champ). Ne touche **jamais** `status` |
+
+Erreurs métier levées : `not_admin`, `invalid_status`, `invalid_transition`,
+`kit_order_not_found`, `kit_order_already_active` — traduites côté site par
+`kitErrorLabel` (`locales/dashboard/admin.ts`), qui les cherche **par inclusion**
+dans `error.message` (une exception plpgsql n'arrive pas nue), comme le fait déjà
+`shop-purchase`.
+
+### 🔴 Pourquoi cette barrière est en base et pas dans le navigateur
+C'est la correction explicite de la dette documentée au § `scenarios` : le verrou
+« palier payant » des Scénarios est **purement côté client** (`isPro` calculé dans
+`Dashboard.tsx`), et un Apprenti qui appelle PostgREST passe au travers. Ici
+l'argent change de main — la même erreur serait payante. Un
+`supabase.from('kit_orders').update({ status })` depuis le navigateur est refusé
+par la base quoi que rende le panneau. **Ne jamais « simplifier » les appels RPC
+d'`AdminTab` en écritures directes.**
+
+### Consommateurs
+- **Site React** : sous-onglet « Kits » d'`AdminTab` (`?subtab=kits`) — liste,
+  ouverture, avancement, retour d'un cran, annulation, prix, timeline. Le rendu
+  d'un dossier vit dans **`components/dashboard/KitOrderCard.tsx`**, composant
+  **sans hook** sorti d'`AdminTab` pour être testable via `renderToStaticMarkup`
+  — même patron et même raison que `SettingToggle` / `CutBanner` / les deux
+  modales. Miroir client de la machine d'états dans **`src/lib/kit-orders.ts`**
+  (module PUR ; `kit-orders.test.ts` verrouille les 17 transitions sur les 64
+  couples, `KitOrderCard.test.tsx` vérifie que l'écran ne propose jamais un geste
+  hors de ces 17). ⚠️ Les deux sont des **miroirs d'affichage**, pas des barrières.
+- **App WPF** : hors périmètre (flag `surface = 'web'`).
+
+### ⚠️ `kit_sur_mesure_enabled` ne ferme PAS le panneau admin
+Le flag ne gouverne que la surface **utilisateur final** (page de commande et
+entrée de navigation, à venir au lot 2). Le sous-onglet « Kits » l'ignore
+délibérément, pour deux raisons :
+1. c'est là que se préparent les dossiers AVANT le lancement — un flag qui
+   fermerait aussi l'admin rendrait la recette impossible, alors que c'est
+   précisément l'usage d'un flag de lancement ;
+2. c'est la convention déjà en place : `EcaillesTab` rend la Forge à un admin
+   même quand `ecailles_enabled` est à `false` (« recette avant lancement »,
+   verrouillé par `feature-flags.test.ts`).
+
+À tenir au lot 2 : c'est la surface CLIENTE qui lira
+`useFlag('kit_sur_mesure_enabled')`. Et le verrou de ce qui coûte reste la garde
+`is_admin()` des trois RPC — un flag est de la présentation, jamais une barrière.
+- Tests SQL : `supabase/tests/20260908000001_kit_orders_test.sql` — **un seul
+  script à coller dans le SQL Editor**, qui résout lui-même les trois identités
+  (l'admin est pris dans `admin_users`, jamais dans `prac_admins` : `is_admin()`
+  ne lit que la première) et rend une table de 22 lignes `✅`/`❌`. `ROLLBACK`
+  final, rien ne persiste. Aucune méta-commande psql : `\gset` n'existe pas dans
+  le SQL Editor web.
+
+### Reste à faire (lots suivants)
+- **Lot 2** — formulaire client de capture (remplit `player_snapshot`, ouvre en
+  `demande`) + lien de booking externe (Cal.com/Calendly ; aucun embryon de
+  calendrier dans le repo).
+- **Lot 3** — e-mail « kit trouvé » : réutiliser `_shared/resend.ts` et le patron
+  claim-then-send de `prac-notify`, déclenché par le bouton admin (pas un Database
+  Webhook — on évite le plombage Vault/`pg_net` du Lot 5E).
+- **Lot 4** — Stripe, paiement ponctuel `mode: 'payment'` en deux sessions
+  (acompte 40 % / solde 60 %). Bloqué hors code par Kbis + Stripe en live
+  (`docs/economie-ecailles-wyrm-forge_1.md`), et par la réécriture des CGU
+  (`cgu/page.tsx` ne parle aujourd'hui que d'abonnement reconduit).
 
 ---
 

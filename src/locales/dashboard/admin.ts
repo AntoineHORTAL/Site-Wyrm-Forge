@@ -74,6 +74,70 @@ const genReasonsEn: Record<PatchGenReasonKey, string> = {
 }
 
 /**
+ * Libellés d'affichage de `kit_orders.status` — les 8 valeurs de la contrainte
+ * CHECK (migration 20260908000001). La clé EST la valeur en base ; les
+ * comparaisons du panneau passent par `lib/kit-orders.ts`, jamais par ces textes.
+ *
+ * Les libellés sont formulés au PASSÉ ACCOMPLI (« Acompte payé », et non « En
+ * attente de l'acompte ») : un statut nomme ce qui EST FAIT, pas ce qu'on
+ * attend. C'est ce qui rend la colonne lisible d'un coup d'œil dans un tableau
+ * où toutes les lignes sont à des étapes différentes.
+ */
+const kitStatusesFr = {
+  demande:          'Demande reçue',
+  acompte_paye:     'Acompte payé',
+  decouverte_faite: 'Découverte faite',
+  kit_trouve:       'Kit trouvé',
+  solde_paye:       'Solde payé',
+  session_faite:    'Session faite',
+  termine:          'Terminé',
+  annule:           'Annulé',
+}
+
+export type KitStatusKey = keyof typeof kitStatusesFr
+
+const kitStatusesEn: Record<KitStatusKey, string> = {
+  demande:          'Request received',
+  acompte_paye:     'Deposit paid',
+  decouverte_faite: 'Discovery call done',
+  kit_trouve:       'Kit ready',
+  solde_paye:       'Balance paid',
+  session_faite:    'Session done',
+  termine:          'Completed',
+  annule:           'Cancelled',
+}
+
+/**
+ * Erreurs métier levées par les fonctions SQL du kit (`kit_set_status`,
+ * `kit_open_order`, `kit_set_details`). Ce sont des CODES machine, remontés par
+ * PostgREST dans `error.message` — même situation que les `reason` de
+ * `patch-notes-generator`, et même traitement : une table d'affichage, avec repli
+ * sur la valeur brute.
+ *
+ * ⚠️ `not_admin` ne devrait JAMAIS s'afficher : le sous-onglet n'est rendu que
+ * pour un admin. S'il apparaît, c'est que la session a expiré ou que les droits
+ * ont été retirés pendant la consultation — d'où un libellé qui dit quoi faire,
+ * et non « accès refusé » qui laisserait l'admin croire à un bug.
+ */
+const kitErrorsFr = {
+  not_admin:                'Droits admin requis — reconnecte-toi.',
+  invalid_status:           'Statut inconnu.',
+  invalid_transition:       'Ce passage n\'est pas autorisé depuis l\'état actuel.',
+  kit_order_not_found:      'Dossier introuvable.',
+  kit_order_already_active: 'Ce client a déjà un dossier en cours.',
+}
+
+export type KitErrorKey = keyof typeof kitErrorsFr
+
+const kitErrorsEn: Record<KitErrorKey, string> = {
+  not_admin:                'Admin rights required — sign in again.',
+  invalid_status:           'Unknown status.',
+  invalid_transition:       'That step is not allowed from the current state.',
+  kit_order_not_found:      'Order not found.',
+  kit_order_already_active: 'This client already has an open order.',
+}
+
+/**
  * Libellé + description des RÉGLAGES (`kind='setting'`) rendus par un interrupteur
  * dédié, indexés par `app_settings.key`.
  *
@@ -112,12 +176,14 @@ export const adminFr = {
   },
 
   /* Libellés des sous-onglets du panneau. Les CLÉS sont les `id` structurels de
-     `lib/admin-subtabs.ts` (`utilisateurs` | `patch-notes` | `flags`), également
-     acceptés dans `?subtab=` — elles ne se traduisent pas, seule la valeur le fait. */
+     `lib/admin-subtabs.ts` (`utilisateurs` | `patch-notes` | `flags` | `kits`),
+     également acceptés dans `?subtab=` — elles ne se traduisent pas, seule la
+     valeur le fait. */
   subtabs: {
     'utilisateurs': 'Utilisateurs',
     'patch-notes':  'Patch notes',
     'flags':        'Feature flags',
+    'kits':         'Kits',
     /* Nommage du groupe de pastilles pour les lecteurs d'écran. */
     ariaLabel:      'Sections du panneau admin',
   },
@@ -306,6 +372,68 @@ export const adminFr = {
     empty: 'Aucun flag dans le catalogue. La migration a-t-elle été appliquée ?',
   },
 
+  /* ── Section Kits sur mesure (`kit_orders`) ── */
+  kits: {
+    title: '🛠 Kits sur mesure',
+    hint:  'Dossiers d\'accompagnement personnalisé. L\'avancement est écrit par la base — cet écran ne fait que l\'appeler.',
+    empty: 'Aucun dossier ouvert pour l\'instant.',
+
+    /* Dates de la carte. `opened` précède une date ABSOLUE (« depuis quand ce
+       client attend-il ? ») ; `updated` enveloppe une durée RELATIVE déjà
+       formatée par `relativeTime` (« ce dossier a-t-il bougé récemment ? »).
+       Deux questions différentes, deux formats. */
+    opened:  'ouvert le',
+    updated: 'màj {when}',
+
+    /* Indexé par `kit_orders.status`. */
+    statuses: kitStatusesFr,
+
+    /* Position dans le parcours. `{n}` = étape courante, `{total}` = longueur de
+       la chaîne. Un dossier ANNULÉ n'en affiche pas — il est sorti du parcours. */
+    step: 'étape {n}/{total}',
+
+    /* Actions. `{label}` = libellé de l'état visé, résolu par `kitStatusLabel`. */
+    advance:  '→ {label}',
+    rollback: '← {label}',
+    cancel:   'Annuler',
+
+    /* Confirmation inline — même grammaire que `actions.confirmCertify`. */
+    confirmCancel:   'Annuler ce dossier ? Il ne pourra pas être rouvert.',
+    confirmRollback: 'Revenir à « {label} » ?',
+    confirm:         'Confirmer',
+    dismiss:         '✕',
+
+    /* Prix. `noPrice` s'affiche tant que `price_total_cents` est NULL. */
+    noPrice:     '—',
+    priceLabel:  'Prix total (€)',
+    priceSave:   'Enregistrer',
+    /* Répartition INDICATIVE 40/60, rappelée à l'admin qui encaisse à la main.
+       `{deposit}` et `{balance}` sont déjà formatés en devise. */
+    instalments: 'acompte {deposit} · solde {balance}',
+
+    /* Ouverture d'un dossier. Le pseudo est cherché dans la liste des comptes
+       déjà chargée par le sous-onglet Utilisateurs — aucune requête de plus. */
+    openTitle:       'Ouvrir un dossier',
+    openClientLabel: 'Client',
+    openClientEmpty: 'Choisis un compte…',
+    openStatusLabel: 'État de départ',
+    openAction:      'Ouvrir le dossier',
+    opening:         'Ouverture…',
+
+    /* Journal d'un dossier (`kit_order_events`), replié par défaut. */
+    timelineShow:  'Historique',
+    timelineHide:  'Masquer',
+    timelineEmpty: 'Aucun événement.',
+    /* `{from}` peut être absent : la première ligne est une ouverture. */
+    timelineOpened: 'Dossier ouvert en « {to} »',
+    timelineMoved:  '« {from} » → « {to} »',
+    timelineBy:     'par {who}',
+
+    /* `{message}` = libellé résolu depuis `errors`, ou le message Supabase brut. */
+    errorPrefix: 'Erreur : {message}',
+    errors:      kitErrorsFr,
+  },
+
   /* Indexé par `app_settings.key`. */
   settings: settingsFr,
 }
@@ -322,6 +450,7 @@ export const adminEn: AdminDict = {
     'utilisateurs': 'Users',
     'patch-notes':  'Patch notes',
     'flags':        'Feature flags',
+    'kits':         'Kits',
     ariaLabel:      'Admin panel sections',
   },
 
@@ -468,6 +597,50 @@ export const adminEn: AdminDict = {
     empty: 'No flags in the catalogue. Has the migration been applied?',
   },
 
+  kits: {
+    title: '🛠 Custom kits',
+    hint:  'Personalised coaching orders. Progress is written by the database — this screen only calls it.',
+    empty: 'No open orders yet.',
+
+    opened:  'opened',
+    updated: 'upd. {when}',
+
+    statuses: kitStatusesEn,
+
+    step: 'step {n}/{total}',
+
+    advance:  '→ {label}',
+    rollback: '← {label}',
+    cancel:   'Cancel',
+
+    confirmCancel:   'Cancel this order? It cannot be reopened.',
+    confirmRollback: 'Go back to "{label}"?',
+    confirm:         'Confirm',
+    dismiss:         '✕',
+
+    noPrice:     '—',
+    priceLabel:  'Total price (€)',
+    priceSave:   'Save',
+    instalments: 'deposit {deposit} · balance {balance}',
+
+    openTitle:       'Open an order',
+    openClientLabel: 'Client',
+    openClientEmpty: 'Pick an account…',
+    openStatusLabel: 'Starting state',
+    openAction:      'Open the order',
+    opening:         'Opening…',
+
+    timelineShow:  'History',
+    timelineHide:  'Hide',
+    timelineEmpty: 'No events.',
+    timelineOpened: 'Order opened at "{to}"',
+    timelineMoved:  '"{from}" → "{to}"',
+    timelineBy:     'by {who}',
+
+    errorPrefix: 'Error: {message}',
+    errors:      kitErrorsEn,
+  },
+
   settings: settingsEn,
 }
 
@@ -503,4 +676,37 @@ export function patchGenReasonLabel(dict: AdminDict, reason?: string | null): st
   return dict.patches.reasons[(reason ?? '') as PatchGenReasonKey]
     ?? reason
     ?? dict.patches.reasons.already_generated
+}
+
+/**
+ * Libellé d'affichage d'un `kit_orders.status`.
+ *
+ * Même contrat que les précédents : un statut ajouté en base (une 9ᵉ valeur au
+ * CHECK) et pas encore déclaré ici s'affiche TEL QUEL. Repli sur `demande`, qui
+ * est le DEFAULT de la colonne.
+ */
+export function kitStatusLabel(dict: AdminDict, status?: string | null): string {
+  return dict.kits.statuses[(status ?? '') as KitStatusKey]
+    ?? status
+    ?? dict.kits.statuses.demande
+}
+
+/**
+ * Message lisible pour une erreur remontée par les fonctions SQL du kit.
+ *
+ * ⚠️ Le `message` de PostgREST n'est PAS le code nu : une exception plpgsql
+ * arrive sous une forme du genre « ... invalid_transition ... ». On cherche donc
+ * le code PAR INCLUSION, comme le fait déjà `shop-purchase` côté Edge Function
+ * (`msg.includes('insufficient_balance')`), et non par égalité stricte.
+ *
+ * Aucun code reconnu ⇒ le message brut du serveur est renvoyé tel quel. C'est la
+ * règle du fichier : mieux vaut un texte non traduit qu'un vide — et une erreur
+ * inattendue doit rester diagnosticable.
+ */
+export function kitErrorLabel(dict: AdminDict, message?: string | null): string {
+  if (!message) return dict.kits.errors.invalid_transition
+  for (const code of Object.keys(dict.kits.errors) as KitErrorKey[]) {
+    if (message.includes(code)) return dict.kits.errors[code]
+  }
+  return message
 }
