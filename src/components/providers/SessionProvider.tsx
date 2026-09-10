@@ -39,6 +39,20 @@ interface SessionCtx {
   balance: number
   balanceLoading: boolean
   refreshBalance: () => void
+  /**
+   * Relit `profiles` pour l'utilisateur courant.
+   *
+   * Ajouté pour le retour de Stripe Checkout : le palier n'est PAS écrit quand
+   * le navigateur revient du paiement — c'est le webhook `/api/stripe/webhook`
+   * qui l'écrit, quelques centaines de millisecondes plus tard, hors du parcours
+   * de l'utilisateur. Sans ce rappel, le dashboard afficherait l'ancien palier
+   * jusqu'au prochain rechargement complet, alors même que le paiement a abouti.
+   *
+   * Renvoie le profil relu, pour que l'appelant puisse décider s'il doit encore
+   * attendre (voir `CheckoutReturn`) — l'état React, lui, n'est pas encore à
+   * jour à l'instant du `await`.
+   */
+  refreshProfile: () => Promise<UserProfile | null>
   signOut: () => void
   openAuth: () => void
 }
@@ -46,7 +60,8 @@ interface SessionCtx {
 const Ctx = createContext<SessionCtx>({
   user: null, profile: null, loading: true, isAdmin: false, effectiveTier: 'Apprenti',
   balance: 0, balanceLoading: false,
-  refreshBalance: () => {}, signOut: () => {}, openAuth: () => {},
+  refreshBalance: () => {}, refreshProfile: async () => null,
+  signOut: () => {}, openAuth: () => {},
 })
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -69,14 +84,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // savoir si un compte Riot est lié : sans eux, l'onglet renvoie tout le monde
   // vers « Lie ton compte Riot » même quand la liaison existe en base.
   // Lecture du propre profil — couverte par la policy self-read de `profiles`.
-  async function fetchProfile(uid: string) {
+  async function fetchProfile(uid: string): Promise<UserProfile | null> {
     const { data } = await supabase
       .from('profiles')
       .select('id, username, tier, role, tier_expires_at, certified, riot_puuid, riot_platform')
       .eq('id', uid)
       .single()
     setProfile(data ?? null)
+    return data ?? null
   }
+
+  // Relecture à la demande. `user` est lu depuis l'état plutôt que passé en
+  // paramètre : l'appelant (CheckoutReturn) n'a pas à connaître l'identifiant,
+  // et ne peut donc pas demander le profil de quelqu'un d'autre.
+  const refreshProfile = useCallback(async () => {
+    if (!user) return null
+    return fetchProfile(user.id)
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -130,7 +154,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{
       user, profile, loading, isAdmin, effectiveTier,
       balance, balanceLoading,
-      refreshBalance, signOut, openAuth,
+      refreshBalance, refreshProfile, signOut, openAuth,
     }}>
       {children}
       {showAuth && (

@@ -9,8 +9,10 @@
  * ⚠️ Nom affiché, tagline et liste de features sont TRADUITS et vivent dans
  * `src/locales/landing.ts` (`pricing.tiers`, MÊME ORDRE — appariement par index).
  *
- * ⚠️ Vitrine tarifaire uniquement : AUCUN paiement réel n'est branché. Apprenti
- * mène au téléchargement, les paliers payants ont un CTA désactivé.
+ * ⚠️ Le paiement est BRANCHÉ depuis le chantier Stripe Billing (2026-09-09) :
+ * Apprenti mène toujours au téléchargement, les deux paliers payants ouvrent une
+ * session Stripe Checkout (`cta: 'subscribe'`). Le CTA `'soon'` reste déclaré —
+ * c'est ce que porteront Légion et Monarque tant qu'ils n'ont pas de prix Stripe.
  */
 
 export interface PricingTier {
@@ -31,14 +33,33 @@ export interface PricingTier {
    * commerciale, pas le résultat d'une formule.
    */
   annual: number
-  cta: 'download' | 'soon'
+  /**
+   * `'download'` — le gratuit, vers l'installeur Windows.
+   * `'subscribe'` — ouvre `/api/stripe/checkout` avec `plan` (voir ci-dessous).
+   * `'soon'`      — palier annoncé sans prix Stripe (Légion, Monarque).
+   */
+  cta: 'download' | 'subscribe' | 'soon'
+  /**
+   * Clé de palier ASCII envoyée à `/api/stripe/checkout` — `PlanKey` de
+   * `src/lib/stripe/plans.ts`.
+   *
+   * ⚠️ Distincte de `name` À DESSEIN. `name` est la valeur de `profiles.tier`
+   * (`Maître`, avec accent et capitale) ; `plan` est ce qui voyage dans un corps
+   * JSON et dans un nom de variable d'environnement, où un accent survit mal.
+   * La conversion vit dans `TIER_BY_PLAN`, une seule fois.
+   *
+   * Obligatoire quand `cta === 'subscribe'`, absent sinon — vérifié par
+   * `landing.test.ts` : un palier « à vendre » sans clé produirait un bouton
+   * qui échoue au clic.
+   */
+  plan?: 'forgeron' | 'maitre'
   popular?: boolean
 }
 
 export const PRICING_TIERS: readonly PricingTier[] = [
   { name: 'Apprenti', monthly: 0, annual: 0,  cta: 'download' },
-  { name: 'Forgeron', monthly: 3, annual: 30, cta: 'soon' },
-  { name: 'Maître',   monthly: 6, annual: 60, cta: 'soon', popular: true },
+  { name: 'Forgeron', monthly: 3, annual: 30, cta: 'subscribe', plan: 'forgeron' },
+  { name: 'Maître',   monthly: 6, annual: 60, cta: 'subscribe', plan: 'maitre', popular: true },
 ] as const
 
 /**

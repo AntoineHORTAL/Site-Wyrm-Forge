@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { landingFr, landingEn, landingDicts, formatPrice } from './landing'
 import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
 import { PRICING_TIERS, FREE_MONTHS_ON_ANNUAL, freeMonthsOnAnnual } from '@/lib/pricing-tiers'
+import { TIER_BY_PLAN, isPlanKey } from '@/lib/stripe/plans'
 
 /**
  * `LandingDict = typeof landingFr` force déjà les mêmes CLÉS des deux côtés à la
@@ -162,6 +163,32 @@ describe('paliers tarifaires', () => {
     const popular = PRICING_TIERS.filter(t => t.popular)
     expect(popular).toHaveLength(1)
     expect(popular[0].monthly).toBeGreaterThan(0)
+  })
+
+  it('donne une clé Stripe à CHAQUE palier mis en vente, et à eux seuls', () => {
+    // Un palier `subscribe` sans `plan` produirait un bouton qui échoue au clic :
+    // la route `/api/stripe/checkout` rejette le corps en `invalid_plan`. Et un
+    // `plan` sur un palier non vendu laisserait croire qu'il est achetable.
+    for (const t of PRICING_TIERS) {
+      if (t.cta === 'subscribe') {
+        expect(t.plan, `${t.name} est en vente sans clé de palier`).toBeDefined()
+        expect(isPlanKey(t.plan), `${t.name} porte une clé inconnue`).toBe(true)
+      } else {
+        expect(t.plan, `${t.name} n'est pas en vente mais porte une clé`).toBeUndefined()
+      }
+    }
+  })
+
+  it('fait correspondre la clé ASCII au libellé de la grille — accent compris', () => {
+    // `plan` voyage en JSON et en nom de variable d'environnement, `name` est la
+    // valeur de `profiles.tier`. Les deux doivent désigner le même palier : sans
+    // ce test, « Maître » pourrait vendre un abonnement `forgeron` sans que rien
+    // ne proteste, ni au typage ni à l'exécution.
+    for (const t of PRICING_TIERS) {
+      if (!t.plan) continue
+      expect(TIER_BY_PLAN[t.plan], `${t.name} vend un autre palier que le sien`)
+        .toBe(t.name.toLowerCase())
+    }
   })
 
   it("tient la promesse « 2 mois offerts » sur TOUS les paliers payants", () => {

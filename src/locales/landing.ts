@@ -178,8 +178,26 @@ export const landingFr = {
     billedAnnually: 'Facturé {price}/an',
     noCommitment: 'Sans engagement',
     ctaDownload: 'Télécharger gratuitement',
+    // Paliers branchés sur Stripe Checkout. `ctaSoon` reste utilisé par les
+    // paliers annoncés sans prix Stripe (Légion, Monarque) — ne pas le retirer.
+    ctaSubscribe: "S'abonner",
+    ctaSubscribeLoading: 'Redirection…',
+    // Visiteur non connecté : le clic ouvre la modale de connexion. Le libellé
+    // le dit AVANT le clic plutôt que de faire découvrir une modale surprise.
+    ctaSubscribeAnon: "Se connecter pour s'abonner",
+    // Palier déjà actif — bouton inerte, jamais un second paiement proposé.
+    ctaCurrent: 'Ton palier actuel',
     ctaSoon: 'Bientôt disponible',
     ctaSoonTitle: 'Le paiement sera disponible prochainement',
+    checkoutError: "Impossible d'ouvrir le paiement. Réessaie dans un instant.",
+    // Retour de Stripe — le palier n'est pas encore écrit à cet instant, c'est
+    // le webhook qui l'écrira. D'où une attente explicite plutôt qu'un silence.
+    checkoutPending: 'Paiement confirmé — activation de ton palier en cours…',
+    checkoutDone: 'Ton palier {tier} est actif. Bienvenue à la forge !',
+    // L'activation a pris plus longtemps que la fenêtre d'attente : le paiement
+    // est bien passé, on ne laisse jamais croire l'inverse.
+    checkoutSlow: "Paiement confirmé. L'activation prend un peu plus longtemps que prévu — recharge la page dans une minute.",
+    checkoutCanceled: "Paiement annulé. Rien ne t'a été débité.",
     moreTiers: "D'autres paliers arrivent prochainement.",
     // ⚠️ `name` est un LIBELLÉ D'AFFICHAGE, pas la valeur de `profiles.tier`.
     // Les valeurs en base (apprenti / forgeron / maître) sont partagées avec l'app
@@ -422,8 +440,17 @@ export const landingEn: LandingDict = {
     billedAnnually: 'Billed {price}/year',
     noCommitment: 'No commitment',
     ctaDownload: 'Download for free',
+    ctaSubscribe: 'Subscribe',
+    ctaSubscribeLoading: 'Redirecting…',
+    ctaSubscribeAnon: 'Sign in to subscribe',
+    ctaCurrent: 'Your current tier',
     ctaSoon: 'Coming soon',
     ctaSoonTitle: 'Payments will be available soon',
+    checkoutError: 'Could not open checkout. Please try again in a moment.',
+    checkoutPending: 'Payment confirmed — activating your tier…',
+    checkoutDone: 'Your {tier} tier is active. Welcome to the forge!',
+    checkoutSlow: 'Payment confirmed. Activation is taking a little longer than usual — reload the page in a minute.',
+    checkoutCanceled: 'Payment canceled. You have not been charged.',
     moreTiers: 'More tiers are coming soon.',
     tiers: [
       {

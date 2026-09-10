@@ -1782,6 +1782,270 @@ Texte FR normatif — les deux fronts affichent EXACTEMENT ces messages (à l'in
 
 ---
 
+## 💳 Abonnements Stripe Billing — Forgeron / Maître (migration 20260909000003)
+
+Premier paiement réel du projet. Couvre **uniquement** les deux paliers priorisés,
+en **mode test Stripe** : Forgeron (3 €/mois, 30 €/an) et Maître (6 €/mois, 60 €/an).
+Légion et Monarque sont **hors périmètre** — non priorisés, donc non achetables.
+
+> ⚠️ **Ne pas confondre avec le Lot 4 du Kit sur mesure** (§ Kit sur mesure), qui
+> est un `mode: 'payment'` ponctuel en deux sessions (acompte / solde). Ici c'est
+> `mode: 'subscription'`, un tout autre objet Stripe et un tout autre cycle de vie.
+> Les deux passeront par la **même** route de webhook : c'est pourquoi
+> `checkout.session.completed` y filtre explicitement `session.mode !== 'subscription'`
+> plutôt que de supposer que tout checkout est un abonnement.
+
+### Où vit quoi
+
+| Fichier | Rôle |
+|---|---|
+| `src/lib/stripe/plans.ts` | **Module PUR, testé (22 tests)** — paliers achetables, catalogue de prix, et **la politique** « quel statut Stripe donne droit à quel palier ». Aucune décision de palier ne se prend ailleurs. |
+| `src/lib/stripe/server.ts` | Plomberie serveur : instance Stripe paresseuse, `requireEnv`, `SITE_URL`. `import 'server-only'`. |
+| `src/lib/supabase/admin.ts` | **Le seul** client `service_role` du site. `import 'server-only'`. |
+| `src/app/api/stripe/checkout/route.ts` | POST `{ plan, period }` → `{ url }`. Ne fait **aucune** écriture. |
+| `src/app/api/stripe/webhook/route.ts` | Signature Stripe → RPC. **Le seul** chemin qui change un palier. |
+| `src/components/dashboard/CheckoutReturn.tsx` | Bandeau d'attente au retour de Stripe (voir § Étape 4). |
+| migration `20260909000003` | Table `stripe_subscriptions` + RPC `stripe_apply_subscription_event`. |
+
+### ⚠️ Deux vocabulaires de palier, et il faut les distinguer
+
+| Forme | Où | Exemple |
+|---|---|---|
+| `PlanKey` — **ASCII, minuscule** | corps JSON, `metadata` Stripe, noms de variables d'env | `maitre` |
+| `profiles.tier` — **valeur réelle, accentuée** | base, partagée avec l'app WPF | `maître` |
+
+`TIER_BY_PLAN` (`plans.ts`) fait la conversion, **une seule fois**. La clé ASCII
+existe parce qu'elle voyage : un accent survit mal à un encodage d'URL, à une clé
+`metadata` Stripe et à un nom de variable d'environnement sous Windows.
+`landing.test.ts` verrouille la correspondance `PRICING_TIERS[i].plan` ↔ `name` :
+sans ce test, « Maître » pourrait vendre un abonnement `forgeron` sans que rien ne
+proteste, ni au typage ni à l'exécution.
+
+### Variables d'environnement (Vercel + `.env.local`)
+
+Aucune n'est en dur nulle part. `.env*` est couvert par `.gitignore` ; le gabarit
+commenté vit en queue de `.env.local` (non versionné).
+
+| Variable | Portée | Note |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | serveur | Le **mode** (test/live) en est DÉDUIT — `stripeMode()`, jamais un drapeau `STRIPE_MODE` séparé. Même raisonnement qu'`isTestDatabase` : un drapeau peut diverger de la clé qu'il prétend décrire. |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **navigateur** | Déclarée pour la complétude de la config. **Aucun code ne la lit aujourd'hui** : Checkout est une redirection pleine page, elle ne servira qu'à un futur embed Stripe.js. Ne pas s'étonner de ne pas la trouver dans un `grep`. |
+| `STRIPE_WEBHOOK_SECRET` | serveur | Barrière unique du webhook. En local, `stripe listen` en émet un **différent** de celui du Dashboard. |
+| `STRIPE_PRICE_{FORGERON,MAITRE}_{MENSUEL,ANNUEL}` | serveur | Les **prix**, pas les produits. En variables et pas en dur : ils diffèrent entre test et live du même compte, et un changement tarifaire ne doit pas être un déploiement. |
+| `SUPABASE_SERVICE_ROLE_KEY` | serveur | **Nouveau côté site.** Voir ci-dessous. |
+
+> 🔴 **`SUPABASE_SERVICE_ROLE_KEY` arrive dans le site, et c'est une exception assumée.**
+> Jusqu'ici, tout ce qui avait besoin de `service_role` vivait dans une Edge
+> Function, où Supabase l'injecte. Le webhook ne peut pas : **Stripe signe le corps
+> de la requête**, la vérification doit donc avoir lieu là où la requête arrive.
+> Faire relayer une EF par la route Next reviendrait à recopier `STRIPE_WEBHOOK_SECRET`
+> à deux endroits et à ouvrir un second point d'entrée à garder. La clé est donc
+> ajoutée aux variables Vercel (jamais `NEXT_PUBLIC_`), et son usage est **borné à
+> `src/lib/supabase/admin.ts`**, qui porte `import 'server-only'` — un import depuis
+> un composant client devient une **erreur de build**, pas une clé dans le bundle.
+
+### Table `stripe_subscriptions`
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `user_id` | `uuid` | **PK** → `profiles(id)` CASCADE. Un abonnement courant par compte (le modèle est « un palier à la fois »). |
+| `stripe_customer_id` | `text` | NOT NULL **UNIQUE** — clé de correspondance des `customer.subscription.*`. |
+| `stripe_subscription_id` | `text` | UNIQUE, nullable. |
+| `status` | `text` | Statut Stripe **brut**, sans CHECK (voir plus bas). |
+| `price_id` / `tier` | `text` | Prix souscrit ; palier **acheté**, conservé même s'il n'est plus effectif. |
+| `current_period_end` | `timestamptz` | Recopié dans `profiles.tier_expires_at`. |
+| `cancel_at_period_end` | `boolean` | Résilié mais encore actif — distinct de `status='canceled'`. |
+| `last_event_at` | `timestamptz` | **Garde d'ordre**, défaut `-infinity`. Voir plus bas. |
+
+**RLS** : `ss_select_own` (SELECT self only), **aucune policy d'écriture**,
+`REVOKE ALL FROM anon, authenticated` puis `GRANT SELECT TO authenticated`.
+Même patron que `kit_orders` — l'argent change de main, la barrière est en base.
+
+#### 🔴 Pourquoi une table et pas des colonnes `stripe_*` sur `profiles`
+Deux raisons, la seconde décisive :
+1. `profiles` est **partagée avec l'app WPF** ; l'identifiant client Stripe n'est
+   pas du contrat entre deux clients qui ne se déploient pas ensemble.
+2. **Sécurité.** `trg_protect_privilege_columns` (20260614000001) protège une
+   **liste nommée** : `role`, `tier`, `tier_expires_at`, `certified`. Une colonne
+   `stripe_customer_id` sur `profiles` n'y serait **pas**, donc serait librement
+   écrivable par tout `authenticated` via PostgREST — et c'est la clé par laquelle
+   le webhook retrouve un compte. Un Apprenti qui s'attribue le
+   `stripe_customer_id` d'un abonné hériterait de son abonnement au prochain
+   événement. La table dédiée n'a aucune policy d'écriture : le problème ne se pose pas.
+
+### RPC `stripe_apply_subscription_event` — le seul chemin d'écriture
+
+SECURITY DEFINER, `SET search_path = public`, **EXECUTE réservé à `service_role`**
+(les trois instructions `REVOKE FROM PUBLIC` / `REVOKE FROM anon, authenticated` /
+`GRANT TO service_role`, conformément à la règle de `20260909000002`), avec un bloc
+`DO` final qui **fait échouer le `db push`** si l'état visé n'est pas atteint — dans
+les deux sens.
+
+Fait les **deux** écritures dans une seule transaction (la ligne d'abonnement et le
+palier de `profiles`) : un webhook interrompu entre les deux laisserait sinon un
+palier ne correspondant à aucun abonnement. Retour `jsonb`
+`{ applied, profile_updated, reason }`, **jamais d'exception sur un cas métier** —
+le webhook doit répondre 200 à un événement périmé, sinon Stripe le retente en boucle.
+
+> ⚠️ **La fonction ne décide de RIEN.** Elle reçoit `p_effective_tier` /
+> `p_effective_expires_at` déjà calculés par `resolveTierOutcome` (TypeScript, testé)
+> et se contente de les appliquer. Dupliquer la table de décision en PL/pgSQL
+> garantirait qu'un jour les deux divergent — et c'est la version non testée qui
+> gagnerait, puisque c'est elle qui écrit. **Ne pas « rapatrier la logique en base »
+> par réflexe.**
+
+> ⚠️ **Un ADMIN n'est jamais déclassé** par cette fonction (`role = 'admin'` →
+> `profile_updated: false`, `reason: 'admin_untouched'`). Son palier est un marqueur
+> de rôle géré à la main (cf. `effectiveTier`, et l'exclusion des admins dans
+> `SubscriptionReminder` / `AdminTab`). L'abonnement est quand même enregistré ;
+> seul le report sur `profiles` est sauté.
+
+### ⚠️ Garde d'ordre — `last_event_at`, pas un champ d'audit
+
+**Stripe ne garantit pas l'ordre de livraison des webhooks**, et retente les échecs.
+Sans cette colonne, un `customer.subscription.updated` (`active`) livré en retard
+**après** un `deleted` réactiverait l'abonnement d'un compte résilié. On y écrit le
+`created` de l'**événement** (pas `now()`), et l'`ON CONFLICT` porte
+`WHERE EXCLUDED.last_event_at >= s.last_event_at`.
+
+`>=` et non `>`, délibérément : `checkout.session.completed` et le premier
+`customer.subscription.updated` portent souvent le **même** `created` à la seconde
+près ; avec `>`, le second serait rejeté comme périmé alors qu'il porte l'information
+la plus complète. À timestamp égal le dernier arrivé gagne ; c'est l'événement
+**strictement** plus ancien qu'on refuse.
+
+### 🔑 Politique de palier — `resolveTierOutcome` (`plans.ts`)
+
+| Statut Stripe | Palier | Justification |
+|---|---|---|
+| `active`, `trialing` | **accordé** + `current_period_end` | Un essai est un accès accordé, même si rien n'est débité. |
+| **`past_due`** | **CONSERVÉ** | Décision explicite. Stripe relance ~1 semaine (Smart Retries) et aboutit la plupart du temps. Couper au premier échec punirait un client qui va payer ; l'erreur inverse se referme seule au passage en `unpaid`. |
+| `unpaid` | retiré | État **terminal** d'un impayé, pas une alerte. |
+| `canceled`, `incomplete_expired` | retiré | Fin effective / abonnement jamais commencé. |
+| `incomplete` | retiré | 3DS en attente : rien n'est encaissé, l'accès s'ouvrira au passage `active`. |
+| `paused` | retiré | Existe mais ne facture pas. |
+| **inconnu de Stripe** | **CONSERVÉ** | Les 8 statuts documentés sont tous traités ; une valeur hors liste signifie que Stripe en a ajouté un. Entre déclasser un client qui paie et laisser un accès de trop, on choisit le second — borné par `current_period_end`, et **journalisé en `console.error`**. |
+| **palier indéterminé** (`tier: null`) | retiré | Prix hors catalogue : il n'y a rien à accorder, on ne sait pas quoi. Attribuer « le palier le plus probable » offrirait Maître à qui a payé Forgeron. |
+
+> ⚠️ **Un palier payant ne sort JAMAIS d'ici sans date d'expiration** — testé.
+> `tier_expires_at = null` signifie « compte à vie » dans ce schéma
+> (`SubscriptionReminder`, badge « à vie » de `/profil`) : un abonnement qui
+> écrirait `null` offrirait un accès perpétuel à qui a payé un mois. `null` n'est
+> renvoyé que sur retour au gratuit, où la question ne se pose pas.
+
+> ⚠️ **`isPaymentIssue` ≠ perte d'accès.** `past_due` est un incident **ET** un
+> accès conservé — les deux notions sont distinctes et doivent le rester (un futur
+> bandeau « ton paiement a échoué » s'affiche sans couper quoi que ce soit).
+
+### 🪤 Trois pièges Stripe déjà payés, à ne pas re-découvrir
+
+1. **`current_period_end` n'est PLUS sur l'objet `Subscription`.** Depuis l'API
+   2025-xx (le SDK est ici en `22.x`, API `2026-08-26.dahlia`), Stripe l'a descendu
+   sur chaque `SubscriptionItem`. Le lire sur l'abonnement renvoie `undefined`
+   **silencieusement** — le champ n'existe plus au typage non plus. `periodEndOf()`
+   prend le **max** des items.
+2. **Le corps du webhook doit être lu BRUT** (`request.text()`), jamais
+   `request.json()`. La signature porte sur les octets exacts : un parse suivi d'un
+   re-`stringify` change l'ordre des clés et l'échappement, la signature ne
+   correspond plus, **toutes** les livraisons sont rejetées — avec pour seul
+   symptôme un 400.
+3. **Stripe compte en SECONDES**, `Date` en millisecondes. L'oubli du ×1000 place
+   la fin de période en 1970 et déclasse tout le monde. D'où `unixToIso()`, unique
+   et testée, plutôt que des `new Date(x * 1000)` disséminés.
+
+### Rattachement d'un événement à un compte — trois sources, dans cet ordre
+
+Elles ne sont **pas** interchangeables :
+1. `subscription.metadata.user_id` — posé via `subscription_data.metadata` au
+   checkout, survit à **tous** les `customer.subscription.*`, y compris déclenchés
+   depuis le Dashboard Stripe ;
+2. `session.client_reference_id` — n'existe **que** sur
+   `checkout.session.completed`, mais y est le plus fiable ;
+3. la table, par `stripe_customer_id` — seul recours pour un abonnement créé **hors**
+   de notre parcours (à la main dans le Dashboard, ou migré).
+
+Aucune ne répond ⇒ **200 `{ ignored, reason: 'user_not_resolved' }`**, jamais un 500 :
+réessayer ne ferait pas apparaître l'identité manquante, et Stripe boucherait sur un
+cas insoluble. Un 500 n'est renvoyé que sur panne DB/réseau, là où le rejeu a un sens
+— et la garde d'ordre + l'`ON CONFLICT` le rendent inoffensif.
+
+### Étape 4 — le dashboard reflète le palier sans rechargement forcé
+
+**Le problème** : quand Stripe renvoie sur `success_url`, `profiles.tier` **n'est pas
+encore écrit**. Le webhook est appelé en parallèle, par un chemin qui ne passe pas par
+le navigateur et n'a aucun rendez-vous avec lui. Sans traitement, quelqu'un qui vient
+de payer voit encore « Apprenti » — et le réflexe est de repayer.
+
+**La réponse** : `SessionProvider` expose désormais **`refreshProfile()`** (relit
+`profiles`, **renvoie** le profil relu — l'état React n'est pas à jour à l'instant du
+`await`), et `CheckoutReturn` s'en sert : bandeau « activation en cours… », relecture
+toutes les 2 s, **15 tentatives max (30 s)**, puis message « recharge dans une minute ».
+**Jamais un message d'échec** : le paiement, lui, est passé.
+
+- Le paramètre `?checkout=` est retiré de l'URL (`history.replaceState`) **avant**
+  toute attente — un rechargement ou un retour arrière ne rejoue pas l'annonce.
+- La détection combine **deux** conditions : palier différent de celui du retour
+  (couvre Apprenti→Forgeron **et** Forgeron→Maître, qu'un simple « est-ce payant ? »
+  manquerait) **ou** palier payant alors que le profil n'était pas chargé au retour.
+- **Polling et pas Realtime**, délibérément : `profiles` n'est pas dans la publication
+  `supabase_realtime`, et l'y ajouter diffuserait les changements de toutes ses
+  colonnes pour une attente de quelques secondes, une fois par abonnement.
+- Monté dans `Dashboard.tsx` à côté de `ConsentBanner` (bandeau de flux, dans la
+  colonne de contenu) et **non** dans `page.tsx` comme `SubscriptionReminder`, qui est
+  une modale plein écran.
+
+### `Pricing.tsx` est monté à DEUX endroits — c'est ce qui dicte le bouton
+
+- vitrine publique (`page.tsx`, branche visiteur) : personne n'est connecté → le clic
+  ouvre `openAuth()` ;
+- onglet **caché** `tarifs` du dashboard (`Dashboard.tsx`) : connecté → le clic ouvre
+  Stripe Checkout.
+
+D'où la lecture de `useSession()` dans le composant plutôt qu'une prop. Le bouton est
+inerte sur **son propre palier** (`ctaCurrent`) : proposer un second paiement à qui
+l'a déjà créerait un doublon d'abonnement chez Stripe, pas une mise à niveau.
+
+> ⚠️ **Le montant n'est JAMAIS transmis par le client** — seulement le couple
+> `(plan, period)`, qui sert à choisir un `price_id` configuré côté serveur. Même
+> patron intent→grant que « Chaleur de la Forge ». Accepter un prix du navigateur,
+> ce serait accepter de vendre Maître au prix qu'il aura choisi.
+
+### Tests
+
+`src/lib/stripe/plans.test.ts` — **22 tests** sur le module pur : paliers achetables
+(et l'exclusion de Légion/Monarque), correspondance ASCII↔accentué, catalogue de prix
+dans les deux sens, **les 8 statuts un par un**, le cas « statut inconnu », l'invariant
+« jamais de palier payant sans date », le ×1000, et `stripeMode`.
+`src/locales/landing.test.ts` — 2 tests de plus : toute carte `subscribe` porte une clé
+`plan` valide (et elle seule), et cette clé désigne bien le palier de la carte.
+
+> **Le repo n'a pas de suite de tests de routes API** (aucun test n'existe pour
+> `api/external/items`) — la convention y est de tester les **modules purs**, pas les
+> handlers. Toute la logique décisionnelle a donc été sortie dans `plans.ts`
+> précisément pour être testable sous cette convention ; les routes ne contiennent
+> que de l'orchestration. **Ne pas introduire un harnais de test de routes pour ce
+> seul chantier** sans décider de la convention pour tout le repo.
+
+### Reste à faire
+
+- **Aucun test SQL** pour la migration (les `supabase/tests/*.sql` du kit et de prac
+  sont le patron à suivre : blocs `BEGIN/ROLLBACK` pour le SQL Editor distant). À
+  écrire avant de pousser en prod — cibles évidentes : la garde d'ordre
+  (`last_event_at`), l'exclusion des admins, et la sonde `anon`/`authenticated` sur
+  la RPC (`42501` attendu).
+- **Migration non appliquée** au moment de la rédaction (ni test, ni prod).
+- **Portail client Stripe** (`billingPortal.sessions.create`) : rien ne permet
+  aujourd'hui à un abonné de résilier ou de changer de moyen de paiement depuis le
+  site — cela se fait pour l'instant depuis le Dashboard Stripe, par l'admin.
+- **CGU** (`cgu/page.tsx`) : à relire maintenant que l'abonnement reconduit qu'elles
+  décrivent est réellement branché.
+- Le § « Modèle freemium » ci-dessous dit encore « à activer quand Pricing sera
+  réactivé » et « la section Pricing est actuellement masquée sur la vitrine » :
+  **les deux sont périmés**. La grille est visible et le paiement est branché ;
+  l'**enforcement** des quotas par palier, lui, reste bien à faire.
+
+---
+
 ## 💰 Modèle freemium (à activer quand Pricing sera réactivé)
 
 ### Règle Riot Developer Agreement

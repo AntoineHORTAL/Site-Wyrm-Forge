@@ -17,6 +17,7 @@ import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import KitTab from './tabs/KitTab'
 import ConsentBanner from './ConsentBanner'
+import CheckoutReturn from './CheckoutReturn'
 import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'
 import { useFlag } from '@/components/providers/FeatureFlagsProvider'
 import DashboardAdRail from '@/components/ads/DashboardAdRail'
@@ -293,6 +294,12 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
       <main className="dash-main">
         {/* Bandeau demande de suivi prac en attente — auto-masqué si aucun dossier pending */}
         <ConsentBanner />
+
+        {/* Retour de Stripe Checkout — auto-masqué hors `?checkout=…`. Monté ici
+            et pas dans `page.tsx` (contrairement à SubscriptionReminder, qui est
+            une modale plein écran) : c'est un bandeau de flux, il appartient à la
+            colonne de contenu, au-dessus de l'onglet `tarifs` d'où part l'achat. */}
+        <CheckoutReturn />
 
         {/* En-tête standard — masqué pour l'onglet tarifs (Pricing a son propre titre) */}
         {activeTab !== 'tarifs' && (

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
+import { useSession } from '@/components/providers/SessionProvider'
 import { formatPrice } from '@/locales/landing'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { PRICING_TIERS } from '@/lib/pricing-tiers'
@@ -28,6 +29,15 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 // Le formatage des prix (séparateur décimal ET position du symbole €) vit dans
 // `formatPrice` (src/locales/landing.ts) — seule source de vérité, partagée par
 // tous les affichages de montant de la vitrine.
+//
+// ATTENTION : CE COMPOSANT EST MONTE A DEUX ENDROITS, et c'est ce qui dicte le
+// comportement du bouton d'abonnement :
+//   - sur la vitrine publique (`page.tsx`, branche visiteur) : personne n'est
+//     connecte, le clic doit donc ouvrir la modale de connexion ;
+//   - dans le dashboard, comme onglet cache `tarifs` (`Dashboard.tsx`) : la
+//     personne est connectee, le clic ouvre Stripe Checkout.
+// D'ou la lecture de `useSession()` ici plutot qu'une prop : un meme composant,
+// deux points de montage, et aucun des deux n'a a savoir lequel s'applique.
 
 export default function Pricing() {
   const { theme } = useTheme()
@@ -35,6 +45,56 @@ export default function Pricing() {
   const { t, lang } = useLanguage()
   const p = t.pricing
   const [annual, setAnnual] = useState(false)
+
+  const { user, profile, openAuth } = useSession()
+
+  // Palier en cours d'ouverture -- porte la CLE du palier clique plutot qu'un
+  // booleen : deux boutons coexistent, seul celui qu'on a clique doit passer en
+  // << Redirection... >>. Ne repasse jamais a `null` en cas de succes, la page
+  // etant alors en train de partir vers Stripe.
+  const [pending, setPending] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Palier actuel, normalise comme le fait `isPaidTier` : `profiles.tier` n'a
+  // aucune contrainte CHECK, et `page.tsx` utilise un repli capitalise.
+  const currentTier = profile?.tier?.trim().toLowerCase() ?? null
+
+  async function subscribe(plan: 'forgeron' | 'maitre') {
+    // Visiteur non connecte : le checkout exige un `user_id` a rattacher a la
+    // session Stripe. On ouvre la modale plutot que de laisser la route repondre
+    // 401 -- c'est la meme personne, il lui manque juste un compte.
+    if (!user) { openAuth(); return }
+
+    setError(null)
+    setPending(plan)
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Seuls le palier et la periodicite partent d'ici. Jamais un montant :
+        // le prix est choisi cote serveur a partir de ce couple.
+        body: JSON.stringify({ plan, period: annual ? 'annuel' : 'mensuel' }),
+      })
+
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.url) {
+        // Convention du repo : le code technique reste dans la console,
+        // l'utilisateur lit un message traduit.
+        console.error('[pricing] checkout:', res.status, data?.error)
+        setError(p.checkoutError)
+        setPending(null)
+        return
+      }
+
+      // Redirection pleine page, pas un `router.push` : Stripe Checkout est un
+      // domaine tiers, hors du routeur Next.
+      window.location.assign(data.url)
+    } catch (err) {
+      console.error('[pricing] checkout:', err)
+      setError(p.checkoutError)
+      setPending(null)
+    }
+  }
 
   const segBtn = (active: boolean): React.CSSProperties => ({
     padding: '7px 16px',
@@ -176,12 +236,50 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              {/* CTA — aucun paiement réel */}
+              {/* CTA — trois formes : téléchargement, abonnement Stripe, ou « bientôt » */}
               {tier.cta === 'download' ? (
                 <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold" style={{ justifyContent: 'center' }}>
                   <WindowsIcon />
                   {p.ctaDownload}
                 </a>
+              ) : tier.cta === 'subscribe' && tier.plan ? (
+                (() => {
+                  const isCurrent = currentTier !== null && currentTier === tier.name.toLowerCase()
+                  const isPending = pending === tier.plan
+                  // Bouton inerte sur son propre palier : proposer un second
+                  // paiement à quelqu'un qui l'a déjà créerait un doublon
+                  // d'abonnement chez Stripe, pas une mise à niveau.
+                  const disabled = isCurrent || isPending
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => subscribe(tier.plan!)}
+                      disabled={disabled}
+                      style={{
+                        width: '100%', padding: '12px 0', borderRadius: 8,
+                        cursor: disabled ? 'default' : 'pointer',
+                        fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
+                        background: isCurrent
+                          ? 'transparent'
+                          : c ? 'linear-gradient(135deg, var(--gold), var(--gold-light))' : '#7F77DD',
+                        color: isCurrent
+                          ? 'var(--text-dim)'
+                          : c ? '#0A0612' : '#fff',
+                        border: isCurrent
+                          ? `1px solid ${c ? 'rgba(186,117,23,0.25)' : '#3F3F46'}`
+                          : 'none',
+                        opacity: isPending ? 0.7 : 1,
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      {isCurrent  ? p.ctaCurrent
+                       : isPending ? p.ctaSubscribeLoading
+                       : user      ? p.ctaSubscribe
+                       : p.ctaSubscribeAnon}
+                    </button>
+                  )
+                })()
               ) : (
                 <button
                   type="button"
@@ -203,6 +301,14 @@ export default function Pricing() {
           )
         })}
       </div>
+
+      {/* Échec d'ouverture du checkout — sous la grille et pas dans une carte :
+          l'erreur ne concerne pas un palier en particulier. */}
+      {error && (
+        <p role="alert" style={{ textAlign: 'center', color: '#E24B4A', fontSize: 13, marginTop: 24 }}>
+          {error}
+        </p>
+      )}
 
       {/* Paliers à venir — sobre, sans promesse de date */}
       <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, marginTop: 36 }}>
