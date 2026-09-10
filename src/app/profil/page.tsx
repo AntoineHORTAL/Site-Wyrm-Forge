@@ -19,6 +19,10 @@ import { useDashboard, useLang } from '@/locales/dashboard'
 import { formatDate, formatDateTime, ddragonLocale } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import { riotRankLabel, gamesLabel, type RiotRankKey } from '@/locales/dashboard/profil'
+import {
+  resolveSubscriptionView,
+  type SubscriptionRow,
+} from '@/lib/stripe/subscription-view'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -83,6 +87,9 @@ export default function ProfilePage() {
   const [todoListCount,  setTodoListCount] = useState(0)
   const [todoItemCount,  setTodoItemCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Ligne `stripe_subscriptions` de l'utilisateur — `null` s'il n'a jamais eu
+  // d'abonnement, ce qui est le cas de la grande majorité des comptes.
+  const [subscription, setSubscription] = useState<SubscriptionRow | null>(null)
   // Le chargement mémorise un CODE, pas un texte : le message est composé au rendu.
   // Sans ça, le dico entrerait dans les dépendances de l'effet et une bascule de
   // langue relancerait tout le chargement du profil.
@@ -97,16 +104,29 @@ export default function ProfilePage() {
         if (!user) { setErrorKey('errSignedOut'); return }
 
         // Profil + compteurs Supabase en parallèle
-        const [profRes, builds, todoLists, todoItems, vRes] = await Promise.all([
+        const [profRes, builds, todoLists, todoItems, subRes, vRes] = await Promise.all([
           supabase.from('profiles')
             .select('id, username, tier, role, certified, tier_expires_at, created_at, riot_gamename, riot_tagline, riot_platform, riot_rank')
             .eq('id', user.id).maybeSingle(),
           supabase.from('item_builds').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
           supabase.from('todo_lists').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
           supabase.from('todo_items').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+          // Abonnement Stripe. Lecture de SA ligne, garantie par la policy
+          // `ss_select_own` (migration 20260909000003) : le `.eq()` ci-dessous est
+          // du confort de requête, la barrière est en base. `maybeSingle` et non
+          // `single` — l'absence de ligne est le cas NORMAL, pas une erreur.
+          supabase.from('stripe_subscriptions')
+            .select('stripe_customer_id, status, cancel_at_period_end, current_period_end')
+            .eq('user_id', user.id).maybeSingle(),
           fetch(`${DDN}/api/versions.json`),
         ])
         if (cancelled) return
+
+        // Une erreur ici ne doit PAS faire échouer la page : le profil est
+        // chargé, seule la section Abonnement se dégrade (ni bouton de portail,
+        // ni alerte d'impayé). `subRes.error` est déjà silencieux côté
+        // PostgREST quand la ligne n'existe pas.
+        setSubscription((subRes.data as SubscriptionRow | null) ?? null)
 
         const profData = profRes.data as Omit<UserProfile, 'email'> | null
         if (!profData) { setErrorKey('errNotFound'); return }
@@ -279,6 +299,9 @@ export default function ProfilePage() {
         </div>
       </header>
 
+      {/* Abonnement — palier, échéance, et accès au portail Stripe */}
+      <SubscriptionSection profile={profile} subscription={subscription} />
+
       {/* Section Riot */}
       <section style={{
         marginBottom: 18, padding: '14px 18px', borderRadius: 10,
@@ -403,6 +426,175 @@ export default function ProfilePage() {
       {/* Suppression du compte (RGPD article 17) */}
       <DeletionRequest profile={profile} />
     </main>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Abonnement : palier courant, échéance, et accès au portail de facturation Stripe
+// ────────────────────────────────────────────────────────────────────────────────
+/**
+ * Section « Abonnement ».
+ *
+ * Elle LIT, elle n'écrit rien. `profiles.tier` / `tier_expires_at` sont la source
+ * de vérité du palier — écrits par le webhook Stripe, et par lui seul. Le bouton
+ * ci-dessous n'ouvre que le portail hébergé de Stripe : une résiliation faite
+ * là-bas revient par webhook, elle ne repasse jamais par cette page.
+ *
+ * Toute la décision d'affichage vit dans `resolveSubscriptionView` (module pur,
+ * testé). Ici il ne reste que du rendu — convention du repo : ce qui décide se
+ * teste, le JSX ne se teste pas.
+ */
+function SubscriptionSection({ profile, subscription }: {
+  profile: UserProfile; subscription: SubscriptionRow | null
+}) {
+  const dico = useDashboard()
+  const lang = useLang()
+  const P = dico.profil
+  const G = P.page
+  const S = P.subscription
+
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const view = resolveSubscriptionView({
+    tier: profile.tier,
+    tierExpiresAt: profile.tier_expires_at,
+    role: profile.role,
+    subscription,
+  })
+
+  const tierColor = TIER_COLORS[view.tier] ?? '#A1A1AA'
+
+  async function openPortal() {
+    setError(null)
+    setPending(true)
+    try {
+      // POST sans corps : la route lit l'utilisateur connecté et retrouve
+      // elle-même son `stripe_customer_id`. Le lui transmettre depuis le
+      // navigateur ouvrirait les factures de n'importe qui à n'importe qui.
+      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.url) {
+        // Convention du repo : le code technique reste dans la console,
+        // l'utilisateur lit un message traduit.
+        console.error('[profil] portal:', res.status, data?.error)
+        setError(S.manageError)
+        setPending(false)
+        return
+      }
+
+      // Redirection pleine page, comme le checkout : le portail Stripe est un
+      // domaine tiers, hors du routeur Next.
+      window.location.assign(data.url)
+    } catch (err) {
+      console.error('[profil] portal:', err)
+      setError(S.manageError)
+      setPending(false)
+    }
+  }
+
+  return (
+    <section style={{
+      marginBottom: 18, padding: '14px 18px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        {S.title}
+      </div>
+
+      {/* Palier + échéance */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{S.currentPlan}</span>
+        <span style={{
+          padding: '3px 10px', borderRadius: 4,
+          background: `${tierColor}22`, color: tierColor, fontWeight: 700, letterSpacing: 1, fontSize: 12,
+        }}>{subscriptionTierLabel(dico.nav, view.tier).toUpperCase()}</span>
+
+        {/* Badge « à vie » : même libellé et même or que l'en-tête — c'est la
+            MÊME notion, pas une seconde. */}
+        {view.kind === 'lifetime' && (
+          <span style={{ color: '#EF9F27', fontWeight: 700, fontSize: 12 }}>{G.lifetime}</span>
+        )}
+
+        {/* Une résiliation programmée porte la même date qu'un renouvellement et
+            le sens inverse : deux libellés distincts, jamais fusionnés. */}
+        {view.kind === 'paid' && view.expiresAt && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {(view.cancelAtPeriodEnd ? S.endsOn : S.renewsOn)
+              .replace('{date}', formatDate(view.expiresAt, lang))}
+          </span>
+        )}
+      </div>
+
+      {view.kind === 'lifetime' && (
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>{S.lifetimeNote}</div>
+      )}
+
+      {/* L'abonnement Stripe est ORTHOGONAL au rôle admin : la RPC
+          `stripe_apply_subscription_event` enregistre bien l'abonnement d'un
+          admin mais ne touche pas à son palier (`admin_untouched`). Le dire
+          évite de laisser croire qu'une résiliation lui ferait perdre ses accès. */}
+      {view.isAdmin && (
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>{S.adminNote}</div>
+      )}
+
+      {/* Incident de paiement — `past_due` conserve l'accès, `unpaid` l'a déjà
+          perdu : dans les deux cas c'est le moyen de paiement qu'il faut mettre
+          à jour, d'où un seul message. */}
+      {view.paymentIssue && (
+        <div role="alert" style={{
+          fontSize: 13, color: '#F5F2FA', lineHeight: 1.4,
+          padding: '10px 12px', marginBottom: 10, borderRadius: 8,
+          background: 'rgba(226,75,74,0.10)', border: '1px solid rgba(226,75,74,0.35)',
+        }}>
+          {S.paymentIssue}
+        </div>
+      )}
+
+      {/* Palier gratuit : la sortie est la grille tarifaire, pas le portail. */}
+      {view.kind === 'free' && (
+        <div style={{ marginBottom: view.canManageBilling ? 12 : 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>{S.freeTitle}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>{S.freeBody}</div>
+          <Link href="/?tab=tarifs" style={{ color: '#EF9F27', fontWeight: 600, textDecoration: 'none', fontSize: 13 }}>
+            {G.pricing}
+          </Link>
+        </div>
+      )}
+
+      {/* Bouton de portail — affiché dès qu'un client Stripe existe, y compris
+          sur un palier redescendu à gratuit : factures et réactivation vivent
+          là-bas. C'est exactement la condition que la route vérifie côté
+          serveur, pour qu'un bouton visible ne mène jamais à une erreur. */}
+      {view.canManageBilling && (
+        <>
+          <button
+            type="button"
+            onClick={openPortal}
+            disabled={pending}
+            style={{
+              padding: '9px 16px', borderRadius: 8,
+              cursor: pending ? 'default' : 'pointer',
+              fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+              background: 'transparent', color: '#EF9F27',
+              border: '1px solid rgba(239,159,39,0.45)',
+              opacity: pending ? 0.7 : 1,
+            }}
+          >
+            {pending ? S.manageLoading : S.manage}
+          </button>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>{S.manageHint}</div>
+        </>
+      )}
+
+      {error && (
+        <p role="alert" style={{ color: '#E24B4A', fontSize: 13, marginTop: 10, marginBottom: 0 }}>
+          {error}
+        </p>
+      )}
+    </section>
   )
 }
 

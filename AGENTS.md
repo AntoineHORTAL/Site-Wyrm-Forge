@@ -1802,9 +1802,13 @@ Légion et Monarque sont **hors périmètre** — non priorisés, donc non achet
 | `src/lib/stripe/plans.ts` | **Module PUR, testé (22 tests)** — paliers achetables, catalogue de prix, et **la politique** « quel statut Stripe donne droit à quel palier ». Aucune décision de palier ne se prend ailleurs. |
 | `src/lib/stripe/server.ts` | Plomberie serveur : instance Stripe paresseuse, `requireEnv`, `SITE_URL`. `import 'server-only'`. |
 | `src/lib/supabase/admin.ts` | **Le seul** client `service_role` du site. `import 'server-only'`. |
+| `src/lib/stripe/checkout-intent.ts` | **Module PUR, testé (19 tests)** — l'intention d'abonnement mise en attente pendant la connexion (voir § Reprise après connexion). |
+| `src/lib/stripe/subscription-view.ts` | **Module PUR, testé (23 tests)** — ce que la section « Abonnement » de `/profil` AFFICHE. Ne décide d'aucun palier : il relit ce que le webhook a écrit. |
 | `src/app/api/stripe/checkout/route.ts` | POST `{ plan, period }` → `{ url }`. Ne fait **aucune** écriture. |
+| `src/app/api/stripe/portal/route.ts` | POST sans corps → `{ url }` du Billing Portal. Ne fait **aucune** écriture (voir § Portail client). |
 | `src/app/api/stripe/webhook/route.ts` | Signature Stripe → RPC. **Le seul** chemin qui change un palier. |
 | `src/components/dashboard/CheckoutReturn.tsx` | Bandeau d'attente au retour de Stripe (voir § Étape 4). |
+| `src/app/profil/page.tsx` → `SubscriptionSection` | Section « Abonnement » : palier, échéance, incident de paiement, bouton de portail. |
 | migration `20260909000003` | Table `stripe_subscriptions` + RPC `stripe_apply_subscription_event`. |
 
 ### ⚠️ Deux vocabulaires de palier, et il faut les distinguer
@@ -2010,6 +2014,96 @@ l'a déjà créerait un doublon d'abonnement chez Stripe, pas une mise à niveau
 > patron intent→grant que « Chaleur de la Forge ». Accepter un prix du navigateur,
 > ce serait accepter de vendre Maître au prix qu'il aura choisi.
 
+### Reprise après connexion — « Se connecter pour s'abonner » finit le geste
+
+**Le problème** : sur la vitrine, `ctaSubscribeAnon` ouvrait la modale et s'arrêtait
+là. Une fois connecté, plus rien ne relançait le checkout — et sur `/`, la vitrine
+avait en plus **disparu** (branche visiteur de `page.tsx` remplacée par le
+dashboard), donc le bouton à re-cliquer n'était même plus à l'écran.
+
+**La réponse** : le couple (palier, périodicité) est mémorisé dans
+**`sessionStorage`** au clic (`rememberCheckoutIntent`), puis rejoué automatiquement.
+
+> ⚠️ **Ni un `useState` ni une `ref` ne conviennent ici**, et ce n'est pas une
+> question de goût : aucun des deux ne survit aux chemins de connexion. Google
+> (`signInWithOAuth`) **quitte le site** et revient par `/auth/callback` — tout
+> l'arbre React a été détruit ; la connexion e-mail, elle, **démonte `Pricing`** à
+> l'instant où `user` devient non-null, donc un effet `[user]` posé dedans ne
+> s'exécute jamais avec la nouvelle valeur. `sessionStorage` traverse les deux (il
+> est lié à l'ONGLET) et se ferme tout seul, ce qu'un `localStorage` ne ferait pas.
+
+Le relais se fait en deux temps, dans deux fichiers :
+1. **`page.tsx`** — effet sur `user` : si une intention attend (`peekCheckoutIntent`,
+   lecture NON destructive), il ouvre l'onglet `tarifs`. Sans lui, le dashboard
+   s'ouvrirait sur l'accueil et personne ne relirait jamais l'intention.
+2. **`Pricing.tsx`** — effet sur `user` : `takeCheckoutIntent` (lecture **destructive**)
+   puis ouverture du checkout avec la périodicité MÉMORISÉE, pas celle du toggle.
+
+> ⚠️ **La consommation a lieu AVANT l'ouverture du checkout, jamais après.** Si
+> l'ouverture échoue (réseau, 503 de configuration), on veut que la personne
+> re-clique, pas qu'un paiement se relance seul au rendu suivant. C'est aussi le
+> seul ordre qui tienne face au double montage du mode strict de React. Une garde
+> `resumed` (ref) double la protection côté React.
+
+TTL de **15 minutes** : assez pour un aller-retour OAuth + création de compte, trop
+court pour qu'une intention abandonnée ouvre un paiement une demi-heure plus tard.
+**Ce n'est PAS une sécurité** — l'intention ne porte qu'un palier et une
+périodicité, jamais un montant ; une intention falsifiée à la console ne peut pas
+acheter Maître au prix de Forgeron, le prix restant choisi côté serveur.
+
+### Portail client — `/api/stripe/portal` + section « Abonnement » de `/profil`
+
+> 🔴 **CONFIGURATION MANUELLE REQUISE CÔTÉ STRIPE.** Le Billing Portal doit être
+> activé et enregistré dans **Dashboard → Settings → Billing → Customer portal**,
+> **en mode LIVE comme en mode test** (les deux configurations sont distinctes et
+> ne se recopient pas). Sans elle, `billingPortal.sessions.create` répond
+> « No configuration provided » et la route renvoie un **502** : c'est une
+> configuration absente, pas un bug de code. Aucune variable d'environnement
+> supplémentaire n'est nécessaire — la route réutilise `STRIPE_SECRET_KEY`.
+
+`POST /api/stripe/portal`, **sans corps** → `{ url }`, redirection **pleine page**
+comme le checkout. `return_url` = `${SITE_URL}/profil`.
+
+- **Authentification comme le checkout** : `getUser()` et jamais `getSession()`.
+- **Le `stripe_customer_id` ne vient JAMAIS du corps de la requête** : la route le
+  relit dans `stripe_subscriptions` **sous le JWT de l'utilisateur** (policy
+  `ss_select_own`). C'est le pendant exact du « le montant n'est jamais transmis par
+  le client » côté checkout — l'accepter du navigateur ouvrirait les factures et le
+  moyen de paiement de n'importe quel abonné.
+- **Aucun client, aucun portail** → **404 `{ error: 'no_customer' }`**. Cas NORMAL
+  (cette personne n'a jamais eu d'abonnement), pas une panne : 404 et non 403, ce
+  n'est pas un refus d'accès mais une ressource inexistante.
+- **La route n'écrit rien.** Une résiliation faite dans le portail revient par
+  `customer.subscription.updated` puis `deleted` : le webhook reste le seul chemin
+  d'écriture sur les paliers.
+
+Côté interface, `SubscriptionSection` (dans `/profil`, juste sous l'en-tête) rend le
+verdict de **`resolveSubscriptionView`** — trois situations : `free` (lien vers
+l'onglet Tarifs), `paid` (date de renouvellement, ou d'ARRÊT si
+`cancel_at_period_end` — même date, sens opposé, deux libellés distincts) et
+`lifetime` (`tier_expires_at` à `null`, attribution manuelle, jamais Stripe).
+
+> ⚠️ **`resolveSubscriptionView` ≠ `resolveTierOutcome`.** Le second traduit un
+> événement Stripe en palier à ÉCRIRE (webhook) ; le premier relit ce qui est déjà
+> en base pour l'AFFICHER. Recalculer le palier côté client à partir du statut
+> Stripe créerait une seconde table de décision, et la page finirait par affirmer un
+> palier que la base ne donne pas.
+
+Deux détails qui ne sont pas des oublis :
+- **Le bouton de portail est adossé à l'EXISTENCE d'un client Stripe, pas au palier
+  courant.** Un ancien abonné redescendu à `apprenti` garde ses factures, son moyen
+  de paiement et sa réactivation dans le portail ; les lui cacher l'obligerait à
+  écrire un mail. C'est exactement la condition que la route vérifie côté serveur,
+  pour qu'un bouton visible ne mène jamais à une erreur.
+- **Le rôle admin reste orthogonal** : `stripe_apply_subscription_event` enregistre
+  l'abonnement d'un admin mais ne touche pas à son palier (`admin_untouched`). La
+  section le DIT (`adminNote`) plutôt que de laisser croire qu'une résiliation lui
+  ferait perdre ses accès. Le badge de rôle de l'en-tête n'est pas touché.
+
+`isPaymentIssue` (de `plans.ts`) alimente un bandeau `past_due`/`unpaid` — un
+incident de paiement **ne retire pas** le palier (`past_due` conserve l'accès), les
+deux notions restent distinctes.
+
 ### Tests
 
 `src/lib/stripe/plans.test.ts` — **22 tests** sur le module pur : paliers achetables
@@ -2018,6 +2112,16 @@ dans les deux sens, **les 8 statuts un par un**, le cas « statut inconnu », l'
 « jamais de palier payant sans date », le ×1000, et `stripeMode`.
 `src/locales/landing.test.ts` — 2 tests de plus : toute carte `subscribe` porte une clé
 `plan` valide (et elle seule), et cette clé désigne bien le palier de la carte.
+`src/lib/stripe/checkout-intent.test.ts` — **19 tests** : aller-retour palier+périodicité,
+consommation UNIQUE (`take` efface, `peek` non), TTL à la milliseconde près, et le
+rejet de tout ce qui sort corrompu du stockage (JSON invalide, palier inventé,
+horodatage absent). Plus les deux cas « pas de stockage » : `null` (rendu serveur) et
+un stockage qui LÈVE (navigation privée) — aucun des deux ne doit jamais faire échouer
+un clic, seule la reprise automatique disparaît.
+`src/lib/stripe/subscription-view.test.ts` — **23 tests** : les trois situations
+(`free`/`paid`/`lifetime`), le palier inconnu payant par défaut, le portail ouvert à un
+ancien abonné redescendu au gratuit, la résiliation programmée, les cinq statuts face à
+`isPaymentIssue`, et l'orthogonalité du rôle admin.
 
 > **Le repo n'a pas de suite de tests de routes API** (aucun test n'existe pour
 > `api/external/items`) — la convention y est de tester les **modules purs**, pas les
@@ -2034,9 +2138,10 @@ dans les deux sens, **les 8 statuts un par un**, le cas « statut inconnu », l'
   (`last_event_at`), l'exclusion des admins, et la sonde `anon`/`authenticated` sur
   la RPC (`42501` attendu).
 - **Migration non appliquée** au moment de la rédaction (ni test, ni prod).
-- **Portail client Stripe** (`billingPortal.sessions.create`) : rien ne permet
-  aujourd'hui à un abonné de résilier ou de changer de moyen de paiement depuis le
-  site — cela se fait pour l'instant depuis le Dashboard Stripe, par l'admin.
+- ~~**Portail client Stripe**~~ ✅ **LIVRÉ** — `/api/stripe/portal` + section
+  « Abonnement » de `/profil` (voir § Portail client ci-dessus). ⚠️ Le portail doit
+  être **activé manuellement dans le Dashboard Stripe**, en LIVE comme en test, sinon
+  la route répond 502.
 - **CGU** (`cgu/page.tsx`) : à relire maintenant que l'abonnement reconduit qu'elles
   décrivent est réellement branché.
 - Le § « Modèle freemium » ci-dessous dit encore « à activer quand Pricing sera

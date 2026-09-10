@@ -1,12 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { useSession } from '@/components/providers/SessionProvider'
 import { formatPrice } from '@/locales/landing'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { PRICING_TIERS } from '@/lib/pricing-tiers'
+import type { BillingPeriod, PlanKey } from '@/lib/stripe/plans'
+import {
+  rememberCheckoutIntent,
+  takeCheckoutIntent,
+  sessionIntentStorage,
+} from '@/lib/stripe/checkout-intent'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -59,12 +65,16 @@ export default function Pricing() {
   // aucune contrainte CHECK, et `page.tsx` utilise un repli capitalise.
   const currentTier = profile?.tier?.trim().toLowerCase() ?? null
 
-  async function subscribe(plan: 'forgeron' | 'maitre') {
-    // Visiteur non connecte : le checkout exige un `user_id` a rattacher a la
-    // session Stripe. On ouvre la modale plutot que de laisser la route repondre
-    // 401 -- c'est la meme personne, il lui manque juste un compte.
-    if (!user) { openAuth(); return }
+  /** Periodicite actuellement selectionnee, sous la forme attendue par la route. */
+  const period: BillingPeriod = annual ? 'annuel' : 'mensuel'
 
+  /**
+   * Ouverture du checkout. La periodicite est un PARAMETRE, pas une lecture de
+   * l'etat `annual` : la reprise apres connexion doit rejouer la periodicite
+   * memorisee au clic, et non celle du bouton tel qu'il se trouve au montage
+   * (le composant se remonte entre les deux -- voir `checkout-intent.ts`).
+   */
+  const openCheckout = useCallback(async (plan: PlanKey, forPeriod: BillingPeriod) => {
     setError(null)
     setPending(plan)
     try {
@@ -73,7 +83,7 @@ export default function Pricing() {
         headers: { 'Content-Type': 'application/json' },
         // Seuls le palier et la periodicite partent d'ici. Jamais un montant :
         // le prix est choisi cote serveur a partir de ce couple.
-        body: JSON.stringify({ plan, period: annual ? 'annuel' : 'mensuel' }),
+        body: JSON.stringify({ plan, period: forPeriod }),
       })
 
       const data = await res.json().catch(() => null)
@@ -94,7 +104,65 @@ export default function Pricing() {
       setError(p.checkoutError)
       setPending(null)
     }
+  }, [p.checkoutError])
+
+  function subscribe(plan: PlanKey) {
+    // Visiteur non connecte : le checkout exige un `user_id` a rattacher a la
+    // session Stripe. On ouvre la modale plutot que de laisser la route repondre
+    // 401 -- c'est la meme personne, il lui manque juste un compte.
+    //
+    // Le palier ET la periodicite sont memorises AVANT d'ouvrir la modale, pour
+    // que la connexion reprenne le geste au lieu de le perdre. Voir
+    // `checkout-intent.ts` : ni un state ni une ref ne survivraient au demontage
+    // de la vitrine, encore moins a l'aller-retour OAuth.
+    if (!user) {
+      rememberCheckoutIntent(sessionIntentStorage(), plan, period)
+      openAuth()
+      return
+    }
+
+    void openCheckout(plan, period)
   }
+
+  /**
+   * REPRISE APRES CONNEXION.
+   *
+   * Une seule condition : `user` est la, et une intention valide attend. Ce cas
+   * se produit sur les deux chemins, et jamais au meme moment :
+   *   - connexion e-mail  -> le composant est REMONTE dans l'onglet `tarifs` du
+   *     dashboard, ou `page.tsx` a bascule en voyant l'intention en attente ;
+   *   - connexion Google  -> la page entiere revient de `/auth/callback`, meme
+   *     onglet, donc meme `sessionStorage`.
+   *
+   * `takeCheckoutIntent` EFFACE avant de rendre : l'intention est consommee une
+   * fois et une seule, y compris sous le double montage du mode strict de React.
+   * Sans cela, un echec d'ouverture relancerait un paiement au rendu suivant.
+   *
+   * La garde `resumed` couvre le meme risque cote React : un second passage de
+   * l'effet (changement de `user` sans changement d'identite, re-render du
+   * provider) ne doit pas rouvrir un checkout deja lance.
+   */
+  const resumed = useRef(false)
+
+  useEffect(() => {
+    if (!user || resumed.current) return
+
+    const intent = takeCheckoutIntent(sessionIntentStorage())
+    if (!intent) return
+
+    resumed.current = true
+    // Le toggle suit la periodicite reprise : la page part vers Stripe, mais si
+    // la redirection echoue, ce qui reste a l'ecran doit correspondre a ce qui a
+    // ete tente.
+    //
+    // La regle `set-state-in-effect` vise les rendus en cascade ; ici le setState
+    // a lieu UNE seule fois par session (garde `resumed`), juste avant une
+    // redirection pleine page. C'est exactement le cas ou synchroniser l'affichage
+    // sur l'action en cours est le comportement voulu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAnnual(intent.period === 'annuel')
+    void openCheckout(intent.plan, intent.period)
+  }, [user, openCheckout])
 
   const segBtn = (active: boolean): React.CSSProperties => ({
     padding: '7px 16px',

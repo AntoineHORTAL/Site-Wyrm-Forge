@@ -173,6 +173,31 @@ export const profilFr = {
     todoItems: 'Tâches au total',
   },
 
+  /* ── /profil : section Abonnement (SubscriptionSection) ──
+     ⚠️ `until` et `lifetime` ne sont PAS redéclarés ici : la section réutilise ceux
+     de `page`, qui portent déjà le badge « À VIE » de l'en-tête. Deux libellés pour
+     la même notion divergeraient à la première retouche. */
+  subscription: {
+    title: 'Abonnement',
+    currentPlan: 'Palier actuel',
+    /* Abonnement qui se reconduit — `{date}` = `profiles.tier_expires_at`. */
+    renewsOn: 'Renouvellement le {date}',
+    /* Résiliation déjà programmée : même date, sens opposé. Ne pas fusionner. */
+    endsOn: "Accès jusqu'au {date}, sans reconduction",
+    /* Palier payant sans date : attribué à la main, pas par Stripe. */
+    lifetimeNote: "Ce palier ne dépend d'aucun abonnement.",
+    freeTitle: 'Tu es sur le palier gratuit.',
+    freeBody: "Passe à un palier supérieur pour débloquer l'overlay complet, le workshop et les analyses IA.",
+    manage: 'Gérer mon abonnement',
+    manageLoading: 'Ouverture du portail…',
+    manageHint: 'Moyen de paiement, factures et résiliation, sur Stripe.',
+    manageError: "Impossible d'ouvrir le portail de facturation. Réessaie dans un instant.",
+    /* `past_due` / `unpaid` — l'accès n'est pas forcément perdu, le ton reste factuel. */
+    paymentIssue: 'Ton dernier paiement a échoué. Mets ton moyen de paiement à jour pour ne pas perdre ton palier.',
+    /* Un admin garde son palier quoi qu'il arrive à son abonnement Stripe. */
+    adminNote: "Ton palier vient de ton rôle d'administrateur : il ne dépend pas de cet abonnement.",
+  },
+
   /* ── /profil : paramètres du compte (ProfileSettings + EditableField) ── */
   settings: {
     title: 'Paramètres du compte',
@@ -439,6 +464,22 @@ export const profilEn: ProfilDict = {
     builds: 'Builds created',
     todoLists: 'To-do lists',
     todoItems: 'Tasks in total',
+  },
+
+  subscription: {
+    title: 'Subscription',
+    currentPlan: 'Current tier',
+    renewsOn: 'Renews on {date}',
+    endsOn: 'Access until {date}, no renewal',
+    lifetimeNote: 'This tier does not depend on any subscription.',
+    freeTitle: "You're on the free tier.",
+    freeBody: 'Upgrade to unlock the full overlay, the workshop and AI analyses.',
+    manage: 'Manage my subscription',
+    manageLoading: 'Opening the portal…',
+    manageHint: 'Payment method, invoices and cancellation, on Stripe.',
+    manageError: 'Could not open the billing portal. Please try again in a moment.',
+    paymentIssue: 'Your last payment failed. Update your payment method to keep your tier.',
+    adminNote: 'Your tier comes from your administrator role: it does not depend on this subscription.',
   },
 
   settings: {

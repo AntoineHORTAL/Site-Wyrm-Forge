@@ -13,6 +13,7 @@ import SubscriptionReminder from '@/components/dashboard/SubscriptionReminder'
 import { useSession } from '@/components/providers/SessionProvider'
 import { useDashboardNav } from '@/components/providers/DashboardNavProvider'
 import type { DashTab } from '@/lib/session-types'
+import { peekCheckoutIntent, sessionIntentStorage } from '@/lib/stripe/checkout-intent'
 
 // `DashTab` et `UserProfile` ont déménagé dans `src/lib/session-types.ts` : le
 // header vit désormais dans le layout racine, et les providers qui le nourrissent
@@ -43,6 +44,30 @@ export default function Home() {
     const tab = new URLSearchParams(window.location.search).get('tab')
     if (tab && DEEP_LINKABLE_TABS.has(tab)) setActiveTab(tab as DashTab)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Reprise d'abonnement : ouvrir l'onglet `tarifs` quand une intention attend.
+   *
+   * Un visiteur qui a cliqué « Se connecter pour s'abonner » sur la vitrine a vu
+   * cette même page BASCULER de la vitrine au dashboard au moment où `user` est
+   * devenu non-null : `Pricing` a été démonté, et l'onglet ouvert par défaut
+   * n'est pas `tarifs`. Sans cet effet, l'intention mémorisée resterait dans
+   * `sessionStorage` sans que personne ne la relise, et la personne se
+   * retrouverait sur l'accueil du dashboard sans explication.
+   *
+   * `peek` et non `take` : c'est `Pricing` qui CONSOMME l'intention, une fois
+   * monté dans l'onglet — la consommer ici la ferait disparaître avant qu'un
+   * checkout puisse être relancé.
+   *
+   * Dépendance sur `user` : couvre les deux chemins de connexion. Après un
+   * retour OAuth la page est remontée et `user` passe de `null` à l'utilisateur
+   * une fois la session résolue ; après une connexion e-mail, `page.tsx` reste
+   * monté et seul `user` change.
+   */
+  useEffect(() => {
+    if (!user) return
+    if (peekCheckoutIntent(sessionIntentStorage())) setActiveTab('tarifs')
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
