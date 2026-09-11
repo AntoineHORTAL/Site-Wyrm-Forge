@@ -89,7 +89,11 @@ export default function ConfidentialitePage() {
           <li>la preuve de ta demande d&apos;accès immédiat au service, recueillie avant le
             paiement : date et heure, texte exact de la case cochée et sa version, langue
             d&apos;affichage, palier et périodicité choisis, version des conditions générales de
-            vente.</li>
+            vente ;</li>
+          {/* `subscription_emails` (20260911000004). */}
+          <li>l&apos;historique des e-mails de service liés à ton abonnement (confirmation de
+            commande, confirmation de résiliation, rappel avant reconduction) : type d&apos;e-mail,
+            date d&apos;envoi, adresse de destination et identifiant d&apos;envoi.</li>
         </List>
 
         <p style={{ marginTop: 16 }}><strong>Écailles (monnaie virtuelle interne)</strong> :</p>
@@ -157,7 +161,8 @@ export default function ConfidentialitePage() {
       <Section title="4. Pourquoi nous traitons ces données">
         <List>
           <li><strong>Exécution du contrat</strong> — créer et gérer ton compte, fournir les outils
-            du service, gérer un éventuel abonnement.</li>
+            du service, gérer un éventuel abonnement, et t&apos;envoyer par e-mail la confirmation
+            de ta commande et, le cas échéant, de ta résiliation.</li>
           <li><strong>Consentement</strong> — liaison de ton compte Riot. Retirable à tout
             moment, sans justification.</li>
           <li><strong>Intérêt légitime</strong> — sécurité du service, prévention des abus,
@@ -165,7 +170,8 @@ export default function ConfidentialitePage() {
           <li><strong>Obligation légale</strong> — conservation des pièces comptables des
             abonnements payants, et de la preuve de ta demande d&apos;accès immédiat au service
             (article L221-25 du Code de la consommation), que nous devons pouvoir produire en
-            cas de rétractation ou de litige.</li>
+            cas de rétractation ou de litige ; et l&apos;e-mail de rappel envoyé avant la
+            reconduction d&apos;un abonnement annuel (article L215-1 du Code de la consommation).</li>
         </List>
       </Section>
 
@@ -191,6 +197,11 @@ export default function ConfidentialitePage() {
           <li><strong>Stripe</strong> — traitement des paiements des abonnements, facturation et
             portail de gestion de l&apos;abonnement. Nous ne stockons aucune donnée de carte
             bancaire : elles sont saisies directement chez Stripe.</li>
+          {/* Réintégré le 2026-09-11 (e-mails d'abonnement, EF `subscription-emails`).
+              Il avait été retiré avec le module PRAC, son seul usage d'alors. */}
+          <li><strong>Resend</strong> — envoi des e-mails transactionnels liés à ton abonnement
+            (confirmation de commande, confirmation de résiliation, rappel avant reconduction).
+            Il reçoit ton adresse e-mail et le contenu du message, rien d&apos;autre.</li>
         </List>
         <p style={{ marginTop: 16 }}><strong>Où sont tes données, et ce qui sort de l&apos;UE</strong></p>
         <p>
@@ -205,15 +216,17 @@ export default function ConfidentialitePage() {
             possible, notamment pour l&apos;administration technique et le support. Cet accès est
             encadré par les clauses contractuelles types de la Commission européenne, intégrées à
             l&apos;accord de traitement des données (DPA) de Supabase.</li>
-          <li><strong>Les autres prestataires</strong> — Vercel, Stripe et Anthropic sont
+          <li><strong>Les autres prestataires</strong> — Vercel, Stripe, Anthropic et Resend sont
             établis aux États-Unis. Les transferts correspondants s&apos;appuient sur les clauses
             contractuelles types de la Commission européenne et, pour ceux qui y sont certifiés,
             sur le cadre de protection des données UE–États-Unis (Data Privacy Framework).</li>
         </List>
         {/* À COMPLÉTER PAR HORTAL — vérifier et consigner, prestataire par prestataire :
             (1) que le DPA de Supabase est bien signé et quelle version des CCT il intègre ;
-            (2) lesquels de Vercel / Stripe / Anthropic sont effectivement certifiés
-            au Data Privacy Framework (la liste officielle est publique et évolue) ;
+            (2) lesquels de Vercel / Stripe / Anthropic / Resend sont effectivement certifiés
+            au Data Privacy Framework (la liste officielle est publique et évolue) — et, pour
+            Resend, la région d'envoi du domaine (le MX de send.wyrm-forge.com pointe
+            eu-west-1, ce qui ne dit rien du lieu de stockage des journaux Resend) ;
             (3) l'existence d'une analyse de transfert pour Singapour, qui n'est couvert par
             AUCUNE décision d'adéquation. Tant que ce n'est pas fait, le paragraphe ci-dessus
             décrit l'intention, pas une conformité vérifiée. */}
@@ -245,6 +258,13 @@ export default function ConfidentialitePage() {
             souscription (délai de prescription des actions civiles), pour pouvoir la produire en
             cas de litige. Si ton compte est supprimé avant, la preuve est conservée pour la même
             durée, mais détachée de ton compte.</li>
+          {/* ⚠️ Même dette que la preuve de consentement : aucune purge automatique,
+              première échéance en 2031. */}
+          <li><strong>Historique des e-mails d&apos;abonnement</strong> — 5 ans à compter de
+            l&apos;envoi, pour pouvoir prouver que les informations légales t&apos;ont bien été
+            adressées. Si ton compte est supprimé avant, l&apos;historique est conservé pour la
+            même durée, détaché de ton compte ; un e-mail qui n&apos;était pas encore parti
+            n&apos;est jamais envoyé.</li>
           <li><strong>Riot ID recherchés (autocomplétion)</strong> — conservés sans limite de durée.
             Il s&apos;agit d&apos;identifiants de jeu publics, non rattachés à un compte Wyrm Forge.</li>
         </List>

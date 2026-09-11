@@ -108,17 +108,19 @@ export default function CgvPage() {
           Le contrat est conclu à la validation du paiement. Ton palier est activé dans les
           instants qui suivent, sur le site comme dans l&apos;application.
         </p>
-        {/* À COMPLÉTER PAR HORTAL — art. L221-13 : la CONFIRMATION du contrat, avec
-            les informations de l'art. L221-5 (donc ces CGV) et la confirmation de la
-            demande expresse d'exécution immédiate, doit être remise sur SUPPORT DURABLE
-            avant le début de l'exécution. Un lien vers cette page n'en est pas un
-            (CJUE, Content Services, C-49/11). Aucun transport e-mail applicatif n'existe
-            depuis le retrait de Resend (2026-09-11) : même besoin que le rappel annuel
-            de l'art. 5 — voir AGENTS.md § CGV. */}
+        {/* Art. L221-13 — confirmation sur support durable, envoyée par l'EF
+            `subscription-emails` (gabarit `order_confirmation`, supabase/functions/
+            _shared/subscription-emails.ts), dans les minutes qui suivent le paiement.
+            ⚠️ À faire valider par le juriste : l'e-mail reprend les informations
+            essentielles et le texte exact de la demande expresse, mais renvoie aux CGV
+            par un LIEN — or un lien n'est pas un support durable (CJUE, Content
+            Services, C-49/11). Joindre les CGV en PDF serait la forme la plus sûre. */}
         <p style={{ marginTop: 10 }}>
-          Une confirmation de ta commande, reprenant les présentes conditions et ta demande
-          d&apos;accès immédiat, t&apos;est adressée par e-mail.{' '}
-          <Todo>mettre en place l&apos;envoi de la confirmation de commande sur support durable</Todo>
+          Une confirmation de ta commande t&apos;est adressée par e-mail dans les minutes qui
+          suivent le paiement : elle reprend le palier, le prix, la périodicité, la date du
+          premier prélèvement et de la prochaine échéance, ton droit de rétractation et le
+          texte exact de ta demande d&apos;accès immédiat, avec un lien vers les présentes
+          conditions.
         </p>
       </Section>
 

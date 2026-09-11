@@ -145,6 +145,10 @@ export function CancellationTerms() {
           aucun nouveau prélèvement n&apos;a lieu, et tu conserves l&apos;accès à ton palier
           jusqu&apos;à cette date. Tant qu&apos;elle n&apos;est pas atteinte, tu peux annuler ta
           résiliation depuis le portail.</li>
+        {/* L215-1-1 : confirmation de la résiliation — gabarit
+            `cancellation_confirmation` de l'EF `subscription-emails`. */}
+        <li>Ta résiliation t&apos;est confirmée par e-mail, avec la date jusqu&apos;à laquelle
+          ton accès reste actif.</li>
         <li>Le bouton « Moyen de paiement et factures » ouvre le même portail pour consulter tes
           factures, changer de moyen de paiement ou réactiver un abonnement résilié avant son
           échéance. S&apos;il te propose de changer de palier ou de périodicité, le prix et la

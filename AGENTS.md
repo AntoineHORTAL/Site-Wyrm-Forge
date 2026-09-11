@@ -705,26 +705,14 @@ n'est rendu, l'écran bascule sur le contact manuel.
 - **Lot 3** — e-mail « kit trouvé », déclenché par le bouton admin (pas un Database
   Webhook — on évite le plombage Vault/`pg_net` du Lot 5E).
 
-  ⚠️ **Le transport e-mail n'est plus décidé.** Ce lot prévoyait de réutiliser
-  `_shared/resend.ts` : ce helper a été **supprimé le 2026-09-11** avec le module
-  prac, dont l'EF `prac-notify` était son seul consommateur. Resend n'avait dès lors
-  plus aucun appelant dans le projet, son secret `RESEND_API_KEY` a été retiré des
-  Edge Functions et le prestataire a quitté la liste des sous-traitants de la
-  politique de confidentialité. Les e-mails de compte (confirmation d'inscription,
-  réinitialisation de mot de passe) partent par le SMTP par défaut de Supabase —
-  « Enable custom SMTP » est désactivé.
-
-  Au moment de reprendre ce lot, il faudra donc **choisir** : rouvrir un compte
-  Resend, ou prendre un autre fournisseur. Dans les deux cas, deux conséquences à
-  ne pas oublier — recréer le secret côté Edge Functions, et **réinscrire le
-  prestataire au § 5 de `confidentialite/page.tsx`** (liste des sous-traitants ET
-  paragraphe des transferts hors UE, les deux).
-
-  📌 Le **patron claim-then-send** reste la bonne référence, même si son fichier a
-  disparu : il traitait le cas d'un envoi qui ne doit jamais partir deux fois si le
-  déclencheur rejoue. Le code d'origine se relit sans le restaurer :
-  `git show 6b46bde:supabase/functions/prac-notify/index.ts`, et le helper de
-  transport `git show 6b46bde:supabase/functions/_shared/resend.ts`.
+  ✅ **Transport e-mail rétabli le 2026-09-11** : Resend (décision HORTAL), helper
+  `_shared/resend.ts` recréé (générique, `from` obligatoire, `Idempotency-Key`),
+  secret `RESEND_API_KEY`, prestataire réinscrit au § 5 de `confidentialite/page.tsx`.
+  Ce lot pourra le réutiliser tel quel ; le patron claim-then-send et la file
+  `subscription_emails` des e-mails d'abonnement (§ CGV › E-mails transactionnels)
+  sont la référence — la table est dédiée à l'abonnement (CHECK sur `kind`) : le Kit
+  aura sa propre clé d'idempotence, voire sa propre table. Les e-mails de compte
+  (inscription, mot de passe) restent sur le SMTP par défaut de Supabase.
 - **Lot 4** — Stripe, paiement ponctuel `mode: 'payment'` en deux sessions
   (acompte 40 % / solde 60 %). Bloqué hors code par Kbis + Stripe en live
   (`docs/economie-ecailles-wyrm-forge_1.md`), et par la réécriture des CGU
@@ -2306,31 +2294,75 @@ l'abonnement + remboursement partiel depuis le Dashboard Stripe), à faire sous
   (`20260911000001/2`, drops tournois/prac) : un `db push` sur test les appliquerait
   aussi.
 
-### ⛔ BLOQUÉ — rappel annuel (L215-1, loi Chatel) et confirmation de commande (L221-13)
+### ✉️ E-mails transactionnels d'abonnement (chantier du 2026-09-11 — Resend rebranché)
 
-**Aucun transport e-mail applicatif n'existe** : Resend a été retiré le 2026-09-11,
-et le SMTP par défaut de Supabase Auth n'est ni prévu ni fiable pour de
-l'applicatif. Rien n'a été codé, volontairement : un e-mail légal qui échoue en
-silence est pire qu'une absence de code. Deux obligations en dépendent :
+Débloque les trois obligations qui dépendaient d'un transport e-mail. Décision
+HORTAL : **Resend** (compte conservé).
 
-1. **L215-1** — informer l'abonné annuel par écrit (e-mail dédié) entre 3 mois et
-   1 mois avant l'échéance, avec la date limite de non-reconduction mise en évidence.
-   Sanction tant que ce n'est pas fait (déjà écrite dans les CGV § 5) : l'abonné peut
-   résilier à tout moment après la reconduction et être remboursé au prorata sous
-   30 jours.
-2. **L221-13** — confirmation du contrat sur support durable (CGV + confirmation de
-   la demande expresse), avant le début de l'exécution. Un lien vers /cgv n'est pas
-   un support durable.
+| Obligation | E-mail | Déclencheur |
+|---|---|---|
+| **L221-13** confirmation du contrat | `order_confirmation` — palier, prix, périodicité, 1er prélèvement, prochaine échéance, lien portail, lien CGV, droit de rétractation, **texte exact** de la demande expresse (relu dans `checkout_consent_log`) | `checkout.session.completed` |
+| **L215-1-1** confirmation de résiliation | `cancellation_confirmation` — demande enregistrée, date de fin d'accès, pas de remboursement partiel (CGU § 10) | `customer.subscription.updated` où la résiliation **passe** à programmée (`previous_attributes`) — le plus tôt, pas `deleted` qui n'arrive qu'en fin de période |
+| **L215-1** rappel avant reconduction | `renewal_reminder` — date de reconduction en encadré, montant (aperçu de facture Stripe, remises comprises), lien pour résilier | programmé à la souscription et à chaque renouvellement d'un abonnement **annuel** |
 
-**Implémentation minimale proposée, une fois un transport choisi** : EF planifiée
-(pg_cron quotidien) qui sélectionne `stripe_subscriptions` en `active`, prix annuel
-(`periodForPriceId`), `cancel_at_period_end = false`, `current_period_end` dans
-[J+30 ; J+45] — marge au-dessus du plancher d'un mois —, puis envoie avec le patron
-**claim-then-send** (`git show 6b46bde:supabase/functions/prac-notify/index.ts`) sur
-une table de journal à clé `(user_id, current_period_end)` : un envoi par échéance,
-jamais deux, et un échec visible (`status = 'failed'` + alerte), pas avalé. Au choix
-d'un prestataire : recréer le secret EF, et le réinscrire au § 5 de
-`confidentialite/page.tsx` (sous-traitants ET transferts hors UE).
+**Architecture — le webhook n'envoie jamais rien.**
+1. `/api/stripe/webhook`, APRÈS `applySubscription`, appelle `queueSubscriptionEmails`
+   (tout en try/catch + `enqueueSafely` : **ne lève jamais**) qui dépose des lignes
+   via la RPC `enqueue_subscription_email`. Un dépôt impossible = `console.error`
+   « à traiter À LA MAIN », et le webhook répond 200 comme d'habitude.
+2. pg_cron (`subscription-emails-drain`, **toutes les 5 min**) appelle
+   `trigger_subscription_emails_drain()`, qui ne réveille l'EF **que s'il y a une ligne
+   due** (URL + jeton lus dans Vault à chaque appel).
+3. L'EF `subscription-emails` réclame (`claim_subscription_emails`, `FOR UPDATE SKIP
+   LOCKED`), envoie via `_shared/resend.ts` avec **`Idempotency-Key = dedup_key`**,
+   puis clôt (`finish_subscription_email`). Toute la logique est dans le module PUR
+   `_shared/subscription-emails.ts` (gabarits, calendrier, isolation des échecs).
+
+**Jamais deux fois** : `dedup_key` UNIQUE (`order:<sub>`, `cancel:<sub>:<event>`,
+`renewal:<sub>:<échéance>`) ; réclamation exclusive ; Idempotency-Key Resend (24 h)
+contre le doublon après plantage. Une ligne restée `sending` est reprise après 15 min
+(la dette V1 de prac, où une ligne bloquée ne repartait jamais, est réglée).
+**Relances** : 15 min, 30 min, 1 h, 2 h, 4 h, puis 6 h ; abandon visible en `failed`
+après 8 tentatives (≈ 20 h).
+
+> ⚠️ **Rappel annuel : point fixe « un mois calendaire + 15 jours », PAS « J-30 ».**
+> La loi dit « au plus tard **un mois** » avant le terme. Quand le mois précédent a
+> 31 jours (échéance en janvier, février, avril, juin, août, septembre, novembre),
+> un mois = 31 jours : un envoi à J-30 serait hors délai **7 mois sur 12**. Constante
+> `REMINDER_MARGIN_DAYS` ; propriété vérifiée par test sur chaque jour de trois ans.
+> L'EF revérifie l'abonnement à l'envoi (toujours vivant, non résilié, même échéance)
+> et journalise en erreur un envoi qui dépasserait la limite légale.
+
+Table `subscription_emails` (migration `20260911000004`) : file ET journal. RLS sans
+policy + `REVOKE ALL` (aucun accès client), 3 RPC `service_role` seul, bloc `DO`
+d'auto-vérification. `user_id … ON DELETE SET NULL` : une ligne envoyée reste la
+preuve de l'information légale ; une ligne en attente d'un compte supprimé est close
+`skipped`, jamais envoyée. Conservation annoncée : 5 ans (pas de purge automatique,
+première échéance 2031).
+
+**Validé** : 27/27 sur le projet test (migration + `supabase/tests/20260911000004_…`
+dans une transaction annulée — rien n'a persisté, job cron compris) ; tests vitest
+(`src/lib/stripe/subscription-emails*.test.ts`) ; `deno check` de l'EF OK.
+**NON appliqué** ni sur test ni en prod ; aucun e-mail réel envoyé (pas de clé).
+
+**⚠️ Pré-requis de mise en service, dans cet ordre :**
+1. Secrets Edge Functions (prod) : `supabase secrets set RESEND_API_KEY=… EMAIL_FROM=…
+   SUBSCRIPTION_EMAILS_TOKEN=<aléatoire> --project-ref cuscgmgqakxnfwnsrhhv` (+ en option
+   `EMAIL_REPLY_TO`, `STRIPE_PORTAL_LOGIN_URL`, `SITE_URL`).
+2. Secrets Vault (même jeton) : `subscription_emails_token` et `subscription_emails_url`
+   (commandes dans l'en-tête de la migration).
+3. `db push` de la migration, puis push sur `main` (déploie l'EF via le workflow) et
+   déploiement du site (webhook).
+Sans 1 et 2, rien ne se perd : la file se remplit, l'EF répond 503 sans rien réclamer,
+tout part dès que la configuration est posée.
+
+**À décider par HORTAL (non deviné)** : l'adresse d'expéditeur `EMAIL_FROM` (le domaine
+`wyrm-forge.com` est **déjà authentifié chez Resend** — DKIM `resend._domainkey`, SPF et
+MX du sous-domaine `send.`, région eu-west-1 — mais **aucun enregistrement DMARC**
+n'existe : à ajouter côté Cloudflare) ; activer ou non le lien de connexion « no-code »
+du portail Stripe (`STRIPE_PORTAL_LOGIN_URL`, sinon les e-mails renvoient vers
+`/profil`) ; faire valider par le juriste que la confirmation de commande, qui renvoie
+aux CGV par un lien, suffit comme support durable (sinon joindre les CGV en PDF).
 
 ### ✅ Corrections bloquantes traitées le 2026-09-11 (décisions HORTAL)
 
@@ -2392,9 +2424,8 @@ factures ». Règle d'affichage partagée interface ↔ route :
 - **Sondage « motif de résiliation » activé** dans le portail (sandbox) : il ajoute
   une étape. À désactiver, ou à garder strictement facultatif, en live — d'où
   « en quelques clics » dans les CGU, pas un nombre exact.
-- **L215-1-1 al. 2 : confirmer la résiliation sur support durable** (date de fin,
-  effets). Troisième obligation qui dépend du transport e-mail absent (avec L215-1 et
-  L221-13), sauf si les e-mails Stripe le couvrent — à vérifier dans le Dashboard.
+- ~~**L215-1-1 al. 2 : confirmer la résiliation sur support durable**~~ ✅ couvert par
+  l'e-mail `cancellation_confirmation` — voir § E-mails transactionnels ci-dessus.
 - ~~**« Comparaison rangs supérieurs »**~~ ✅ retirée de la grille le 2026-09-11 (décision HORTAL) — voir § À faire plus tard.
 - Les autres limites de la grille (blocs d'overlay, imports, builds) ne sont pas
   appliquées côté serveur : l'abonné reçoit au moins ce qui est annoncé, sans risque
