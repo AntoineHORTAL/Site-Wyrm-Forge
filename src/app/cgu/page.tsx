@@ -11,7 +11,7 @@ export default function CguPage() {
     <LegalPage
       title="Conditions générales"
       accent="d'utilisation"
-      updated="31 juillet 2026"
+      updated="11 septembre 2026"
       current="/cgu"
       intro={<>
         Ces conditions encadrent l&apos;utilisation du site wyrm-forge.com et de l&apos;application
@@ -24,9 +24,8 @@ export default function CguPage() {
         <p>
           Wyrm Forge est un assistant de jeu pour League of Legends. Il propose notamment un
           éditeur de builds d&apos;items, un éditeur de jungle paths, des to-do lists, des
-          scénarios de macro, des analyses de match up assistées par IA, la consultation
-          d&apos;historiques de parties et de parties en cours, ainsi que des tournois
-          communautaires.
+          scénarios de macro, des analyses de match up assistées par IA, ainsi que la
+          consultation d&apos;historiques de parties et de parties en cours.
         </p>
         <p style={{ marginTop: 10 }}>
           Le service est accessible via le site web et via une application de bureau Windows.
@@ -101,7 +100,7 @@ export default function CguPage() {
       <Section title="6. Contenus publiés par les utilisateurs">
         <p>
           Tu restes propriétaire des contenus que tu crées. En les publiant sur les espaces
-          communautaires (Workshop, tournois), tu accordes à Wyrm Forge une licence non exclusive
+          communautaires (Workshop), tu accordes à Wyrm Forge une licence non exclusive
           et gratuite permettant leur affichage au sein du service, pour la durée de leur
           publication.
         </p>

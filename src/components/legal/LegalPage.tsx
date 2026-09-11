@@ -41,7 +41,9 @@ export function List({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** Encart « information manquante » — rend visible ce que HORTAL doit fournir. */
+/** Encart « information manquante » — rend visible ce que HORTAL doit fournir.
+ *  Marqueur unique et greppable : `grep -rn "À COMPLÉTER PAR HORTAL" src` liste
+ *  tout ce qui reste à renseigner, badges rendus ET commentaires de source. */
 export function Todo({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
@@ -49,7 +51,7 @@ export function Todo({ children }: { children: React.ReactNode }) {
       background: 'rgba(239,159,39,0.12)', border: '1px dashed rgba(239,159,39,0.45)',
       color: '#EF9F27', fontSize: 13, fontWeight: 600,
     }}>
-      [À COMPLÉTER — {children}]
+      [À COMPLÉTER PAR HORTAL — {children}]
     </span>
   )
 }
@@ -108,8 +110,8 @@ export function LegalPage({
         border: '1px solid rgba(127,119,221,0.28)',
         color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6,
       }}>
-        Wyrm Forge est en bêta et sa structure juridique est en cours de constitution.
-        Ce document est une première version, appelée à être complétée et précisée.
+        Wyrm Forge est en bêta. Ce document est appelé à être complété et précisé ; les
+        informations encore manquantes y sont signalées en toutes lettres.
         Pour toute question : <a href="mailto:contact@wyrm-forge.com"
           style={{ color: c ? 'var(--gold-pale)' : '#7F77DD' }}>contact@wyrm-forge.com</a>.
       </div>
