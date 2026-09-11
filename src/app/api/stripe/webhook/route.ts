@@ -25,8 +25,8 @@ import {
  *
  * Tout autre événement → 200 `{ ignored: true }`. Un webhook qui répond en
  * erreur est retenté par Stripe, indéfiniment : ne jamais échouer sur ce qu'on
- * a simplement choisi de ne pas traiter. Même règle que `prac-notify`, dont le
- * filtrage vit lui aussi dans la fonction et pas dans le déclencheur.
+ * a simplement choisi de ne pas traiter. Le filtrage vit donc dans la fonction,
+ * pas dans le déclencheur.
  *
  * `runtime = 'nodejs'` : la vérification de signature et le SDK Stripe ont
  * besoin des API Node.
@@ -218,8 +218,9 @@ export async function POST(request: NextRequest) {
   // C'est LA barrière de cette route : elle est publique par nécessité (Stripe
   // doit pouvoir l'appeler sans compte). Sans vérification, n'importe qui
   // POSTerait un `customer.subscription.updated` fabriqué et s'offrirait Maître.
-  // Même rôle que le `X-Internal-Token` de `prac-notify`, en plus solide : la
-  // signature couvre le corps, pas seulement l'appelant.
+  // La signature couvre le CORPS, et pas seulement l'appelant : un jeton partagé
+  // en en-tête authentifierait l'expéditeur sans garantir que la charge utile
+  // n'a pas été réécrite en route.
   let event: Stripe.Event
   try {
     event = await readEvent(request)

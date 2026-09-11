@@ -117,7 +117,7 @@ describe('politique de repli asymétrique', () => {
     // Une panne réseau ne doit jamais vider le site de ses fonctionnalités livrées.
     for (const key of [
       'ads_enabled', 'player_search_enabled', 'patch_notes_enabled',
-      'matchup_ai_enabled', 'workshop_builds_enabled', 'prac_enabled',
+      'matchup_ai_enabled', 'workshop_builds_enabled',
     ]) {
       expect(readFlag(catalogueAbsent, key), key).toBe(true)
     }

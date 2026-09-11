@@ -20,7 +20,7 @@
  * ════════════════════════════════════════════════════════════════════════════
  *  POURQUOI DU POLLING, ET PAS REALTIME
  * ════════════════════════════════════════════════════════════════════════════
- * Supabase Realtime est déjà utilisé ailleurs (To-Do, tournois), mais il
+ * Supabase Realtime est déjà utilisé ailleurs (To-Do), mais il
  * suppose que la table soit dans la publication `supabase_realtime` — ce n'est
  * pas le cas de `profiles`, et l'y ajouter diffuserait les changements de
  * TOUTES ses colonnes pour une attente de quelques secondes, une fois par

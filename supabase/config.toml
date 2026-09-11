@@ -37,26 +37,20 @@ verify_jwt = false
 [functions.patch-notes-generator]
 verify_jwt = true
 
-# Module Tournois
-# tournament-register : inscription publique (JWT optionnel — lié si présent)
-[functions.tournament-register]
-verify_jwt = false
+# Module Tournois — RETIRÉ le 2026-09-11 (décision HORTAL).
+# La route /tournois avait été supprimée le 2026-09-03 ; les deux Edge Functions
+# `tournament-register` et `tournament-admin` sont restées DÉPLOYÉES et appelables
+# pendant huit jours, dont une acceptant des inscriptions anonymes qui écrivaient
+# des pseudos Discord en base via service_role. Elles ont été supprimées du dépôt,
+# supprimées du projet Supabase (`supabase functions delete`, qui ne se fait PAS
+# tout seul : le workflow de déploiement ne sait que déployer, jamais retirer), et
+# les tables sous-jacentes sont droppées par la migration 20260911000001.
 
-# tournament-admin : actions orga — JWT vérifié DANS LE CODE (getUser → 401),
-# pas par la plateforme (convention projet : verify_jwt=false + check applicatif)
-[functions.tournament-admin]
-verify_jwt = false
-
-# prac-track : tracking de matchs (module prac) — JWT + is_prac_admin vérifiés DANS
-# LE CODE (même convention que tournament-admin). Actions : list / resolve / commit.
-[functions.prac-track]
-verify_jwt = false
-
-# prac-notify : notification de demande de suivi (module prac) — appelée par un
-# Database Webhook Supabase (pg_net), pas par un navigateur. Pas de JWT user :
-# la barrière est le header X-Internal-Token = PRAC_WEBHOOK_SECRET, vérifié EN CODE.
-[functions.prac-notify]
-verify_jwt = false
+# Module PRAC — RETIRÉ le 2026-09-11 (décision HORTAL), dans la foulée des tournois.
+# `prac-track` et `prac-notify` ont été supprimées du dépôt ET du projet Supabase
+# (`supabase functions delete`), et les tables sont droppées par la migration
+# 20260911000002. Le sous-domaine prac.wyrm-forge.com, la variable
+# NEXT_PUBLIC_PRAC_HOST et le secret PRAC_WEBHOOK_SECRET restent à retirer hors dépôt.
 
 # ── Fonctions nécessitant un user connecté ───────────────────────────────────
 # verify_jwt = true déclaré EXPLICITEMENT (était le défaut implicite). La clé anon

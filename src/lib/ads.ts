@@ -62,9 +62,6 @@ export function shouldShowAds(tier: string | null | undefined, isAdmin = false):
  * mise en page mais ne charge STRICTEMENT AUCUN script tiers — donc aucun
  * cookie publicitaire, aucun traceur, aucune requête vers une régie.
  *
- * ⚠️ Ne pas confondre avec `components/dashboard/ConsentBanner.tsx`, qui n'a
- * rien à voir avec le RGPD : il annonce une demande de suivi « prac ».
- *
  * Le jour où la CMP arrive, c'est le SEUL endroit à modifier — brancher ici la
  * lecture de l'état de consentement, et tous les emplacements suivent.
  */

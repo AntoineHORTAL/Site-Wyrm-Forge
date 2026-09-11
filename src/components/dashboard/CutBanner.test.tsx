@@ -71,7 +71,7 @@ describe('visibilité', () => {
     // Le bandeau ne reçoit PAS le sous-onglet : il ne peut pas en dépendre.
     // On le vérifie de bout en bout — la décision d'affichage (`adminPanelLayout`)
     // et le HTML produit sont les mêmes sur les trois sections.
-    const cuts = [cut('ads_enabled'), cut('prac_enabled')]
+    const cuts = [cut('ads_enabled'), cut('patch_notes_enabled')]
     const rendus = ADMIN_SUBTAB_IDS.map((sub: AdminSubTab) => {
       const layout = adminPanelLayout(sub, cuts.length)
       return layout.showBanner ? renderToStaticMarkup(banner(cuts)) : ''
@@ -108,10 +108,10 @@ describe('compteur', () => {
 
   it('nomme les fonctionnalités coupées', () => {
     // Un compteur seul obligerait à ouvrir la section pour savoir QUOI est coupé.
-    const html = renderToStaticMarkup(banner([cut('ads_enabled'), cut('prac_enabled')]))
+    const html = renderToStaticMarkup(banner([cut('ads_enabled'), cut('patch_notes_enabled')]))
 
     expect(html).toContain('Libellé ads_enabled')
-    expect(html).toContain('Libellé prac_enabled')
+    expect(html).toContain('Libellé patch_notes_enabled')
   })
 })
 

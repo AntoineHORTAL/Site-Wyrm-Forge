@@ -25,7 +25,6 @@
  * afficher un libellé traduit SANS aucun changement d'API. `queueName` reste dans les
  * réponses, il n'est simplement plus affiché.
  *
- * ⚠️ `lib/prac.ts` garde sa propre table : `/prac/*` est hors périmètre du chantier.
  */
 const queuesFr = {
   0:    'Personnalisée',
@@ -67,8 +66,8 @@ export const commonFr = {
   win: 'Victoire',
   loss: 'Défaite',
   /* Initiales du même résultat, pour les cases compactes de la timeline Stats et la
-     liste de /consent. W/L dans LES DEUX langues : décision produit du Lot 8, alignée
-     sur le bilan chiffré (`profil.page.winLoss`, `profil.consent.record`). Les MOTS
+     ligne Post Game. W/L dans LES DEUX langues : décision produit du Lot 8, alignée
+     sur le bilan chiffré (`profil.page.winLoss`). Les MOTS
      ci-dessus (`win` / `loss`), eux, restent traduits — c'est une notion différente. */
   winInitial: 'W',
   lossInitial: 'L',

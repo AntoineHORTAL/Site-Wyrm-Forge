@@ -25,9 +25,8 @@ import { priceEnvKey, type PriceEnv } from './plans'
  *
  * ⚠️ Aucun secret ne figure en dur dans ce dépôt : `.env*` est dans `.gitignore`
  * (ligne « env files »), les variables vivent dans Vercel côté déploiement et
- * dans `.env.local` en local. Même règle que la sortie du token `prac-notify`
- * du catalogue Postgres (`20260901000001`) : un secret ne se lit qu'au moment
- * où on s'en sert, jamais depuis un endroit qui se versionne ou se dumpe.
+ * dans `.env.local` en local. Un secret ne se lit qu'au moment où on s'en sert,
+ * jamais depuis un endroit qui se versionne ou qui se dumpe.
  */
 export function requireEnv(name: string): string {
   const value = process.env[name]
