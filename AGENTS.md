@@ -702,9 +702,29 @@ révision de l'index d'unicité.
 n'est rendu, l'écran bascule sur le contact manuel.
 
 ### Reste à faire (lots suivants)
-- **Lot 3** — e-mail « kit trouvé » : réutiliser `_shared/resend.ts` et le patron
-  claim-then-send de `prac-notify`, déclenché par le bouton admin (pas un Database
+- **Lot 3** — e-mail « kit trouvé », déclenché par le bouton admin (pas un Database
   Webhook — on évite le plombage Vault/`pg_net` du Lot 5E).
+
+  ⚠️ **Le transport e-mail n'est plus décidé.** Ce lot prévoyait de réutiliser
+  `_shared/resend.ts` : ce helper a été **supprimé le 2026-09-11** avec le module
+  prac, dont l'EF `prac-notify` était son seul consommateur. Resend n'avait dès lors
+  plus aucun appelant dans le projet, son secret `RESEND_API_KEY` a été retiré des
+  Edge Functions et le prestataire a quitté la liste des sous-traitants de la
+  politique de confidentialité. Les e-mails de compte (confirmation d'inscription,
+  réinitialisation de mot de passe) partent par le SMTP par défaut de Supabase —
+  « Enable custom SMTP » est désactivé.
+
+  Au moment de reprendre ce lot, il faudra donc **choisir** : rouvrir un compte
+  Resend, ou prendre un autre fournisseur. Dans les deux cas, deux conséquences à
+  ne pas oublier — recréer le secret côté Edge Functions, et **réinscrire le
+  prestataire au § 5 de `confidentialite/page.tsx`** (liste des sous-traitants ET
+  paragraphe des transferts hors UE, les deux).
+
+  📌 Le **patron claim-then-send** reste la bonne référence, même si son fichier a
+  disparu : il traitait le cas d'un envoi qui ne doit jamais partir deux fois si le
+  déclencheur rejoue. Le code d'origine se relit sans le restaurer :
+  `git show 6b46bde:supabase/functions/prac-notify/index.ts`, et le helper de
+  transport `git show 6b46bde:supabase/functions/_shared/resend.ts`.
 - **Lot 4** — Stripe, paiement ponctuel `mode: 'payment'` en deux sessions
   (acompte 40 % / solde 60 %). Bloqué hors code par Kbis + Stripe en live
   (`docs/economie-ecailles-wyrm-forge_1.md`), et par la réécriture des CGU
@@ -984,7 +1004,28 @@ LANGUAGE plpgsql, SECURITY DEFINER, SET search_path = public.
 
 ---
 
-## 🟡 Base de données — module Tournois (migrations 20260611000001-000005)
+## 🔴 Base de données — module Tournois — SUPPRIMÉ le 2026-09-11
+
+> **Journal de chantier — ne décrit plus rien d'existant.** Le module a été retiré en
+> deux temps : le front le 2026-09-03, puis la base et les Edge Functions le
+> 2026-09-11 (décision HORTAL : retrait complet, pas de dépréciation).
+>
+> Retiré le 2026-09-11 par `20260911000001_drop_tournaments.sql` (appliquée) : les 6
+> tables, les 2 vues, les 7 fonctions, le trigger, l'entrée Realtime, et — hors SQL,
+> l'API Storage refusant les `DELETE` directs — le bucket `tournament-heroes` et ses 4
+> policies. Les EF `tournament-register` et `tournament-admin` ont été supprimées du
+> projet Supabase : retirer leurs dossiers du dépôt ne les désinstallait pas.
+>
+> Seule survivance volontaire : la valeur `'tournament'` de `chk_ledger_source` (table
+> Écailles), conservée parce que des lignes de ledger historiques la portent.
+>
+> Tout ce qui suit est conservé comme historique, et **ne doit jamais être lu comme
+> l'architecture courante**.
+
+*(Section fusionnée le 2026-09-11 : ce document en portait deux versions
+paraphrasées. Celle-ci est la plus complète ; les faits que seule l'autre portait —
+noms des contraintes d'unicité, activation Realtime, liste exhaustive des codes
+d'erreur — y ont été repris avant suppression du doublon.)*
 
 ### Table `tournaments`
 
@@ -1022,6 +1063,8 @@ LANGUAGE plpgsql, SECURITY DEFINER, SET search_path = public.
 | `seed` | `int` | nullable | Attribué par `seed_bracket` |
 | `status` | `text` | NOT NULL | `'pending'`\|`'validated'`\|`'rejected'` — default `'pending'` |
 | `created_at` | `timestamptz` | NOT NULL | default `now()` |
+
+Contrainte `uq_team_name_per_tournament UNIQUE (tournament_id, name)`.
 
 ### RLS tournament_teams
 - SELECT : `anon` + `authenticated` — toutes les équipes visibles publiquement
@@ -1064,6 +1107,9 @@ LANGUAGE plpgsql, SECURITY DEFINER, SET search_path = public.
 | `started_at` | `timestamptz` | nullable | posé par `start_match()`, remis à NULL si le match repasse pending/ready |
 | `created_at` | `timestamptz` | NOT NULL | default `now()` |
 
+Contrainte `uq_match_code_per_tournament UNIQUE (tournament_id, code)`.
+Realtime activé : `REPLICA IDENTITY FULL` + publication `supabase_realtime`.
+
 ### Statut de match — trigger `trg_match_auto_status` (migration 20260612000001)
 Le statut est DÉRIVÉ des données par un trigger BEFORE INSERT OR UPDATE (`fn_match_auto_status`), sauf `'in_progress'` qui est posé par `start_match()` et préservé :
 - `winner_id NOT NULL` → `'finished'`
@@ -1090,6 +1136,12 @@ Conséquence : `seed_bracket` / `report_match_result` / `undo_match_result` n'é
 | `start_match(p_match_id UUID)` | aucun (REVOKE FROM PUBLIC) | Lance un match : exige `status='ready'`, pose `in_progress` + `started_at=now()`. Advisory lock xact. Refuse explicitement `auth.uid() IS NULL`. Erreurs : `match_not_found`, `match_forbidden`, `match_wrong_status`. (migration 20260612000001) |
 
 **Point critique** : ces fonctions utilisent `auth.uid()` en interne pour vérifier les droits. Elles DOIVENT être appelées via un client Supabase initialisé avec le JWT utilisateur — jamais via service_role seul (qui a `auth.uid() = NULL`).
+
+Toutes posaient un advisory lock transactionnel sur `tournament_id`. Liste complète des codes d'erreur levés :
+- `seed_bracket` : `tournament_not_found`, `tournament_forbidden`, `tournament_wrong_status`, `bracket_wrong_team_count`, `bracket_already_seeded`
+- `report_match_result` : `match_not_found`, `match_forbidden`, `match_teams_not_set`, `winner_not_in_match`, `already_reported`
+- `undo_match_result` : `match_not_found`, `match_forbidden`, `downstream_played`
+- `start_match` : `match_not_found`, `match_forbidden`, `match_wrong_status`
 
 ### Consommateurs Tournois
 - **Site React** : `tournaments` (liste/détail), `tournament_teams` (équipes), `tournament_players_public` (joueurs sans discord), `matches` (bracket), `tournament_standings` (classement)
@@ -1140,6 +1192,18 @@ fonctions `SECURITY DEFINER` (`seed_bracket`, `report_match_result`, `undo_match
 `start_match`) et les 2 Edge Functions (`tournament-register`, `tournament-admin`). Elles n'ont
 plus de client web, mais l'app WPF lit toujours `tournament_standings` et
 `tournament_players_public` — **ne pas les supprimer sans vérifier ce dépôt-là**.
+
+> 🔴 **Les trois paragraphes ci-dessus sont DÉPASSÉS depuis le 2026-09-11.** Voir le
+> bandeau en tête de section. Plus rien ne survit : tables, vues, fonctions et Edge
+> Functions ont été supprimées, et l'onglet dashboard `tournois` a été retiré lui aussi.
+>
+> La réserve sur l'app WPF (« l'app WPF lit toujours `tournament_standings` ») s'est
+> d'ailleurs révélée **fausse à la vérification** : le dépôt `Logiciel-Assistant-LOL`
+> ne contenait aucun accès à ces tables — seulement un bouton de navigation
+> `IsEnabled="False"` et des libellés i18n, tous retirés depuis. La prudence affichée
+> ici était donc justifiée dans son principe (vérifier avant de supprimer) mais
+> reposait sur une affirmation jamais contrôlée. Leçon à garder : ce document a
+> documenté un consommateur qui n'a jamais existé.
 
 ---
 
@@ -2224,123 +2288,32 @@ en conséquence — nécessite au préalable que le WPF publie sous JWT user (pa
 
 ---
 
----
+## 🔴 Module prac (prac.wyrm-forge.com) — SUPPRIMÉ le 2026-09-11
 
-## 🟡 Base de données — module Tournois (migrations 20260611000001-000005)
-
-### Table `tournaments`
-
-| Colonne | Type | Nullable | Notes |
-|---|---|---|---|
-| `id` | `uuid` | NOT NULL | PK default gen_random_uuid() |
-| `slug` | `text` | NOT NULL | UNIQUE — identifiant URL stable |
-| `name` | `text` | NOT NULL | Nom affiché |
-| `format` | `text` | NOT NULL | default `'2V2'` |
-| `map` | `text` | NOT NULL | default `'ARAM'` |
-| `status` | `text` | NOT NULL | `'draft'`\|`'registration'`\|`'live'`\|`'finished'` |
-| `starts_at` | `timestamptz` | nullable | |
-| `max_teams` | `int` | NOT NULL | default `8` |
-| `cashprize_label` | `text` | nullable | Ex : `'60€'` |
-| `cashprize_bonus` | `text` | nullable | Ex : `'+ ARÈNE PASS XV2'` |
-| `caster_name` | `text` | nullable | |
-| `twitch_url` | `text` | nullable | |
-| `hero_image_url` | `text` | nullable | Slot visuel organisateur |
-| `rules` | `jsonb` | NOT NULL | Liste ordonnée de strings, default `'[]'` |
-| `created_by` | `uuid` | NOT NULL | FK `auth.users` |
-| `created_at` | `timestamptz` | NOT NULL | default `now()` |
-
-### RLS `tournaments`
-- SELECT non-draft : `anon` + `authenticated` — `status <> 'draft'`
-- SELECT draft : `authenticated` — `created_by = auth.uid() OR is_admin()`
-- INSERT/UPDATE/DELETE : aucune policy client (service_role only)
-
-### Table `tournament_teams`
-
-| Colonne | Type | Nullable | Notes |
-|---|---|---|---|
-| `id` | `uuid` | NOT NULL | PK |
-| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
-| `name` | `text` | NOT NULL | 3-24 caractères, UNIQUE par tournoi |
-| `seed` | `int` | nullable | null avant seeding |
-| `status` | `text` | NOT NULL | `'pending'`\|`'validated'`\|`'rejected'`, default `'pending'` |
-| `created_at` | `timestamptz` | NOT NULL | |
-
-Contrainte `uq_team_name_per_tournament UNIQUE (tournament_id, name)`.
-
-### RLS `tournament_teams`
-- SELECT : `anon` + `authenticated` — toutes équipes
-- INSERT/UPDATE/DELETE : aucune policy client
-
-### Table `tournament_players`
-
-| Colonne | Type | Nullable | Notes |
-|---|---|---|---|
-| `id` | `uuid` | NOT NULL | PK |
-| `team_id` | `uuid` | NOT NULL | FK `tournament_teams` ON DELETE CASCADE |
-| `riot_pseudo` | `text` | NOT NULL | Format `'gameName#TAG'`, validé côté EF |
-| `discord_pseudo` | `text` | NOT NULL | **Ne jamais exposer en SELECT public** |
-| `user_id` | `uuid` | nullable | FK `auth.users` |
-| `created_at` | `timestamptz` | NOT NULL | |
-
-### RLS `tournament_players`
-- SELECT : `authenticated` — `user_id = auth.uid()` uniquement
-- Lecture publique : passer par la vue `tournament_players_public` (sans `discord_pseudo`)
-- INSERT/UPDATE/DELETE : aucune policy client
-
-### Table `matches`
-
-| Colonne | Type | Nullable | Notes |
-|---|---|---|---|
-| `id` | `uuid` | NOT NULL | PK |
-| `tournament_id` | `uuid` | NOT NULL | FK `tournaments` ON DELETE CASCADE |
-| `code` | `text` | NOT NULL | `'M1'`..`'M14'`, UNIQUE par tournoi |
-| `bracket` | `text` | NOT NULL | `'winner'`\|`'loser'`\|`'final'` |
-| `round` | `int` | NOT NULL | |
-| `position` | `int` | NOT NULL | |
-| `team_a` | `uuid` | nullable | FK `tournament_teams` |
-| `team_b` | `uuid` | nullable | FK `tournament_teams` |
-| `winner_id` | `uuid` | nullable | FK `tournament_teams` |
-| `next_match_id` | `uuid` | nullable | FK self — destination gagnant |
-| `next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
-| `loser_next_match_id` | `uuid` | nullable | FK self — destination perdant (LB) |
-| `loser_next_match_slot` | `text` | nullable | `'a'`\|`'b'` |
-| `status` | `text` | NOT NULL | `'pending'`\|`'ready'`\|`'in_progress'`\|`'finished'` — dérivé par trigger `trg_match_auto_status` (migration 20260612000001), `'in_progress'` posé par `start_match()` |
-| `started_at` | `timestamptz` | nullable | posé par `start_match()` |
-| `created_at` | `timestamptz` | NOT NULL | |
-
-Contrainte `uq_match_code_per_tournament UNIQUE (tournament_id, code)`.
-Realtime activé : `REPLICA IDENTITY FULL` + publication `supabase_realtime`.
-
-### RLS `matches`
-- SELECT : `anon` + `authenticated`
-- INSERT/UPDATE/DELETE : aucune policy client
-
-### Vues publiques
-- `tournament_standings` : classement par tournoi (wins, losses, points, pseudos Riot). GRANT SELECT `anon, authenticated`.
-- `tournament_players_public` : joueurs sans `discord_pseudo`. GRANT SELECT `anon, authenticated`.
-
-### Fonctions SQL (toutes SECURITY DEFINER, REVOKE EXECUTE FROM PUBLIC)
-
-| Fonction | Description |
-|---|---|
-| `seed_bracket(p_tournament_id UUID)` | Génère les 14 matchs DE 8 équipes, seed les équipes, passe en `'live'`. Advisory lock sur tournament_id. |
-| `report_match_result(p_match_id UUID, p_winner_id UUID)` | Enregistre résultat + propage gagnant/perdant. Advisory lock sur tournament_id. |
-| `undo_match_result(p_match_id UUID)` | Annule résultat si aucun match aval joué. Advisory lock sur tournament_id. |
-| `start_match(p_match_id UUID)` | Lance un match `ready` → `in_progress` + `started_at`. Advisory lock sur tournament_id. Refuse `auth.uid() IS NULL`. |
-
-Erreurs levées par `seed_bracket` : `'tournament_not_found'`, `'tournament_forbidden'`, `'tournament_wrong_status'`, `'bracket_wrong_team_count'`, `'bracket_already_seeded'`.
-Erreurs levées par `report_match_result` : `'match_not_found'`, `'match_forbidden'`, `'match_teams_not_set'`, `'winner_not_in_match'`, `'already_reported'`.
-Erreurs levées par `undo_match_result` : `'match_not_found'`, `'match_forbidden'`, `'downstream_played'`.
-Erreurs levées par `start_match` : `'match_not_found'`, `'match_forbidden'`, `'match_wrong_status'`.
-
-### Consommateurs Tournois
-- **Site React** : lecture `tournaments`, `tournament_teams`, `tournament_players_public`, `matches`, `tournament_standings` (anon/auth)
-- **App WPF** : lecture `tournament_standings` + `tournament_players_public` (anon/auth)
-- **Edge Functions** : écriture via service_role — `seed_bracket`, `report_match_result`, `undo_match_result`
-
----
-
-## 🟡 Module prac (prac.wyrm-forge.com) — suivi de joueurs (interne)
+> **Journal de chantier — ne décrit plus rien d'existant.** Module retiré en entier
+> sur décision HORTAL (retrait complet, pas de dépréciation) : il n'était pas utilisé
+> et ne devait pas l'être en l'état. Le retrait couvre les 5 sections « Module prac »
+> de ce document — socle, chantiers 3, 4, 5 et Search.
+>
+> Retiré du dépôt : `src/app/prac/**`, `src/app/consent/page.tsx`, `src/lib/prac.ts`,
+> `ConsentBanner.tsx`, le bloc `consent` de `locales/dashboard/profil.ts` et ses deux
+> helpers, le routage de sous-domaine de `proxy.ts`. Supprimées du projet Supabase :
+> les EF `prac-track` et `prac-notify`. Base : migration
+> `20260911000002_drop_prac.sql` — 5 tables, 14 fonctions, 3 policies, 4 triggers, le
+> secret Vault `prac_webhook_secret` et la ligne `prac_enabled` de `app_settings`.
+>
+> ⚠️ **Le module contenait de vraies données personnelles**, contrairement aux
+> tournois : une personne tierce avait accepté d'être suivie le 2026-07-01, et son
+> adresse e-mail figurait en clair dans `prac_notification_log.recipient`. Ces lignes
+> ont été exportées hors dépôt avant purge.
+>
+> Effet de bord notable : `prac-notify` était le **seul** consommateur de Resend dans
+> le projet. Son retrait a rendu `_shared/resend.ts` orphelin (supprimé), sorti Resend
+> de la liste des sous-traitants de `confidentialite/page.tsx`, et laissé le Lot 3 du
+> Kit sans transport e-mail décidé — voir la note de ce lot.
+>
+> Tout ce qui suit est conservé comme historique, et **ne doit jamais être lu comme
+> l'architecture courante**.
 
 Outil interne réservé aux **admins prac** (HORTAL/Ewen) pour suivre la performance de joueurs Wyrm Forge dans le temps. Partage la base d'utilisateurs (pas d'identité séparée). Découpage : **1) socle** (fait) → 2) roster+consentement → 3) tracking (résolution par créneau + désambiguïsation) → 4) pages (liste, top-5 winrate, détail joueur) → 5) email Resend.
 
@@ -2463,7 +2436,10 @@ Signale une demande **en attente** depuis n'importe quel onglet du dashboard.
 - **Motif réutilisé** : `DeletionRequest` de `/profil` — composant **isolé** avec son propre `useEffect`, `return null` tant que `loading` **et** si pas de dossier pending (aucun flash, aucun layout shift).
 - **Check non bloquant** : point-lookup `.eq('profile_id', user.id).eq('status','pending').maybeSingle()` (le `profile_id` unique-indexé rend le lookup ponctuel), exécuté **dans le composant**, **jamais** en `await` dans le chemin de chargement principal de `page.tsx` → coût imperceptible pour les joueurs sans dossier (immense majorité). Lien vers `/consent`.
 
-## 🟡 Module prac — chantier 3 (Tracking)
+## 🔴 Module prac — chantier 3 (Tracking) — SUPPRIMÉ le 2026-09-11
+
+> Journal de chantier. Module retiré en entier le 2026-09-11 — voir le bandeau de la
+> section « Module prac (prac.wyrm-forge.com) ».
 
 ### Lot 3A — table `tracked_matches` (schéma, RLS, purge) [migrations 20260627000002 + 000003]
 
@@ -2546,7 +2522,10 @@ En plus de la garde globale (avant dispatch), `handleList` **re-vérifie `is_pra
 #### Incident de déploiement (leçon)
 Pendant 3C, l'action `list` est apparue non gardée en test HTTP (200 pour un non-admin) alors que **la source était correctement gardée** (garde globale avant dispatch). Cause : **la build déployée était désynchronisée de la source** (redéploiement périmé de l'EF). Leçon : **après toute modification du code d'une EF, redéployer puis vérifier la version déployée AVANT de tester** — ne pas diagnostiquer un comportement surprenant comme un bug source sans avoir confirmé que le déploiement reflète la source.
 
-## 🟡 Module prac — chantier 4 (Pages)
+## 🔴 Module prac — chantier 4 (Pages) — SUPPRIMÉ le 2026-09-11
+
+> Journal de chantier. Module retiré en entier le 2026-09-11 — voir le bandeau de la
+> section « Module prac (prac.wyrm-forge.com) ».
 
 ### Lot 4A — fonctions d'agrégats `prac_top_winrate` + `prac_player_stats` [migration 20260628000001]
 
@@ -2622,7 +2601,10 @@ Vue self du joueur sur ses propres données trackées. **Vit sur `/consent`** (s
 - **Rendu** : composant local `SelfTracking` re-rendu dans la **palette `/consent`** (`var(--text-muted)`, bordure `#7F77DD`) — **pas** la palette shell prac. Choix : re-render local plutôt qu'extraction d'un composant partagé avec le détail admin 4B (évite de toucher la page admin committée ; bloc auto-contenu). Réutilise les helpers/types de `src/lib/prac.ts` (`num`, `matchKda`, `csPerMin`, `queueLabel`, `PlayerStats`, `TrackedMatchRow`).
 - Affiche tuiles (winrate, KDA, CS/min, vision, dégâts, or), top champions, liste des parties suivies → chaque match `Link` vers `/match/[region]/[matchId]`. **État 0-match géré** : « Aucune partie suivie pour l'instant. ».
 
-## 🟡 Module prac — recherche/ajout de joueur (Search)
+## 🔴 Module prac — recherche/ajout de joueur (Search) — SUPPRIMÉ le 2026-09-11
+
+> Journal de chantier. Module retiré en entier le 2026-09-11 — voir le bandeau de la
+> section « Module prac (prac.wyrm-forge.com) ».
 
 ### Search-1 — fonction `prac_search_profiles` [migration 20260628000002]
 
@@ -2666,7 +2648,15 @@ Page client (`'use client'`) sous le shell `/prac` (garde `prac_admins`). **DIST
 
 > **Périmètre prac cadré ce jour terminé** : chantiers 1-4 (4A/4B/4C) + 4D (vue self) + Search (recherche/ajout roster). Chantier 5 (email Resend de notification de demande de suivi) **en cours** — Lot 5B livré ci-dessous.
 
-## 🟡 Module prac — chantier 5 (Notification email Resend)
+## 🔴 Module prac — chantier 5 (Notification email Resend) — SUPPRIMÉ le 2026-09-11
+
+> Journal de chantier. Module retiré en entier le 2026-09-11 — voir le bandeau de la
+> section « Module prac (prac.wyrm-forge.com) ».
+>
+> ⚠️ C'est le chantier qui a introduit Resend dans le projet. Resend n'a plus aucun
+> consommateur depuis, et le helper `_shared/resend.ts` a été supprimé. Le patron
+> claim-then-send décrit ici reste une bonne référence ; le code se relit par
+> `git show 6b46bde:supabase/functions/prac-notify/index.ts`.
 
 Notifier le joueur par e-mail quand un admin prac ouvre (ou rouvre) une demande de suivi. Découpage : **5B** squelette EF log-only (fait) → **5C** table `prac_notification_log` (idempotence — fait) → 5D envoi Resend réel → 5E câblage du Database Webhook → 5F finitions.
 
