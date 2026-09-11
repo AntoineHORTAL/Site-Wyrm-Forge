@@ -1372,6 +1372,17 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ## 📋 À faire plus tard
 
+### Comparaison rangs supérieurs (palier Maître) — retirée de la grille le 2026-09-11
+Fonctionnalité promise puis retirée de la grille le 11/09, faute d'implémentation.
+À développer si retenue pour le palier Maître, sinon laisser retirée définitivement.
+
+> Contexte : la grille tarifaire (`pricing.tiers[2].features`, `src/locales/landing.ts`,
+> FR « Comparaison rangs supérieurs » / EN « Compare against higher ranks ») la vendait
+> comme avantage Maître, alors qu'aucun code ne l'implémente — la seule comparaison de
+> rang existante (Vue B de `/summoner`, `get_rank_avg()`) est ouverte à tous et compare
+> au rang du joueur, pas aux rangs supérieurs. Décision HORTAL : retrait. La réintroduire
+> sur la grille exige que la fonctionnalité existe ET soit réservée à Maître.
+
 ### ~~Quotas IA différenciés rapide / détaillée~~ — ABANDONNÉ (2026-07-31)
 > **Chantier clos sans être réalisé.** La séparation en deux compteurs `matchup_quick`/`matchup_detailed` a été **remplacée** par le pot de crédits fongible « Chaleur de la Forge » (§ dédié ci-dessus), qui résout le même problème sans cloisonner le budget : chaque appel débite son coût réel sur un solde unique, donc une analyse rapide ne consomme plus l'équivalent d'une détaillée. **Ne pas réintroduire de compteur par feature** — ce serait recloisonner ce que ce chantier vient d'unifier. Le texte ci-dessous est conservé pour l'historique du raisonnement.
 
