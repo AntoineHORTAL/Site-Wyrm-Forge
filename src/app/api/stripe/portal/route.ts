@@ -1,14 +1,30 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import type Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe, SITE_URL } from '@/lib/stripe/server'
 import { stripeMode } from '@/lib/stripe/plans'
+import { canCancelSubscription, type SubscriptionRow } from '@/lib/stripe/subscription-view'
 
 /**
  * Ouverture d'une session du **Billing Portal** de Stripe — l'écran hébergé où
  * l'abonné change de carte, télécharge ses factures et résilie.
  *
- * POST, sans corps → 200 `{ url }` — le navigateur y redirige, pleine page,
- * exactement comme pour le checkout (domaine tiers, hors du routeur Next).
+ * POST, sans corps (ou `{}`) → 200 `{ url }` : le portail, page d'accueil.
+ * POST `{ flow: 'cancel' }`   → 200 `{ url }` : le portail ouvert DIRECTEMENT
+ *   sur l'écran de résiliation (`flow_data.type = 'subscription_cancel'`).
+ *   C'est le bouton « Résilier mon abonnement » de `/profil` — décret
+ *   n° 2023-417 (art. L215-1-1) : la résiliation doit être accessible sous une
+ *   mention sans ambiguïté, pas cachée derrière « gérer ». 409 `not_cancellable`
+ *   si l'abonnement ne peut pas l'être (`canCancelSubscription`, même règle que
+ *   l'interface).
+ *
+ * Le navigateur y redirige, pleine page, exactement comme pour le checkout
+ * (domaine tiers, hors du routeur Next).
+ *
+ * ⚠️ Le flux `subscription_cancel` exige que la résiliation soit ACTIVÉE dans la
+ * configuration du portail (Dashboard → Billing → Customer portal), en test ET
+ * en live. Relevé en test le 2026-09-11 : activée, mode `at_period_end`.
  *
  * ⚠️ **Configuration manuelle requise côté Stripe** : le portail doit être
  * activé et enregistré dans Dashboard → Settings → Billing → Customer portal,
@@ -35,7 +51,11 @@ function fail(code: string, status: number) {
   return NextResponse.json({ error: code }, { status })
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // Corps FACULTATIF : l'ancien appel sans corps reste valide (portail simple).
+  const body = await request.json().catch(() => null) as { flow?: unknown } | null
+  const wantsCancel = body?.flow === 'cancel'
+
   // ── 1. Qui demande ? ────────────────────────────────────────────────────────
   //
   // `getUser()` et jamais `getSession()`, comme sur le checkout : `getSession`
@@ -60,9 +80,9 @@ export async function POST() {
   // jamais transmis par le client » côté checkout.
   const { data: row, error: readError } = await supabase
     .from('stripe_subscriptions')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, stripe_subscription_id, status, cancel_at_period_end, current_period_end')
     .eq('user_id', user.id)
-    .maybeSingle()
+    .maybeSingle<SubscriptionRow>()
 
   if (readError) {
     console.error('[stripe/portal] lecture stripe_subscriptions:', readError.message)
@@ -79,6 +99,21 @@ export async function POST() {
     // longtemps.
     return fail('no_customer', 404)
   }
+
+  // Résiliation directe : l'identifiant d'abonnement vient de la MÊME ligne lue
+  // sous le JWT — jamais du corps de la requête, pour la même raison que le
+  // client Stripe (on ne résilie pas l'abonnement de quelqu'un d'autre).
+  if (wantsCancel && !canCancelSubscription(row)) return fail('not_cancellable', 409)
+
+  const flowData: Stripe.BillingPortal.SessionCreateParams.FlowData | undefined = wantsCancel
+    ? {
+        type: 'subscription_cancel',
+        subscription_cancel: { subscription: row!.stripe_subscription_id! },
+        // Une fois la résiliation confirmée, retour direct sur /profil, qui
+        // affiche la date de fin dès que le webhook l'a enregistrée.
+        after_completion: { type: 'redirect', redirect: { return_url: `${SITE_URL}/profil` } },
+      }
+    : undefined
 
   // ── 3. La session de portail ────────────────────────────────────────────────
   try {
@@ -101,6 +136,7 @@ export async function POST() {
       // page affiche l'état d'avant, ce qui reste vrai : l'accès court jusqu'à
       // la fin de la période payée.
       return_url: `${SITE_URL}/profil`,
+      ...(flowData ? { flow_data: flowData } : {}),
     })
 
     if (!session.url) {
@@ -109,7 +145,7 @@ export async function POST() {
     }
 
     console.log('[stripe/portal] session ouverte', {
-      mode, user_id: user.id, session_id: session.id,
+      mode, user_id: user.id, session_id: session.id, flow: wantsCancel ? 'cancel' : 'home',
     })
 
     return NextResponse.json({ url: session.url })

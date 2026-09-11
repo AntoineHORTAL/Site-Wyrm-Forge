@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSubscriptionView, type SubscriptionRow } from './subscription-view'
+import { resolveSubscriptionView, canCancelSubscription, type SubscriptionRow } from './subscription-view'
 import { FREE_TIER } from '../subscription'
 
 /** Ligne d'abonnement type — surchargée champ par champ dans chaque test. */
@@ -192,5 +192,38 @@ describe('le rôle admin reste ORTHOGONAL à l\'abonnement', () => {
   it('un non-admin n\'est jamais marqué admin', () => {
     expect(resolveSubscriptionView({ tier: 'forgeron', tierExpiresAt: EXPIRES, role: 'user' }).isAdmin).toBe(false)
     expect(resolveSubscriptionView({ tier: 'forgeron', tierExpiresAt: EXPIRES }).isAdmin).toBe(false)
+  })
+})
+
+describe('bouton « Résilier mon abonnement » (décret 2023-417)', () => {
+  const sub = (over: Partial<SubscriptionRow> = {}) => row({ stripe_subscription_id: 'sub_123', ...over })
+
+  it.each(['active', 'trialing', 'past_due', 'unpaid', 'paused'])('abonnement %s ⇒ résiliable', (status) => {
+    expect(canCancelSubscription(sub({ status }))).toBe(true)
+  })
+
+  it.each(['canceled', 'incomplete', 'incomplete_expired', 'statut_inconnu', null])(
+    'statut %s ⇒ pas de bouton (il mènerait à une erreur Stripe)',
+    (status) => expect(canCancelSubscription(sub({ status }))).toBe(false),
+  )
+
+  it('résiliation déjà programmée ⇒ pas de bouton (la date de fin s’affiche à la place)', () => {
+    expect(canCancelSubscription(sub({ cancel_at_period_end: true }))).toBe(false)
+  })
+
+  it('sans identifiant d’abonnement (webhook pas encore passé) ⇒ pas de bouton', () => {
+    expect(canCancelSubscription(row({ stripe_subscription_id: null }))).toBe(false)
+    expect(canCancelSubscription(row())).toBe(false)
+    expect(canCancelSubscription(null)).toBe(false)
+  })
+
+  it('la vue reprend exactement la même règle, indépendamment du palier affiché', () => {
+    // Un admin (palier de rôle) ou un compte « à vie » qui paie quand même doit
+    // pouvoir résilier : la décision ne dépend que de l'abonnement.
+    for (const tier of ['forgeron', 'maître', 'apprenti']) {
+      const v = resolveSubscriptionView({ tier, tierExpiresAt: null, role: 'admin', subscription: sub() })
+      expect(v.canCancel).toBe(true)
+    }
+    expect(resolveSubscriptionView({ tier: 'forgeron', tierExpiresAt: EXPIRES, subscription: null }).canCancel).toBe(false)
   })
 })

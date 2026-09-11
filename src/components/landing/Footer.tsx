@@ -9,9 +9,9 @@ import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 /* Destinations seules — les libellés vivent dans src/locales/landing.ts
    (`footer.legalLinks` et `footer.columns`, même ordre). */
 
-/* Liens légaux de la barre basse — routes réelles (src/app/{cgu,confidentialite,
+/* Liens légaux de la barre basse — routes réelles (src/app/{cgu,cgv,confidentialite,
    mentions-legales}/page.tsx). */
-const legalHrefs = ['/cgu', '/confidentialite', '/mentions-legales']
+const legalHrefs = ['/cgu', '/cgv', '/confidentialite', '/mentions-legales']
 
 /* Colonnes de liens du footer (les liens légaux vivent dans `legalHrefs` ci-dessus).
    Appariées PAR POSITION à `footer.columns` de src/locales/landing.ts.

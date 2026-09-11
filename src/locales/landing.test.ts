@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { landingFr, landingEn, landingDicts, formatPrice } from './landing'
 import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
 import { PRICING_TIERS, FREE_MONTHS_ON_ANNUAL, freeMonthsOnAnnual } from '@/lib/pricing-tiers'
@@ -57,10 +59,11 @@ describe('parité de structure FR / EN', () => {
     expect(landingFr.pricing.tiers).toHaveLength(3)
     // Hero.tsx — OverlayMock lit stats[0..5]
     expect(landingFr.hero.overlay.stats).toHaveLength(6)
-    // Footer.tsx — columnHrefs (2 colonnes de 4) / legalHrefs (3 routes)
+    // Footer.tsx — columnHrefs (2 colonnes de 4) / legalHrefs (4 routes : CGU, CGV,
+    // confidentialité, mentions légales)
     expect(landingFr.footer.columns).toHaveLength(2)
     landingFr.footer.columns.forEach(col => expect(col.links).toHaveLength(4))
-    expect(landingFr.footer.legalLinks).toHaveLength(3)
+    expect(landingFr.footer.legalLinks).toHaveLength(4)
   })
 
   /**
@@ -212,6 +215,63 @@ describe('paliers tarifaires', () => {
     // qu'aucun arrondi n'exprime honnêtement — d'où le passage aux mois offerts.
     expect(landingFr.pricing.annualPerk).not.toContain('%')
     expect(landingEn.pricing.annualPerk).not.toContain('%')
+  })
+})
+
+/**
+ * 🔴 La grille ne doit JAMAIS promettre une autre offre IA que celle du serveur.
+ *
+ * Jusqu'au 2026-09-11, elle annonçait « Analyses IA illimitées (Opus) » pour
+ * Maître quand le serveur appliquait 135 crédits/semaine sur Sonnet : pratique
+ * commerciale trompeuse, sur une vente ouverte. Décision HORTAL : la réalité
+ * serveur fait foi. Ce test relit `TIER_CONFIG` dans les DEUX Edge Functions
+ * (le pot de crédits est commun) : changer un budget ou un modèle côté serveur
+ * sans corriger la grille — ou l'inverse — le fait échouer.
+ */
+describe('grille tarifaire ↔ budgets IA réellement appliqués', () => {
+  const MODEL_LABEL: Record<string, string> = { HAIKU: 'Haiku', SONNET: 'Sonnet' }
+  const DB_TIER = ['apprenti', 'forgeron', 'maître']
+
+  function tierConfig(ef: string): Record<string, { credits: number; model: string }> {
+    const src = readFileSync(path.resolve(__dirname, `../../supabase/functions/${ef}/index.ts`), 'utf8')
+    const out: Record<string, { credits: number; model: string }> = {}
+    for (const m of src.matchAll(/'([^']+)':\s*\{\s*credits:\s*(\d+),\s*model:\s*([A-Z_]+)\s*\}/g)) {
+      out[m[1]] = { credits: Number(m[2]), model: MODEL_LABEL[m[3]] ?? m[3] }
+    }
+    return out
+  }
+
+  const matchup = tierConfig('matchup-analyze')
+  const postgame = tierConfig('postgame-analyze')
+
+  it('les deux Edge Functions appliquent le même barème (pot commun)', () => {
+    for (const t of DB_TIER) {
+      expect(matchup[t], `TIER_CONFIG['${t}'] introuvable dans matchup-analyze`).toBeDefined()
+      expect(postgame[t], `divergence matchup/postgame sur ${t}`).toEqual(matchup[t])
+    }
+  })
+
+  it.each(DB_TIER.map((t, i) => [t, i] as const))(
+    '%s — la ligne IA de la grille dit exactement le budget et le modèle du serveur (FR et EN)',
+    (tier, i) => {
+      const { credits, model } = matchup[tier]
+      const fr = landingFr.pricing.tiers[i].features.filter(f => /\bIA\b/.test(f))
+      const en = landingEn.pricing.tiers[i].features.filter(f => /\bAI\b/.test(f))
+      expect(fr).toEqual([`${credits} crédits IA / semaine (${model})`])
+      expect(en).toEqual([`${credits} AI credits / week (${model})`])
+    },
+  )
+
+  it('aucune promesse IA « illimitée » ni « Opus » nulle part dans la vitrine', () => {
+    for (const d of [landingFr, landingEn]) {
+      const all = JSON.stringify(d)
+      expect(all).not.toMatch(/Opus/)
+      // Sensible à la casse exprès : « IA » / « AI » en capitales = l'IA, et pas
+      // les lettres « ai » d'un mot quelconque (« maître », « paths »…).
+      expect(all).not.toMatch(
+        /\b(IA|AI)\b[^"]{0,30}([Ii]llimit|[Uu]nlimited)|([Ii]llimit|[Uu]nlimited)[^"]{0,30}\b(IA|AI)\b/,
+      )
+    }
   })
 })
 

@@ -1,9 +1,16 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { LegalPage, Section, List, Todo } from '@/components/legal/LegalPage'
+import {
+  SubscriptionOffer,
+  PaymentTerms,
+  CancellationTerms,
+  UnpaidPolicy,
+} from '@/components/legal/SubscriptionTerms'
 
 export const metadata: Metadata = {
   title: 'Conditions générales d\'utilisation — Wyrm Forge',
-  description: 'Règles d\'utilisation de Wyrm Forge : compte, statut bêta, Écailles, abonnements, résiliation et non-affiliation à Riot Games.',
+  description: 'Règles d\'utilisation de Wyrm Forge : compte, statut bêta, Écailles, abonnements Forgeron et Maître, résiliation et non-affiliation à Riot Games.',
 }
 
 export default function CguPage() {
@@ -48,6 +55,37 @@ export default function CguPage() {
         <p style={{ marginTop: 10 }}>
           Nous nous efforçons de prévenir les utilisateurs des changements importants, mais aucun
           engagement de niveau de service n&apos;est pris pendant cette phase.
+        </p>
+        {/* Réserve pour la partie PAYANTE — sans elle, les clauses ci-dessus
+            (retrait sans préavis, réinitialisation, « en l'état ») opposées à un
+            consommateur qui paie tomberaient sous l'art. R212-1 (clauses noires :
+            modification unilatérale des caractéristiques du service, suppression
+            du droit à réparation). Elles restent valables pour le gratuit ; le
+            comportement produit ne change pas. */}
+        <p style={{ marginTop: 10 }}>
+          <strong>Ce que le statut bêta ne change pas pour un abonné payant.</strong> Les points
+          ci-dessus s&apos;appliquent au service gratuit. Ils ne privent pas l&apos;abonné à une
+          formule payante des garanties légales de conformité des services numériques (articles
+          L224-25-1 et suivants du Code de la consommation), rappelées dans les{' '}
+          <Link href="/cgv" style={{ color: 'var(--gold-pale)' }}>conditions générales de
+          vente</Link>. En particulier, pendant toute la durée d&apos;un abonnement :
+        </p>
+        <List>
+          <li>les caractéristiques essentielles du palier souscrit, telles que décrites au jour de
+            la souscription, restent fournies jusqu&apos;à la fin de la période payée ; une
+            modification qui les réduirait de manière significative n&apos;intervient qu&apos;après
+            information préalable, et ouvre le droit de résilier sans frais ;</li>
+          <li>les contenus que l&apos;abonné a créés (builds, jungle paths, to-do lists,
+            scénarios…) ne sont pas réinitialisés ;</li>
+          <li>une indisponibilité prolongée ou répétée qui le prive des caractéristiques
+            essentielles de son palier constitue un défaut de conformité, qui lui ouvre les
+            recours prévus par la loi (mise en conformité, réduction du prix ou résolution du
+            contrat).</li>
+        </List>
+        <p style={{ marginTop: 10 }}>
+          La réinitialisation des soldes d&apos;Écailles reste possible pour tous les comptes :
+          il s&apos;agit d&apos;une monnaie virtuelle gratuite, sans valeur monétaire et non
+          incluse dans les formules payantes (voir l&apos;article 7).
         </p>
       </Section>
 
@@ -140,60 +178,121 @@ export default function CguPage() {
 
       <Section title="8. Abonnements payants">
         <p>
-          Des formules payantes seront proposées ultérieurement. Une offre gratuite fonctionnelle
-          restera disponible en permanence. Les modalités suivantes s&apos;appliqueront dès leur
-          activation :
+          En plus de l&apos;offre gratuite, Wyrm Forge propose des abonnements payants, avec une
+          facturation mensuelle ou annuelle. Leurs conditions de vente complètes — commande,
+          droit de rétractation, garanties légales, réclamations — figurent dans nos{' '}
+          <Link href="/cgv" style={{ color: 'var(--gold-pale)' }}>conditions générales de
+          vente</Link>, qui prévalent sur le présent article pour tout ce qui concerne la vente.
         </p>
-        <List>
-          <li>les prix sont indiqués en euros toutes taxes comprises ;</li>
-          <li>les paiements sont traités par Stripe ; aucune donnée de carte bancaire n&apos;est
-            stockée par Wyrm Forge ;</li>
-          <li>l&apos;abonnement est reconduit automatiquement, sauf résiliation avant
-            l&apos;échéance ;</li>
-          <li>conformément à l&apos;article L221-18 du Code de la consommation, tu disposes d&apos;un
-            délai de rétractation de 14 jours. En demandant l&apos;accès immédiat au service, tu
-            acceptes de commencer à en bénéficier avant la fin de ce délai et renonces à ton droit
-            de rétractation une fois la prestation pleinement exécutée ;</li>
-          <li>modalités détaillées de facturation, de résiliation et de remboursement :{' '}
-            <Todo>à préciser à l&apos;activation des abonnements</Todo></li>
-        </List>
+
+        <p style={{ marginTop: 16 }}><strong>Paliers et prix</strong></p>
+        <SubscriptionOffer />
+
+        <p style={{ marginTop: 16 }}><strong>Paiement et renouvellement</strong></p>
+        <PaymentTerms />
+
+        <p style={{ marginTop: 16 }}><strong>Durée et résiliation</strong></p>
+        <CancellationTerms />
+
+        <p style={{ marginTop: 16 }}><strong>En cas d&apos;impayé</strong></p>
+        <UnpaidPolicy />
+
+        <p style={{ marginTop: 16 }}><strong>Droit de rétractation</strong></p>
+        <p>
+          Tu disposes d&apos;un délai de rétractation de 14 jours à compter de ta souscription
+          (article L221-18 du Code de la consommation). Avant le paiement, nous te demandons de
+          confirmer expressément que tu souhaites accéder au service immédiatement : si tu te
+          rétractes ensuite dans ce délai, tu es remboursé, déduction faite du montant
+          correspondant au service fourni jusqu&apos;à ta rétractation. Les modalités et le
+          formulaire de rétractation figurent dans les{' '}
+          <Link href="/cgv" style={{ color: 'var(--gold-pale)' }}>conditions générales de
+          vente</Link>.
+        </p>
       </Section>
 
       <Section title="9. Disponibilité et responsabilité">
+        {/* Nuance « payant » : un « sans que notre responsabilité puisse être
+            engagée » opposé à un consommateur qui paie supprime son droit à
+            réparation — clause noire, art. R212-1 6°. Réécrit pour décrire la
+            dépendance aux tiers sans exclure la responsabilité légale. */}
         <p>
           Wyrm Forge dépend de services tiers, en particulier de l&apos;API de Riot Games. Une
           indisponibilité, un changement ou une limitation imposée par ces services peut dégrader
-          ou interrompre tout ou partie des fonctionnalités, sans que notre responsabilité puisse
-          être engagée.
+          ou interrompre tout ou partie des fonctionnalités. <strong>Le service gratuit est fourni
+          « en l&apos;état »</strong>, sans garantie de disponibilité.
+        </p>
+        <p style={{ marginTop: 10 }}>
+          <strong>Pour un abonnement payant</strong>, cette mention ne limite ni les garanties
+          légales de conformité (articles L224-25-1 et suivants du Code de la consommation), ni
+          ton droit à réparation lorsque la loi te l&apos;accorde. Une interruption due à un
+          événement de force majeure, ou à la décision d&apos;un tiers qui nous est
+          extérieure et que nous ne pouvions pas prévenir, ne constitue pas en elle-même un
+          manquement de notre part ; si elle te prive durablement des caractéristiques
+          essentielles de ton palier, tu peux résilier sans frais et obtenir le remboursement de
+          la part non consommée de la période payée.
         </p>
         <p style={{ marginTop: 10 }}>
           Les analyses, statistiques et recommandations fournies — y compris celles générées par
-          IA — sont indicatives. Elles ne garantissent aucun résultat en jeu et ne sauraient
-          engager notre responsabilité.
+          IA — sont indicatives : nous ne garantissons aucun résultat en jeu.
         </p>
         <p style={{ marginTop: 10 }}>
-          Nous ne pouvons être tenus responsables des dommages indirects, de la perte de données
-          résultant d&apos;une utilisation non conforme, ni des conséquences d&apos;une sanction
-          prononcée par Riot Games à l&apos;encontre d&apos;un compte de jeu.
+          Sauf faute lourde ou intentionnelle de notre part, nous ne répondons pas des dommages
+          indirects, de la perte de données résultant d&apos;une utilisation non conforme, ni des
+          conséquences d&apos;une sanction prononcée par Riot Games à l&apos;encontre d&apos;un
+          compte de jeu du fait de son titulaire.
         </p>
       </Section>
 
       <Section title="10. Résiliation">
-        <p><strong>À ton initiative</strong> — tu peux fermer ton compte à tout moment depuis ta
-          page profil. La demande est traitée sous 30 jours et entraîne la suppression de ton
-          profil, de tes contenus, de tes contributions publiques et de ton solde d&apos;Écailles.
-          Tu peux annuler ta demande tant qu&apos;elle n&apos;a pas été traitée.</p>
+        <p><strong>Résilier un abonnement payant</strong> — voir l&apos;article 8 « Durée et
+          résiliation » : depuis ta page profil, en quelques clics, avec effet à la fin de la
+          période déjà payée.</p>
+        {/* Mécanisme RÉEL : `cancel_at_period_end` (portail Stripe configuré
+            `at_period_end`, proration `none`). Aucun prorata n'est implémenté
+            pour une résiliation ordinaire — le texte d'avant (« prorata non
+            consommé ») promettait un remboursement qui n'existe pas. Les
+            exceptions listées sont celles que la LOI impose, elles se traitent
+            à la main (remboursement partiel depuis le Dashboard Stripe). */}
+        <p style={{ marginTop: 10 }}>
+          <strong>Remboursement</strong> — la résiliation d&apos;un abonnement ne donne lieu à
+          <strong> aucun remboursement partiel</strong> : elle prend effet à la fin de la période
+          déjà payée, pendant laquelle tu conserves l&apos;accès à ton palier. Cette règle ne
+          fait pas obstacle aux remboursements prévus par la loi, qui restent dus dans les
+          conditions décrites par les{' '}
+          <Link href="/cgv" style={{ color: 'var(--gold-pale)' }}>conditions générales de
+          vente</Link> : exercice du droit de rétractation dans les 14 jours, défaut de
+          conformité du service, ou absence d&apos;information préalable avant le renouvellement
+          d&apos;un abonnement annuel.
+        </p>
+        <p style={{ marginTop: 10 }}><strong>Fermer ton compte</strong> — tu peux fermer ton
+          compte à tout moment depuis ta page profil. La demande est traitée sous 30 jours et
+          entraîne la suppression de ton profil, de tes contenus, de tes contributions publiques
+          et de ton solde d&apos;Écailles. Tu peux annuler ta demande tant qu&apos;elle n&apos;a
+          pas été traitée.</p>
+        {/* Décision HORTAL du 2026-09-11 : fin de période DÈS LA DEMANDE —
+            `/api/account/deletion-request` + `account-deletion.ts`. Filet dans le
+            webhook pour un compte supprimé sans demande. */}
+        <p style={{ marginTop: 10 }}>
+          Si un abonnement payant est en cours, ta demande de fermeture le résilie
+          immédiatement pour l&apos;avenir : <strong>plus aucun prélèvement n&apos;a lieu</strong>,
+          et tu conserves l&apos;accès déjà payé jusqu&apos;à la fin de la période en cours, ou
+          jusqu&apos;à la suppression effective du compte si elle intervient avant. La période
+          déjà payée n&apos;est pas remboursée ; tu peux toutefois exercer ton droit de
+          rétractation s&apos;il est encore ouvert (voir les conditions générales de vente). Si tu
+          annules ta demande de fermeture, l&apos;abonnement reste résilié à son échéance : tu peux
+          le réactiver depuis le portail de facturation avant cette date.
+        </p>
         <p style={{ marginTop: 10 }}>
           <strong>À notre initiative</strong> — nous pouvons suspendre ou fermer un compte en cas
           de manquement aux présentes conditions, de fraude, d&apos;abus ou d&apos;activité
           illicite. Sauf urgence ou obligation légale, une notification préalable est envoyée à
-          l&apos;adresse e-mail associée au compte.
+          l&apos;adresse e-mail associée au compte. Si nous fermons un compte payant pour un motif
+          qui ne t&apos;est pas imputable, la part non consommée de la période payée t&apos;est
+          remboursée.
         </p>
         <p style={{ marginTop: 10 }}>
           Dans tous les cas, la fermeture entraîne la perte définitive des Écailles et des
-          cosmétiques associés, sans contrepartie. En cas d&apos;abonnement payant en cours,
-          le remboursement éventuel du prorata non consommé s&apos;effectue dans les conditions
-          prévues par la loi.
+          cosmétiques associés, sans contrepartie.
         </p>
       </Section>
 
@@ -212,11 +311,13 @@ export default function CguPage() {
 
       <Section title="12. Modification des conditions">
         <p>
-          Ces conditions peuvent être modifiées, notamment à la sortie de la bêta ou lors de
-          l&apos;activation des abonnements payants. La date de dernière mise à jour figure en
-          haut de cette page. En cas de modification substantielle, les titulaires d&apos;un compte
-          en sont informés par e-mail. La poursuite de l&apos;utilisation du service après cette
-          information vaut acceptation.
+          Ces conditions peuvent être modifiées, notamment à la sortie de la bêta. La date de
+          dernière mise à jour figure en haut de cette page. En cas de modification substantielle,
+          les titulaires d&apos;un compte en sont informés par e-mail. La poursuite de
+          l&apos;utilisation du service après cette information vaut acceptation. Les évolutions
+          de prix ou de contenu d&apos;un abonnement en cours obéissent aux règles propres des{' '}
+          <Link href="/cgv" style={{ color: 'var(--gold-pale)' }}>conditions générales de
+          vente</Link> (information préalable et droit de résilier sans frais).
         </p>
       </Section>
 

@@ -198,6 +198,26 @@ export const landingFr = {
     // est bien passé, on ne laisse jamais croire l'inverse.
     checkoutSlow: "Paiement confirmé. L'activation prend un peu plus longtemps que prévu — recharge la page dans une minute.",
     checkoutCanceled: "Paiement annulé. Rien ne t'a été débité.",
+    // Étape intermédiaire avant Stripe (`CheckoutConsentModal`). ⚠️ Le texte de
+    // la CASE n'est PAS ici : il est versionné dans `src/lib/stripe/checkout-
+    // consent.ts`, parce que le serveur enregistre ce texte exact comme preuve.
+    // Ces libellés-ci n'ont aucune valeur probante, ils peuvent évoluer librement.
+    consentTitle: 'Abonnement {tier}',
+    consentPriceLabel: 'Prix :',
+    perYear: ' /an',
+    // Ni promesse de rappel avant renouvellement ici : aucun envoi n'existe
+    // encore (voir AGENTS.md § CGV, obligation L215-1). Ne pas l'annoncer tant
+    // qu'il n'est pas branché.
+    consentRenewalMonthly: "Renouvelé automatiquement chaque mois, à la date anniversaire de ta souscription. Sans engagement : résiliable à tout moment depuis ton profil, avec effet à la fin du mois payé.",
+    consentRenewalAnnual: "Renouvelé automatiquement chaque année, à la date anniversaire de ta souscription. Résiliable à tout moment depuis ton profil, avec effet à la fin de l'année payée.",
+    consentTermsBefore: 'Avant de payer, prends connaissance de nos',
+    consentTermsLink: 'conditions générales de vente',
+    consentConfirm: 'Continuer vers le paiement',
+    consentConfirmLoading: 'Redirection…',
+    consentCancel: 'Annuler',
+    // Le texte de la case a changé depuis l'ouverture de la page : le serveur
+    // refuse l'ancienne version (`consent_outdated`), la personne doit relire.
+    consentOutdated: 'Nos conditions viennent d’être mises à jour. Recharge la page pour lire la nouvelle version avant de payer.',
     moreTiers: "D'autres paliers arrivent prochainement.",
     // ⚠️ `name` est un LIBELLÉ D'AFFICHAGE, pas la valeur de `profiles.tier`.
     // Les valeurs en base (apprenti / forgeron / maître) sont partagées avec l'app
@@ -211,7 +231,12 @@ export const landingFr = {
         features: [
           'Overlay : 3 blocs actifs',
           '5 imports workshop / sem',
-          '5 analyses IA / mois (Haiku)',
+          // ⚠️ Lignes IA = RÉALITÉ SERVEUR (`TIER_CONFIG` de matchup-analyze et
+          // postgame-analyze), décision HORTAL du 2026-09-11. La grille promettait
+          // « 5 analyses / mois », « 20 analyses / mois (Sonnet) » et « illimitées
+          // (Opus) » : faux, et c'est une pratique commerciale trompeuse.
+          // `landing.test.ts` relit l'EF et échoue si les deux divergent de nouveau.
+          '15 crédits IA / semaine (Haiku)',
           '3 builds custom',
           '3 jungle paths',
         ],
@@ -222,7 +247,7 @@ export const landingFr = {
         features: [
           'Overlay : 6 blocs actifs',
           '20 imports workshop / sem',
-          '20 analyses IA / mois (Sonnet)',
+          '65 crédits IA / semaine (Haiku)',
           '20 builds custom',
           '10 jungle paths',
           'Publication workshop',
@@ -234,7 +259,7 @@ export const landingFr = {
         features: [
           'Overlay illimité',
           'Workshop illimité',
-          'Analyses IA illimitées (Opus)',
+          '135 crédits IA / semaine (Sonnet)',
           'Builds & paths illimités',
           // « Comparaison rangs supérieurs » RETIRÉ le 2026-09-11 (décision HORTAL) :
           // promis sur la grille, jamais implémenté. Backlog : AGENTS.md § À faire plus tard.
@@ -280,7 +305,7 @@ export const landingFr = {
       },
       {
         q: 'Comment fonctionnent les analyses IA ?',
-        a: "Une IA analyse ton historique de parties récupéré via l'API officielle Riot pour repérer tes erreurs récurrentes — positionnement, timings, gestion de vague — et te proposer des conseils ciblés pour progresser. Aucune donnée autre que ton Riot ID n'est partagée.",
+        a: "Une IA analyse ton historique de parties récupéré via l'API officielle Riot pour repérer tes erreurs récurrentes — positionnement, timings, gestion de vague — et te proposer des conseils ciblés pour progresser. Aucune donnée autre que ton Riot ID n'est partagée. Chaque palier dispose d'une réserve de crédits IA renouvelée chaque lundi : une analyse en consomme plus ou moins selon son type (rapide ou détaillée) et le modèle de ton palier, et son coût est affiché avant de la lancer.",
       },
     ],
   },
@@ -297,7 +322,7 @@ export const landingFr = {
       { title: 'Produit', links: ['Fonctionnalités', 'Télécharger', 'Tarifs', 'FAQ'] },
       { title: 'Ressources', links: ['Rechercher un joueur', 'Champions', 'Patch notes', 'Communauté'] },
     ],
-    legalLinks: ['Conditions', 'Confidentialité', 'Mentions légales'],
+    legalLinks: ['Conditions', 'Conditions de vente', 'Confidentialité', 'Mentions légales'],
     copyright: '© 2026 Wyrm Forge. Non affilié à Riot Games.',
     riotDisclaimer:
       "Wyrm Forge n'est pas affilié, sponsorisé ni endossé par Riot Games, Inc. ou l'une de ses filiales. League of Legends et Riot Games sont des marques ou marques déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.",
@@ -452,6 +477,19 @@ export const landingEn: LandingDict = {
     checkoutDone: 'Your {tier} tier is active. Welcome to the forge!',
     checkoutSlow: 'Payment confirmed. Activation is taking a little longer than usual — reload the page in a minute.',
     checkoutCanceled: 'Payment canceled. You have not been charged.',
+    consentTitle: '{tier} subscription',
+    consentPriceLabel: 'Price:',
+    perYear: ' /year',
+    consentRenewalMonthly: 'Renews automatically every month, on the anniversary date of your subscription. No commitment: cancel anytime from your profile, effective at the end of the paid month.',
+    consentRenewalAnnual: 'Renews automatically every year, on the anniversary date of your subscription. Cancel anytime from your profile, effective at the end of the paid year.',
+    // Les CGV n'existent qu'en français (traduction = chantier séparé) : le
+    // lien le dit, plutôt que d'ouvrir une page dans une langue inattendue.
+    consentTermsBefore: 'Before paying, please read our',
+    consentTermsLink: 'terms of sale (in French)',
+    consentConfirm: 'Continue to payment',
+    consentConfirmLoading: 'Redirecting…',
+    consentCancel: 'Cancel',
+    consentOutdated: 'Our terms have just been updated. Please reload the page to read the new version before paying.',
     moreTiers: 'More tiers are coming soon.',
     tiers: [
       {
@@ -460,7 +498,7 @@ export const landingEn: LandingDict = {
         features: [
           'Overlay: 3 active blocks',
           '5 workshop imports / week',
-          '5 AI analyses / month (Haiku)',
+          '15 AI credits / week (Haiku)',
           '3 custom builds',
           '3 jungle paths',
         ],
@@ -471,7 +509,7 @@ export const landingEn: LandingDict = {
         features: [
           'Overlay: 6 active blocks',
           '20 workshop imports / week',
-          '20 AI analyses / month (Sonnet)',
+          '65 AI credits / week (Haiku)',
           '20 custom builds',
           '10 jungle paths',
           'Workshop publishing',
@@ -483,7 +521,7 @@ export const landingEn: LandingDict = {
         features: [
           'Unlimited overlay',
           'Unlimited workshop',
-          'Unlimited AI analyses (Opus)',
+          '135 AI credits / week (Sonnet)',
           'Unlimited builds & paths',
         ],
       },
@@ -525,7 +563,7 @@ export const landingEn: LandingDict = {
       },
       {
         q: 'How does the AI analysis work?',
-        a: 'An AI reviews the match history it retrieves through the official Riot API to spot your recurring mistakes — positioning, timings, wave management — and gives you targeted advice to improve. Nothing beyond your Riot ID is ever shared.',
+        a: 'An AI reviews the match history it retrieves through the official Riot API to spot your recurring mistakes — positioning, timings, wave management — and gives you targeted advice to improve. Nothing beyond your Riot ID is ever shared. Each tier comes with a pool of AI credits refilled every Monday: an analysis uses more or fewer credits depending on its type (quick or detailed) and your tier\'s model, and its cost is shown before you run it.',
       },
     ],
   },
@@ -536,7 +574,7 @@ export const landingEn: LandingDict = {
       { title: 'Product', links: ['Features', 'Download', 'Pricing', 'FAQ'] },
       { title: 'Resources', links: ['Player search', 'Champions', 'Patch notes', 'Community'] },
     ],
-    legalLinks: ['Terms', 'Privacy', 'Legal notice'],
+    legalLinks: ['Terms', 'Terms of sale', 'Privacy', 'Legal notice'],
     copyright: '© 2026 Wyrm Forge. Not affiliated with Riot Games.',
     riotDisclaimer:
       'Wyrm Forge is not affiliated with, sponsored or endorsed by Riot Games, Inc. or any of its affiliates. League of Legends and Riot Games are trademarks or registered trademarks of Riot Games, Inc. League of Legends © Riot Games, Inc.',

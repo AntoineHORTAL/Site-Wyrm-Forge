@@ -12,6 +12,10 @@ import {
   unixToIso,
   TIER_BY_PLAN,
 } from '@/lib/stripe/plans'
+import {
+  shouldStopBillingForDeletedAccount,
+  cancelAndDiscardRenewal,
+} from '@/lib/stripe/account-deletion'
 
 /**
  * Réception des événements Stripe — le SEUL endroit qui fait changer un palier.
@@ -22,6 +26,12 @@ import {
  *                                          résiliation programmée, ET les échecs
  *                                          de paiement (`past_due` / `unpaid`)
  *   • `customer.subscription.deleted`   — fin effective
+ *   • `invoice.created`                 — FILET « compte supprimé » uniquement
+ *                                          (voir `stopBillingForDeletedAccount`)
+ *
+ * ⚠️ `invoice.created` doit être COCHÉ dans la configuration de l'endpoint
+ * (Dashboard Stripe → Developers → Webhooks), en test ET en live. Sans lui, le
+ * filet ne voit la facture de renouvellement qu'une fois prélevée.
  *
  * Tout autre événement → 200 `{ ignored: true }`. Un webhook qui répond en
  * erreur est retenté par Stripe, indéfiniment : ne jamais échouer sur ce qu'on
@@ -101,6 +111,52 @@ async function resolveUserId(
     return null
   }
   return data?.user_id ?? null
+}
+
+/** Le profil existe-t-il encore ? Une erreur de lecture REMONTE (500 → rejeu Stripe). */
+async function profileExists(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await admin.from('profiles').select('id').eq('id', userId).maybeSingle()
+  if (error) throw new Error(`lecture profiles: ${error.message}`)
+  return data !== null
+}
+
+/**
+ * FILET « COMPTE SUPPRIMÉ » — un compte qui n'existe plus ne doit plus jamais
+ * être prélevé.
+ *
+ * La demande de suppression passe normalement par `/api/account/deletion-request`,
+ * qui programme la fin de l'abonnement AVANT d'enregistrer la demande. Ce filet
+ * couvre tout le reste : suppression faite à la main dans le Dashboard Supabase,
+ * compte supprimé avant la mise en place de cette route, etc. Résiliation
+ * IMMÉDIATE : il n'y a plus de compte auquel conserver un accès.
+ *
+ * Il répare aussi une boucle : sans lui, un événement pour un compte supprimé
+ * faisait échouer la RPC sur la clé étrangère `profiles`, donc un 500, donc un
+ * rejeu Stripe pendant trois jours.
+ *
+ * Renvoie la réponse à donner à Stripe, ou `null` si le compte existe (suite
+ * normale du traitement).
+ */
+async function stopBillingForDeletedAccount(
+  admin: ReturnType<typeof createAdminClient>,
+  stripe: Stripe,
+  userId: string,
+  subscription: { id: string; status: string | null },
+): Promise<NextResponse | null> {
+  const exists = await profileExists(admin, userId)
+  if (exists) return null
+
+  if (shouldStopBillingForDeletedAccount({ userId, profileExists: exists, status: subscription.status })) {
+    await stripe.subscriptions.cancel(subscription.id, { invoice_now: false, prorate: false })
+    console.warn('[stripe/webhook] compte supprimé — abonnement résilié immédiatement', {
+      user_id: userId, subscription_id: subscription.id,
+    })
+    return NextResponse.json({ handled: true, reason: 'account_deleted', canceled: true })
+  }
+  return NextResponse.json({ ignored: true, reason: 'account_deleted', canceled: false })
 }
 
 /**
@@ -271,6 +327,16 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ignored: true, reason: 'user_not_resolved' })
         }
 
+        // Compte supprimé pendant le paiement : l'abonnement est coupé, mais le
+        // premier paiement, lui, est passé — à rembourser À LA MAIN (log dédié).
+        const deleted = await stopBillingForDeletedAccount(admin, stripe, userId, subscription)
+        if (deleted) {
+          console.error('[stripe/webhook] paiement reçu pour un compte supprimé — REMBOURSEMENT MANUEL', {
+            user_id: userId, session: session.id,
+          })
+          return deleted
+        }
+
         const result = await applySubscription(admin, userId, subscription, event.created)
         return NextResponse.json({ received: true, result })
       }
@@ -291,12 +357,62 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ignored: true, reason: 'user_not_resolved' })
         }
 
+        const deleted = await stopBillingForDeletedAccount(admin, stripe, userId, subscription)
+        if (deleted) return deleted
+
         // `deleted` : Stripe livre l'objet avec `status: 'canceled'`, donc
         // `resolveTierOutcome` le révoque sans traitement particulier ici. On
         // ne force PAS le statut à la main — si Stripe livrait un jour autre
         // chose, la politique doit voir la vraie valeur, pas la nôtre.
         const result = await applySubscription(admin, userId, subscription, event.created)
         return NextResponse.json({ received: true, result })
+      }
+
+      // ── Filet : facture de renouvellement d'un compte SUPPRIMÉ ─────────────
+      //
+      // Stripe crée la facture de renouvellement en BROUILLON et attend la
+      // réponse des webhooks `invoice.created` avant de la finaliser et de
+      // prélever. C'est le dernier moment où l'on peut encore empêcher le
+      // prélèvement. On ne traite QUE ce cas : pour un compte qui existe, rien
+      // à faire ici, les `customer.subscription.*` suivront.
+      case 'invoice.created': {
+        const invoice = event.data.object
+        const details = invoice.parent?.subscription_details
+        if (!details || invoice.status !== 'draft') {
+          return NextResponse.json({ ignored: true, reason: 'not_a_draft_subscription_invoice' })
+        }
+
+        const subscriptionId = idOf(details.subscription)
+        const userId = await resolveUserId(
+          admin, details.metadata?.user_id ?? null, idOf(invoice.customer),
+        )
+        if (!subscriptionId || !userId) {
+          return NextResponse.json({ ignored: true, reason: 'user_not_resolved' })
+        }
+
+        if (await profileExists(admin, userId)) {
+          return NextResponse.json({ ignored: true, reason: 'account_active' })
+        }
+
+        // Statut réel de l'abonnement, relu : la facture n'en porte pas.
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+        if (!shouldStopBillingForDeletedAccount({ userId, profileExists: false, status: subscription.status })) {
+          return NextResponse.json({ ignored: true, reason: 'account_deleted', canceled: false })
+        }
+
+        // Geste partagé avec le smoke test Stripe (`account-deletion.ts`) :
+        // résilier, puis figer le brouillon (Stripe refuse de SUPPRIMER une
+        // facture d'abonnement) ou annuler une facture déjà finalisée.
+        const outcome = await cancelAndDiscardRenewal(stripe, subscriptionId, invoice.id!)
+        if (outcome === 'paid') {
+          console.error('[stripe/webhook] facture PAYÉE pour un compte supprimé — REMBOURSEMENT MANUEL', {
+            user_id: userId, invoice: invoice.id,
+          })
+        }
+        console.warn('[stripe/webhook] compte supprimé — renouvellement coupé', {
+          user_id: userId, subscription_id: subscriptionId, invoice: invoice.id, outcome,
+        })
+        return NextResponse.json({ handled: true, reason: 'account_deleted', canceled: true, invoice: outcome })
       }
 
       default:

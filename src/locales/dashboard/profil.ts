@@ -151,9 +151,14 @@ export const profilFr = {
     lifetimeNote: "Ce palier ne dépend d'aucun abonnement.",
     freeTitle: 'Tu es sur le palier gratuit.',
     freeBody: "Passe à un palier supérieur pour débloquer l'overlay complet, le workshop et les analyses IA.",
-    manage: 'Gérer mon abonnement',
+    /* Décret n° 2023-417 (résiliation « en trois clics ») : la résiliation a SON
+       bouton, sous une mention sans ambiguïté. Ne pas la refondre dans « gérer ». */
+    cancelSubscription: 'Résilier mon abonnement',
+    cancelLoading: 'Ouverture de la résiliation…',
+    cancelHint: "Sans frais ni engagement : l'arrêt prend effet à la fin de la période déjà payée. Tu confirmes sur la page sécurisée de Stripe.",
+    manage: 'Moyen de paiement et factures',
     manageLoading: 'Ouverture du portail…',
-    manageHint: 'Moyen de paiement, factures et résiliation, sur Stripe.',
+    manageHint: 'Mettre à jour ta carte, télécharger tes factures ou réactiver ton abonnement, sur Stripe.',
     manageError: "Impossible d'ouvrir le portail de facturation. Réessaie dans un instant.",
     /* `past_due` / `unpaid` — l'accès n'est pas forcément perdu, le ton reste factuel. */
     paymentIssue: 'Ton dernier paiement a échoué. Mets ton moyen de paiement à jour pour ne pas perdre ton palier.',
@@ -239,6 +244,9 @@ export const profilFr = {
     bullet2: "Suppression de tes builds d'items et to-do lists",
     bullet3: 'Suppression du lien vers ton compte Riot',
     bullet4: 'Suppression de toutes contributions publiques (workshop)',
+    /* Décision HORTAL du 2026-09-11 : fin de période dès la demande
+       (`/api/account/deletion-request`, `account-deletion.ts`). */
+    billingNote: "Résiliation de ton abonnement payant éventuel dès la demande : plus aucun prélèvement, accès conservé jusqu'à la fin de la période déjà payée",
     delay: 'Traitement effectué sous 30 jours maximum.',
     open: 'Demander la suppression de mon compte',
 
@@ -254,9 +262,14 @@ export const profilFr = {
     emailMismatch: "L'email saisi ne correspond pas à celui de ton compte.",
     done: 'Demande enregistrée. Elle sera traitée sous 30 jours.',
     errUnexpected: 'Erreur inattendue.',
+    /* Stripe n'a pas pu être joint : RIEN n'est enregistré. */
+    errBilling: "Nous n'avons pas pu arrêter la facturation de ton abonnement : ta demande n'a pas été enregistrée. Réessaie dans un instant, ou écris à contact@wyrm-forge.com.",
+    /* Stripe OK, enregistrement KO : la facturation EST arrêtée — le dire. */
+    errNotRecorded: "Ton abonnement a bien été résilié (plus aucun prélèvement), mais ta demande de suppression n'a pas pu être enregistrée. Réessaie dans un instant.",
     /* `{message}` = message Supabase, non traduisible. */
     cancelFailed: "Impossible d'annuler : {message}",
-    cancelled: 'Demande annulée.',
+    /* L'abonnement n'est PAS réactivé automatiquement (décision du 2026-09-11). */
+    cancelled: "Demande annulée. Si tu avais un abonnement, il reste résilié à son échéance : tu peux le réactiver depuis « Moyen de paiement et factures ».",
   },
 
   /* ── /profil : zone sensible ── */
@@ -369,9 +382,12 @@ export const profilEn: ProfilDict = {
     lifetimeNote: 'This tier does not depend on any subscription.',
     freeTitle: "You're on the free tier.",
     freeBody: 'Upgrade to unlock the full overlay, the workshop and AI analyses.',
-    manage: 'Manage my subscription',
+    cancelSubscription: 'Cancel my subscription',
+    cancelLoading: 'Opening cancellation…',
+    cancelHint: 'No fee, no commitment: it stops at the end of the period already paid. You confirm on the secure Stripe page.',
+    manage: 'Payment method and invoices',
     manageLoading: 'Opening the portal…',
-    manageHint: 'Payment method, invoices and cancellation, on Stripe.',
+    manageHint: 'Update your card, download your invoices or reactivate your subscription, on Stripe.',
     manageError: 'Could not open the billing portal. Please try again in a moment.',
     paymentIssue: 'Your last payment failed. Update your payment method to keep your tier.',
     adminNote: 'Your tier comes from your administrator role: it does not depend on this subscription.',
@@ -441,6 +457,7 @@ export const profilEn: ProfilDict = {
     bullet2: 'Deletion of your item builds and to-do lists',
     bullet3: 'Deletion of the link to your Riot account',
     bullet4: 'Deletion of every public contribution (workshop)',
+    billingNote: 'Cancellation of any paid subscription as soon as you ask: no further charges, access kept until the end of the period already paid',
     delay: 'Processed within 30 days at most.',
     open: 'Request the deletion of my account',
 
@@ -454,8 +471,10 @@ export const profilEn: ProfilDict = {
     emailMismatch: 'The email you typed does not match the one on your account.',
     done: 'Request recorded. It will be processed within 30 days.',
     errUnexpected: 'Unexpected error.',
+    errBilling: 'We could not stop billing for your subscription: your request was not recorded. Please try again in a moment, or write to contact@wyrm-forge.com.',
+    errNotRecorded: 'Your subscription has been cancelled (no further charges), but your deletion request could not be recorded. Please try again in a moment.',
     cancelFailed: 'Could not cancel: {message}',
-    cancelled: 'Request cancelled.',
+    cancelled: 'Request cancelled. If you had a subscription, it stays cancelled at the end of its period: you can reactivate it from “Payment method and invoices”.',
   },
 
   danger: {
