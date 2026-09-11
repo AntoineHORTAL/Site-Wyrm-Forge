@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 
-/* Coquille partagée des trois pages légales (/confidentialite, /mentions-legales,
-   /cgu). Même gabarit que /about (largeur 800, retour, titre Cinzel) — les pages
+/* Coquille partagée des pages légales (/confidentialite, /mentions-legales, /cgu,
+   /cgv). Même gabarit que /about (largeur 800, retour, titre Cinzel) — les pages
    elles-mêmes restent des Server Components pour pouvoir exporter `metadata`,
    seul ce shell est client (useRouter / useTheme). */
 
@@ -13,6 +13,7 @@ const LEGAL_LINKS = [
   { href: '/mentions-legales', label: 'Mentions légales' },
   { href: '/confidentialite',  label: 'Confidentialité' },
   { href: '/cgu',              label: 'CGU' },
+  { href: '/cgv',              label: 'CGV' },
 ]
 
 /** Titre de section + contenu. Utilisé par les trois pages légales. */

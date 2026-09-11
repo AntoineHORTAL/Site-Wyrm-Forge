@@ -52,9 +52,34 @@ export interface SubscriptionViewInput {
 /** Colonnes lues de `stripe_subscriptions` — lecture propre, policy `ss_select_own`. */
 export interface SubscriptionRow {
   stripe_customer_id: string | null
+  /** Nécessaire au bouton « Résilier » (flux `subscription_cancel` du portail). */
+  stripe_subscription_id?: string | null
   status: string | null
   cancel_at_period_end: boolean | null
   current_period_end: string | null
+}
+
+/**
+ * Statuts d'un abonnement qui existe encore et peut être résilié. Hors liste :
+ * `canceled` / `incomplete_expired` (terminés), `incomplete` (jamais commencé,
+ * expire seul sous 23 h), et tout statut inconnu — le bouton ne doit jamais
+ * mener à une erreur Stripe.
+ */
+const CANCELLABLE_STATUSES = new Set(['active', 'trialing', 'past_due', 'unpaid', 'paused'])
+
+/**
+ * Le bouton « Résilier mon abonnement » a-t-il un sens ?
+ *
+ * Partagée par l'interface (`resolveSubscriptionView.canCancel`) ET par
+ * `/api/stripe/portal` (flux `cancel`) : un bouton affiché mène toujours à un
+ * écran de résiliation valide, et la route refuse ce que l'interface n'aurait
+ * pas proposé. Une résiliation déjà programmée n'est pas « re-résiliable » :
+ * l'écran affiche alors la date de fin, et la réactivation vit dans le portail.
+ */
+export function canCancelSubscription(row: SubscriptionRow | null | undefined): boolean {
+  if (!row?.stripe_subscription_id) return false
+  if (row.cancel_at_period_end === true) return false
+  return CANCELLABLE_STATUSES.has(row.status?.trim().toLowerCase() ?? '')
 }
 
 export interface SubscriptionView {
@@ -74,6 +99,15 @@ export interface SubscriptionView {
    * afficher le bouton dans un autre cas produirait une erreur au clic.
    */
   canManageBilling: boolean
+  /**
+   * Le bouton « Résilier mon abonnement » a-t-il un sens ? — `canCancelSubscription`.
+   *
+   * Indépendant du palier affiché : un admin (palier de rôle) ou un compte « à
+   * vie » qui paierait quand même un abonnement doit pouvoir le résilier.
+   * Décret n° 2023-417 (art. L215-1-1) : la fonctionnalité de résiliation est
+   * présentée sous une mention sans ambiguïté, distincte de la gestion.
+   */
+  canCancel: boolean
   /**
    * Résiliation programmée : l'accès court encore jusqu'à `expiresAt`, puis
    * s'arrête. Distinct d'un abonnement qui se renouvellera — et la nuance vaut
@@ -125,6 +159,7 @@ export function resolveSubscriptionView(input: SubscriptionViewInput): Subscript
     // l'afficher n'aurait aucun sens.
     expiresAt: kind === 'paid' ? expiresAt : null,
     canManageBilling: Boolean(sub?.stripe_customer_id),
+    canCancel: canCancelSubscription(sub),
     cancelAtPeriodEnd: sub?.cancel_at_period_end === true,
     paymentIssue: isPaymentIssue(sub?.status),
     isAdmin: input.role === 'admin',

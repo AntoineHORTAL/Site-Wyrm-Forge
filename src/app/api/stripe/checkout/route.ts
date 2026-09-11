@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe, priceEnv, SITE_URL } from '@/lib/stripe/server'
 import {
   isPlanKey,
@@ -9,12 +10,29 @@ import {
   TIER_BY_PLAN,
   stripeMode,
 } from '@/lib/stripe/plans'
+import {
+  checkConsent,
+  recordConsentThenOpenCheckout,
+  CGV_VERSION,
+  type ConsentProof,
+} from '@/lib/stripe/checkout-consent'
 
 /**
  * Ouverture d'une session Stripe Checkout en mode `subscription`.
  *
- * POST `{ plan: 'forgeron' | 'maitre', period: 'mensuel' | 'annuel' }`
+ * POST `{
+ *   plan: 'forgeron' | 'maitre',
+ *   period: 'mensuel' | 'annuel',
+ *   consent: { accepted: true, version: <CURRENT_CONSENT_VERSION>, locale: 'fr' | 'en' },
+ * }`
  *   → 200 `{ url }` — le navigateur y redirige.
+ *
+ * ⚠️ PAS DE SESSION SANS PREUVE. La demande expresse d'exécution immédiate
+ * (case cochée dans `CheckoutConsentModal`) est validée, puis ÉCRITE en base
+ * (`checkout_consent_log`), et c'est seulement ensuite que la session Stripe
+ * est créée. Si l'écriture échoue, la route répond 503 et Stripe n'est jamais
+ * appelé. L'ordre est porté par `recordConsentThenOpenCheckout`, testé dans
+ * `checkout-consent.test.ts` — pas par la seule lecture de ce fichier.
  *
  * `runtime = 'nodejs'` comme `api/external/items` : le SDK Stripe s'appuie sur
  * des API Node, il ne tourne pas sur le runtime Edge.
@@ -32,6 +50,7 @@ export const runtime = 'nodejs'
 interface CheckoutBody {
   plan?: unknown
   period?: unknown
+  consent?: unknown
 }
 
 function badRequest(code: string, status = 400) {
@@ -60,6 +79,14 @@ export async function POST(request: NextRequest) {
   const { plan, period } = body
   if (!isPlanKey(plan)) return badRequest('invalid_plan')
   if (!isBillingPeriod(period)) return badRequest('invalid_period')
+
+  // Demande expresse d'exécution immédiate (art. L221-25 C. conso). Refusée
+  // AVANT toute autre étape : sans elle, aucune session ne doit exister, quel
+  // que soit le client qui appelle cette route (bouton, reprise après
+  // connexion, `curl`). Le texte n'est pas lu dans le corps — `checkConsent`
+  // le relit dans le module versionné, à partir de la version et de la langue.
+  const consent = checkConsent(body.consent)
+  if (!consent.ok) return badRequest(consent.error)
 
   const priceId = resolvePriceId(plan, period, priceEnv())
   if (!priceId) {
@@ -96,53 +123,109 @@ export async function POST(request: NextRequest) {
 
     const customerId: string | undefined = existing?.stripe_customer_id ?? undefined
 
-    // ── 4. La session ─────────────────────────────────────────────────────────
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+    // ── 4. La preuve, PUIS la session ─────────────────────────────────────────
+    const proof: ConsentProof = {
+      userId: user.id,
+      plan,
+      period,
+      version: consent.version,
+      locale: consent.locale,
+      text: consent.text,
+      termsVersion: CGV_VERSION,
+    }
 
-      // Deux rattachements, volontairement REDONDANTS — ils ne survivent pas
-      // aux mêmes événements :
-      //   • `client_reference_id` ne vit que sur la session de checkout, donc
-      //     n'est lisible que par `checkout.session.completed` ;
-      //   • `subscription_data.metadata` est recopié sur l'ABONNEMENT, donc
-      //     accompagne aussi les `customer.subscription.updated`/`deleted`, y
-      //     compris quand ils sont déclenchés depuis le Dashboard Stripe.
-      // Le webhook a besoin des deux : voir `resolveUserId` côté webhook.
-      client_reference_id: user.id,
-      metadata: { user_id: user.id, plan, period },
-      subscription_data: {
-        metadata: { user_id: user.id, plan, period, tier: TIER_BY_PLAN[plan] },
+    const result = await recordConsentThenOpenCheckout(proof, {
+      // Écriture via le client `service_role` : `checkout_consent_log` n'a
+      // AUCUN privilège client, et la RPC n'est exécutable que par ce rôle —
+      // un navigateur ne peut pas fabriquer de preuve. `user.id` vient de
+      // `getUser()` ci-dessus, jamais du corps de la requête.
+      recordConsent: async (p) => {
+        const { data, error } = await createAdminClient().rpc('record_checkout_consent', {
+          p_user_id:         p.userId,
+          p_plan:            p.plan,
+          p_period:          p.period,
+          p_consent_version: p.version,
+          p_locale:          p.locale,
+          p_consent_text:    p.text,
+          p_terms_version:   p.termsVersion,
+        })
+        if (error) throw new Error(`rpc record_checkout_consent: ${error.message}`)
+        return data as string
       },
 
-      // Client connu → on le réutilise. Sinon Stripe en crée un, pré-rempli
-      // avec l'e-mail du compte : `customer` et `customer_email` sont
-      // mutuellement exclusifs côté API, d'où le ternaire plutôt que les deux.
-      ...(customerId
-        ? { customer: customerId }
-        : { customer_email: user.email ?? undefined }),
+      openSession: (consentId) => stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: 1 }],
 
-      // ⚠️ Origine de confiance, jamais `request.url` — même règle que
-      // `auth/callback` (le header Host est falsifiable). `success_url` est
-      // l'adresse vers laquelle Stripe renvoie quelqu'un qui vient de payer.
-      //
-      // `?tab=tarifs` : l'onglet caché du dashboard (`DEEP_LINKABLE_TABS` dans
-      // page.tsx) — l'utilisateur revient là d'où il est parti. `checkout=success`
-      // déclenche l'attente d'activation (`CheckoutReturn`), le palier n'étant
-      // pas encore écrit à cet instant : c'est le webhook qui l'écrira.
-      success_url: `${SITE_URL}/?tab=tarifs&checkout=success`,
-      cancel_url:  `${SITE_URL}/?tab=tarifs&checkout=cancel`,
+        // Deux rattachements, volontairement REDONDANTS — ils ne survivent pas
+        // aux mêmes événements :
+        //   • `client_reference_id` ne vit que sur la session de checkout, donc
+        //     n'est lisible que par `checkout.session.completed` ;
+        //   • `subscription_data.metadata` est recopié sur l'ABONNEMENT, donc
+        //     accompagne aussi les `customer.subscription.updated`/`deleted`, y
+        //     compris quand ils sont déclenchés depuis le Dashboard Stripe.
+        // Le webhook a besoin des deux : voir `resolveUserId` côté webhook.
+        //
+        // `consent_id` suit le même double chemin : c'est ce qui permet, depuis
+        // un litige ouvert dans Stripe (session OU abonnement), de retrouver la
+        // ligne exacte de `checkout_consent_log` qui prouve l'acceptation.
+        client_reference_id: user.id,
+        metadata: { user_id: user.id, plan, period, consent_id: consentId },
+        subscription_data: {
+          metadata: {
+            user_id: user.id, plan, period, tier: TIER_BY_PLAN[plan], consent_id: consentId,
+          },
+        },
 
-      allow_promotion_codes: true,
+        // Client connu → on le réutilise. Sinon Stripe en crée un, pré-rempli
+        // avec l'e-mail du compte : `customer` et `customer_email` sont
+        // mutuellement exclusifs côté API, d'où le ternaire plutôt que les deux.
+        ...(customerId
+          ? { customer: customerId }
+          : { customer_email: user.email ?? undefined }),
+
+        // ⚠️ Origine de confiance, jamais `request.url` — même règle que
+        // `auth/callback` (le header Host est falsifiable). `success_url` est
+        // l'adresse vers laquelle Stripe renvoie quelqu'un qui vient de payer.
+        //
+        // `?tab=tarifs` : l'onglet caché du dashboard (`DEEP_LINKABLE_TABS` dans
+        // page.tsx) — l'utilisateur revient là d'où il est parti. `checkout=success`
+        // déclenche l'attente d'activation (`CheckoutReturn`), le palier n'étant
+        // pas encore écrit à cet instant : c'est le webhook qui l'écrira.
+        success_url: `${SITE_URL}/?tab=tarifs&checkout=success`,
+        cancel_url:  `${SITE_URL}/?tab=tarifs&checkout=cancel`,
+
+        allow_promotion_codes: true,
+      }),
     })
 
+    if (!result.ok) {
+      if (result.stage === 'consent') {
+        // La preuve n'a pas été écrite → aucune session n'a été créée. 503 : ce
+        // n'est pas une faute de l'utilisateur, et il n'a rien été débité.
+        console.error('[stripe/checkout] preuve de consentement NON écrite — aucune session ouverte',
+          result.error instanceof Error ? result.error.message : result.error)
+        return badRequest('consent_not_recorded', 503)
+      }
+      // Preuve écrite, Stripe en échec : une ligne de consentement sans
+      // paiement, inoffensive. Le message d'erreur Stripe peut nommer des
+      // identifiants de compte : il va dans les logs serveur, jamais dans la
+      // réponse.
+      console.error('[stripe/checkout] session en échec après preuve', {
+        consent_id: result.consentId,
+        error: result.error instanceof Error ? result.error.message : result.error,
+      })
+      return badRequest('checkout_failed', 502)
+    }
+
+    const session = result.session
     if (!session.url) {
       console.error('[stripe/checkout] session créée sans URL', { id: session.id })
       return badRequest('checkout_unavailable', 502)
     }
 
     console.log('[stripe/checkout] session ouverte', {
-      mode, plan, period, user_id: user.id, session_id: session.id,
+      mode, plan, period, user_id: user.id, session_id: session.id, consent_id: result.consentId,
     })
 
     return NextResponse.json({ url: session.url })

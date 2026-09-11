@@ -2142,12 +2142,193 @@ ancien abonné redescendu au gratuit, la résiliation programmée, les cinq stat
   « Abonnement » de `/profil` (voir § Portail client ci-dessus). ⚠️ Le portail doit
   être **activé manuellement dans le Dashboard Stripe**, en LIVE comme en test, sinon
   la route répond 502.
-- **CGU** (`cgu/page.tsx`) : à relire maintenant que l'abonnement reconduit qu'elles
-  décrivent est réellement branché.
+- ~~**CGU** (`cgu/page.tsx`) : à relire~~ ✅ **FAIT** au chantier CGV du 2026-09-11 —
+  voir § CGV, rétractation et consentement ci-dessous.
 - Le § « Modèle freemium » ci-dessous dit encore « à activer quand Pricing sera
   réactivé » et « la section Pricing est actuellement masquée sur la vitrine » :
   **les deux sont périmés**. La grille est visible et le paiement est branché ;
   l'**enforcement** des quotas par palier, lui, reste bien à faire.
+
+---
+
+## ⚖️ CGV, rétractation et consentement avant paiement (chantier du 2026-09-11)
+
+Suite à l'audit légal du 2026-09-10. Périmètre : abonnements Forgeron / Maître
+seulement. **Le Kit sur mesure est HORS périmètre** (contrat de prestation distinct,
+rétractation pleinement applicable) ; la traduction EN des CGU/CGV aussi.
+
+### Ce qui a été livré
+
+| Élément | Où |
+|---|---|
+| Page CGV (L221-5) | `src/app/cgv/page.tsx` — route dédiée, FR seul, liée depuis le footer, la nav des pages légales et la modale de paiement |
+| Clauses d'abonnement partagées CGU § 8 ↔ CGV § 2-5 | `src/components/legal/SubscriptionTerms.tsx` — **un seul texte rendu à deux endroits**, montants lus dans `PRICING_TIERS` |
+| CGU § 2 / § 9 bornées pour le payant, § 8 au présent, § 10 sans prorata | `src/app/cgu/page.tsx` |
+| Texte versionné de la case + ordre « preuve puis session » | `src/lib/stripe/checkout-consent.ts` (**module PUR**, `checkout-consent.test.ts`) |
+| Étape de consentement avant Stripe | `src/components/landing/CheckoutConsentModal.tsx` (sans hook, testé) + `Pricing.tsx` |
+| Écriture de la preuve AVANT la session | `src/app/api/stripe/checkout/route.ts` |
+| Table de preuve | migration `20260911000003_checkout_consent_log.sql` + `supabase/tests/20260911000003_checkout_consent_log_test.sql` |
+| Nouveau traitement déclaré | `confidentialite/page.tsx` § 2, 4, 6 |
+
+### 🔴 Ce que la case prouve — L221-25, pas L221-28
+
+Un abonnement est un service CONTINU : il n'est jamais « pleinement exécuté » en
+14 jours, donc l'exception L221-28 1° (perte du droit) ne joue presque jamais.
+Ce qui s'applique est **L221-25** : sans demande expresse recueillie, un abonné qui
+se rétracte ne doit RIEN (remboursement intégral, même après usage) ; avec elle, il
+doit le **prorata du service fourni**. La case ne supprime donc pas le droit de
+rétractation, elle en change la contrepartie — le texte de la case et le § 6 des CGV
+le disent. ⚠️ **Le remboursement au prorata d'une rétractation est MANUEL** (annuler
+l'abonnement + remboursement partiel depuis le Dashboard Stripe), à faire sous
+14 jours (L221-24). Aucune automatisation.
+
+### 🔴 Flux de paiement — trois barrières, une seule qui compte
+
+1. `CheckoutConsentModal` : case jamais pré-cochée, bouton `disabled` ET sans
+   `onClick` tant qu'elle n'est pas cochée ;
+2. `Pricing.confirmCheckout` : garde sur la case ; **c'est le SEUL appelant
+   d'`openCheckout`**. La reprise après connexion (`checkout-intent`) **rouvre la
+   modale**, elle ne va plus jamais directement chez Stripe — sinon ce serait le seul
+   chemin de paiement sans consentement ;
+3. **La route** (`checkConsent`) : `consent.accepted === true` (booléen strict),
+   `version === CURRENT_CONSENT_VERSION` (sinon 400 `consent_outdated`), langue
+   connue. Le **texte n'est jamais lu dans le corps** : il est relu dans le module
+   versionné. Puis `recordConsentThenOpenCheckout` écrit la preuve (RPC
+   `record_checkout_consent`, client `service_role`) et **n'appelle Stripe que si
+   l'écriture a abouti** — sinon 503 `consent_not_recorded`, aucune session.
+   `consent_id` part dans les `metadata` de la session ET de l'abonnement Stripe.
+
+> ⚠️ **Changer le texte de la case** = ajouter une NOUVELLE version à
+> `CONSENT_TEXTS`, pointer `CURRENT_CONSENT_VERSION` dessus, ajouter son empreinte
+> SHA-256 dans `checkout-consent.test.ts`. Jamais réécrire une version publiée : le
+> test d'empreinte échoue exprès.
+>
+> ⚠️ **Changer les CGV** = avancer la date `updated` de `cgv/page.tsx` ET
+> `CGV_VERSION` ensemble (vérifié par test) — c'est la version enregistrée avec
+> chaque preuve.
+
+### Table `checkout_consent_log` (migration 20260911000003)
+
+`id` · `user_id` (FK `profiles` **ON DELETE SET NULL**) · `plan` · `period`
+(`mensuel`|`annuel`) · `consent_version` · `locale` · `consent_text` (texte COMPLET,
+20-2000 car.) · `terms_version` · `accepted_at` (horloge de la BASE).
+
+- **Aucun accès client**, lecture comprise : RLS sans policy + `REVOKE ALL` (42501).
+- Écriture : `record_checkout_consent(...)` SECURITY DEFINER, EXECUTE
+  `service_role` seul (règle des trois instructions de 20260909000002), bloc `DO`
+  d'auto-vérification.
+- **Immuable** : trigger `trg_checkout_consent_log_immutable` refuse tout UPDATE,
+  même `service_role`, **sauf** `user_id → NULL` sans autre changement. Cette
+  exception est OBLIGATOIRE : `ON DELETE SET NULL` s'exécute comme un UPDATE, sans
+  elle la suppression d'un compte d'ancien abonné échouerait.
+- `SET NULL` et pas `CASCADE` : la preuve survit à la suppression du compte
+  (détachée), elle reste reliée à Stripe par `consent_id`. Conservation annoncée :
+  5 ans. **Aucune purge n'existe** — première échéance en 2031, à planifier.
+- **Validée le 2026-09-11 sur le projet TEST, 27/27**, en exécutant migration +
+  script de test dans UNE transaction terminée par une exception volontaire (rien
+  n'a persisté — vérifié après coup). **NON APPLIQUÉE** ni sur test ni en prod.
+  ⚠️ Le projet test est en retard de deux migrations sur la prod
+  (`20260911000001/2`, drops tournois/prac) : un `db push` sur test les appliquerait
+  aussi.
+
+### ⛔ BLOQUÉ — rappel annuel (L215-1, loi Chatel) et confirmation de commande (L221-13)
+
+**Aucun transport e-mail applicatif n'existe** : Resend a été retiré le 2026-09-11,
+et le SMTP par défaut de Supabase Auth n'est ni prévu ni fiable pour de
+l'applicatif. Rien n'a été codé, volontairement : un e-mail légal qui échoue en
+silence est pire qu'une absence de code. Deux obligations en dépendent :
+
+1. **L215-1** — informer l'abonné annuel par écrit (e-mail dédié) entre 3 mois et
+   1 mois avant l'échéance, avec la date limite de non-reconduction mise en évidence.
+   Sanction tant que ce n'est pas fait (déjà écrite dans les CGV § 5) : l'abonné peut
+   résilier à tout moment après la reconduction et être remboursé au prorata sous
+   30 jours.
+2. **L221-13** — confirmation du contrat sur support durable (CGV + confirmation de
+   la demande expresse), avant le début de l'exécution. Un lien vers /cgv n'est pas
+   un support durable.
+
+**Implémentation minimale proposée, une fois un transport choisi** : EF planifiée
+(pg_cron quotidien) qui sélectionne `stripe_subscriptions` en `active`, prix annuel
+(`periodForPriceId`), `cancel_at_period_end = false`, `current_period_end` dans
+[J+30 ; J+45] — marge au-dessus du plancher d'un mois —, puis envoie avec le patron
+**claim-then-send** (`git show 6b46bde:supabase/functions/prac-notify/index.ts`) sur
+une table de journal à clé `(user_id, current_period_end)` : un envoi par échéance,
+jamais deux, et un échec visible (`status = 'failed'` + alerte), pas avalé. Au choix
+d'un prestataire : recréer le secret EF, et le réinscrire au § 5 de
+`confidentialite/page.tsx` (sous-traitants ET transferts hors UE).
+
+### ✅ Corrections bloquantes traitées le 2026-09-11 (décisions HORTAL)
+
+**1. Grille tarifaire alignée sur le serveur** (décision : la réalité serveur fait
+foi). La grille annonçait « Analyses IA illimitées (Opus) » (Maître) et
+« 20 analyses IA / mois (Sonnet) » (Forgeron) quand le serveur applique
+135 cr/sem Sonnet et 65 cr/sem Haiku. Elle dit désormais « 15 / 65 / 135 crédits
+IA / semaine (Haiku / Haiku / Sonnet) », et la FAQ explique ce qu'est un crédit.
+`landing.test.ts` **relit `TIER_CONFIG` dans les deux EF** et échoue si la grille
+(FR ou EN) s'en écarte, ou si « Opus » / une IA « illimitée » réapparaît.
+0 abonnement en prod au moment de la correction : aucun contrat à régulariser.
+Option écartée (chiffrée) : Opus illimité pour Maître — ~54 cr la détaillée au
+pire cas, déficitaire au-delà de ~95 détaillées/mois/abonné, coût non borné.
+
+**2. Supprimer un compte arrête la facturation Stripe** (décision : fin de période
+dès la demande). Il n'existait AUCUN code de suppression : le site insérait une
+ligne `deletion_requests` depuis le navigateur, la suppression effective restait
+manuelle, et l'abonnement Stripe survivait au compte.
+- `POST /api/account/deletion-request` remplace l'insert client : trouve TOUS les
+  abonnements (table + `subscriptions.search` sur `metadata.user_id`, pour ceux dont
+  le webhook n'a jamais été reçu), pose `cancel_at_period_end`, et **n'enregistre la
+  demande qu'ensuite** — Stripe en échec ⇒ rien d'enregistré (503
+  `billing_stop_failed`). Logique et ordre dans `src/lib/stripe/account-deletion.ts`
+  (PUR, testé).
+- Annuler sa demande **ne réactive pas** l'abonnement (pas de prélèvement surprise) ;
+  la personne le réactive elle-même depuis le portail.
+- **Filet dans le webhook** pour un compte supprimé SANS demande (suppression manuelle
+  au Dashboard Supabase…) : tout `customer.subscription.*` / `checkout.session.completed`
+  dont le profil n'existe plus ⇒ résiliation immédiate, 200 (ça répare au passage une
+  boucle de 500 sur la clé étrangère). Et **`invoice.created`** : la facture de
+  renouvellement en brouillon est **figée** (`auto_advance: false`) après
+  résiliation.
+  > 🪤 Stripe **refuse de supprimer** une facture issue d'un abonnement (seules les
+  > factures ponctuelles se suppriment) — la première version le tentait, le smoke
+  > test l'a révélé. Figer, pas supprimer.
+- ⚠️ **À cocher dans Stripe (test ET live)** : l'événement `invoice.created` sur
+  l'endpoint du webhook. Sans lui, le filet ne voit le renouvellement qu'une fois
+  prélevé.
+- **Validé sur Stripe (sandbox) le 2026-09-11, 10/10** : `npx tsx
+  scripts/stripe-deletion-smoke.ts` rejoue les deux étages avec des horloges de test
+  avancées au-delà du renouvellement — un seul paiement au total dans les deux cas.
+  Passe par la CLI (sandbox), jamais par la clé de `.env.local`.
+
+**3. Résiliation sous une mention sans ambiguïté** (décret 2023-417). `/profil`
+porte un bouton **« Résilier mon abonnement »** qui ouvre le portail DIRECTEMENT sur
+l'écran de résiliation (`POST /api/stripe/portal { flow: 'cancel' }` →
+`flow_data.type = 'subscription_cancel'`), distinct de « Moyen de paiement et
+factures ». Règle d'affichage partagée interface ↔ route :
+`canCancelSubscription` (`subscription-view.ts`). `/profil` lit désormais
+`stripe_subscription_id`.
+
+### Restant à traiter
+
+- 🔴 **La clé Stripe de `.env.local` est une clé LIVE** (vérifié le 2026-09-11 par
+  son préfixe, sans l'afficher) — contrairement à ce que dit le § Abonnements Stripe
+  (« mode test »). Un `next dev` local encaisse donc de vrais paiements. Toute
+  vérification de configuration faite via la CLI (sandbox) — moyens de paiement,
+  portail — est **à refaire en LIVE**.
+- **Sondage « motif de résiliation » activé** dans le portail (sandbox) : il ajoute
+  une étape. À désactiver, ou à garder strictement facultatif, en live — d'où
+  « en quelques clics » dans les CGU, pas un nombre exact.
+- **L215-1-1 al. 2 : confirmer la résiliation sur support durable** (date de fin,
+  effets). Troisième obligation qui dépend du transport e-mail absent (avec L215-1 et
+  L221-13), sauf si les e-mails Stripe le couvrent — à vérifier dans le Dashboard.
+- **« Comparaison rangs supérieurs »** (grille, Maître) : aucune fonctionnalité
+  réservée à Maître ne correspond à ce libellé dans le code. Même classe de problème
+  que la grille IA — décision HORTAL à prendre.
+- Les autres limites de la grille (blocs d'overlay, imports, builds) ne sont pas
+  appliquées côté serveur : l'abonné reçoit au moins ce qui est annoncé, sans risque
+  juridique, mais la grille ne décrit pas la réalité.
+- **Encadré de garantie légale** (CGV § 7) reproduit d'après le modèle du décret
+  n° 2022-424 pour les contenus/services numériques : à faire vérifier **mot pour
+  mot** contre Légifrance.
 
 ---
 

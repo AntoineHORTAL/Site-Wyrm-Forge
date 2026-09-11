@@ -116,7 +116,7 @@ export default function ProfilePage() {
           // du confort de requête, la barrière est en base. `maybeSingle` et non
           // `single` — l'absence de ligne est le cas NORMAL, pas une erreur.
           supabase.from('stripe_subscriptions')
-            .select('stripe_customer_id, status, cancel_at_period_end, current_period_end')
+            .select('stripe_customer_id, stripe_subscription_id, status, cancel_at_period_end, current_period_end')
             .eq('user_id', user.id).maybeSingle(),
           fetch(`${DDN}/api/versions.json`),
         ])
@@ -453,7 +453,8 @@ function SubscriptionSection({ profile, subscription }: {
   const G = P.page
   const S = P.subscription
 
-  const [pending, setPending] = useState(false)
+  // Quel bouton est en cours d'ouverture — deux boutons mènent au portail.
+  const [pending, setPending] = useState<'cancel' | 'manage' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const view = resolveSubscriptionView({
@@ -465,22 +466,31 @@ function SubscriptionSection({ profile, subscription }: {
 
   const tierColor = TIER_COLORS[view.tier] ?? '#A1A1AA'
 
-  async function openPortal() {
+  /**
+   * `cancel` ouvre le portail DIRECTEMENT sur l'écran de résiliation (flux
+   * `subscription_cancel`) ; `manage` sur sa page d'accueil.
+   */
+  async function openPortal(flow: 'cancel' | 'manage') {
     setError(null)
-    setPending(true)
+    setPending(flow)
     try {
-      // POST sans corps : la route lit l'utilisateur connecté et retrouve
-      // elle-même son `stripe_customer_id`. Le lui transmettre depuis le
-      // navigateur ouvrirait les factures de n'importe qui à n'importe qui.
-      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      // Aucun identifiant ne part d'ici : la route lit l'utilisateur connecté et
+      // retrouve elle-même son client ET son abonnement Stripe. Les lui
+      // transmettre depuis le navigateur ouvrirait les factures — ou la
+      // résiliation — de n'importe qui à n'importe qui.
+      const res = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flow === 'cancel' ? { flow: 'cancel' } : {}),
+      })
       const data = await res.json().catch(() => null)
 
       if (!res.ok || !data?.url) {
         // Convention du repo : le code technique reste dans la console,
         // l'utilisateur lit un message traduit.
-        console.error('[profil] portal:', res.status, data?.error)
+        console.error('[profil] portal:', flow, res.status, data?.error)
         setError(S.manageError)
-        setPending(false)
+        setPending(null)
         return
       }
 
@@ -488,9 +498,9 @@ function SubscriptionSection({ profile, subscription }: {
       // domaine tiers, hors du routeur Next.
       window.location.assign(data.url)
     } catch (err) {
-      console.error('[profil] portal:', err)
+      console.error('[profil] portal:', flow, err)
       setError(S.manageError)
-      setPending(false)
+      setPending(null)
     }
   }
 
@@ -568,12 +578,39 @@ function SubscriptionSection({ profile, subscription }: {
           sur un palier redescendu à gratuit : factures et réactivation vivent
           là-bas. C'est exactement la condition que la route vérifie côté
           serveur, pour qu'un bouton visible ne mène jamais à une erreur. */}
+      {/* RÉSILIATION — bouton propre, sous une mention sans ambiguïté (décret
+          n° 2023-417, art. L215-1-1), et PAS une option cachée derrière
+          « gérer ». Profil → ce bouton → confirmation Stripe (+ sondage de motif
+          s'il est activé dans le portail — voir AGENTS.md § CGV).
+          Absent quand la résiliation est déjà programmée : la date de fin
+          s'affiche au-dessus, et la réactivation vit dans le portail. */}
+      {view.canCancel && (
+        <div style={{ marginBottom: view.canManageBilling ? 14 : 0 }}>
+          <button
+            type="button"
+            onClick={() => openPortal('cancel')}
+            disabled={pending !== null}
+            style={{
+              padding: '9px 16px', borderRadius: 8,
+              cursor: pending ? 'default' : 'pointer',
+              fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+              background: 'transparent', color: '#E24B4A',
+              border: '1px solid rgba(226,75,74,0.45)',
+              opacity: pending ? 0.7 : 1,
+            }}
+          >
+            {pending === 'cancel' ? S.cancelLoading : S.cancelSubscription}
+          </button>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>{S.cancelHint}</div>
+        </div>
+      )}
+
       {view.canManageBilling && (
         <>
           <button
             type="button"
-            onClick={openPortal}
-            disabled={pending}
+            onClick={() => openPortal('manage')}
+            disabled={pending !== null}
             style={{
               padding: '9px 16px', borderRadius: 8,
               cursor: pending ? 'default' : 'pointer',
@@ -583,7 +620,7 @@ function SubscriptionSection({ profile, subscription }: {
               opacity: pending ? 0.7 : 1,
             }}
           >
-            {pending ? S.manageLoading : S.manage}
+            {pending === 'manage' ? S.manageLoading : S.manage}
           </button>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>{S.manageHint}</div>
         </>
@@ -887,15 +924,26 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
     }
     setBusy(true); setMsg(null)
     try {
-      const { data, error } = await supabase.from('deletion_requests').insert({
-        user_id:  profile.id,
-        email:    profile.email,
-        username: profile.username,
-        reason:   reason.trim() || null,
-        status:   'pending',
-      }).select().single()
-      if (error) { setMsg({ kind: 'err', text: fail(error.message) }); return }
-      setPending(data as DeletionRequestRow)
+      // Route serveur et plus un `insert` direct : la demande doit d'abord
+      // ARRÊTER LA FACTURATION Stripe (fin de période), ce que le navigateur ne
+      // peut pas faire. Si Stripe échoue, la demande n'est pas enregistrée.
+      // Voir `src/lib/stripe/account-deletion.ts`.
+      const res = await fetch('/api/account/deletion-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailIn.trim(), reason: reason.trim() || null }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.request) {
+        console.error('[profil] deletion-request:', res.status, data?.error)
+        const text = data?.error === 'billing_stop_failed' ? D.errBilling
+          : data?.error === 'request_not_recorded' ? D.errNotRecorded
+          : data?.error === 'email_mismatch' ? D.emailMismatch
+          : fail(data?.error ?? String(res.status))
+        setMsg({ kind: 'err', text })
+        return
+      }
+      setPending(data.request as DeletionRequestRow)
       setOpening(false)
       setEmailIn(''); setReason('')
       setMsg({ kind: 'ok', text: D.done })
@@ -985,6 +1033,7 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
               <li>{D.bullet2}</li>
               <li>{D.bullet3}</li>
               <li>{D.bullet4}</li>
+              <li>{D.billingNote}</li>
             </ul>
             <div style={{ marginTop: 8, color: 'var(--text-dim)', fontStyle: 'italic' }}>
               {D.delay}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { useSession } from '@/components/providers/SessionProvider'
@@ -13,6 +14,8 @@ import {
   takeCheckoutIntent,
   sessionIntentStorage,
 } from '@/lib/stripe/checkout-intent'
+import { CONSENT_TEXTS, CURRENT_CONSENT_VERSION } from '@/lib/stripe/checkout-consent'
+import CheckoutConsentModal from './CheckoutConsentModal'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -41,7 +44,9 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 //   - sur la vitrine publique (`page.tsx`, branche visiteur) : personne n'est
 //     connecte, le clic doit donc ouvrir la modale de connexion ;
 //   - dans le dashboard, comme onglet cache `tarifs` (`Dashboard.tsx`) : la
-//     personne est connectee, le clic ouvre Stripe Checkout.
+//     personne est connectee, le clic ouvre l'ETAPE DE CONSENTEMENT
+//     (`CheckoutConsentModal`), et seule la confirmation de celle-ci, case
+//     cochee, ouvre Stripe Checkout.
 // D'ou la lecture de `useSession()` ici plutot qu'une prop : un meme composant,
 // deux points de montage, et aucun des deux n'a a savoir lequel s'applique.
 
@@ -60,6 +65,15 @@ export default function Pricing() {
   // etant alors en train de partir vers Stripe.
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Étape de consentement — le couple (palier, périodicité) pour lequel la
+  // modale est ouverte, et l'état de la case. `null` = modale fermée.
+  //
+  // ⚠️ La case repart TOUJOURS décochée à chaque ouverture (`askConsent`) : une
+  // acceptation donnée pour Forgeron mensuel ne vaut pas pour Maître annuel, et
+  // une case pré-cochée ne vaut pas demande expresse.
+  const [consentFor, setConsentFor] = useState<{ plan: PlanKey; period: BillingPeriod } | null>(null)
+  const [consentChecked, setConsentChecked] = useState(false)
 
   // Palier actuel, normalise comme le fait `isPaidTier` : `profiles.tier` n'a
   // aucune contrainte CHECK, et `page.tsx` utilise un repli capitalise.
@@ -81,9 +95,18 @@ export default function Pricing() {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Seuls le palier et la periodicite partent d'ici. Jamais un montant :
-        // le prix est choisi cote serveur a partir de ce couple.
-        body: JSON.stringify({ plan, period: forPeriod }),
+        // Seuls le palier, la periodicite et la DEMANDE EXPRESSE partent d'ici.
+        // Jamais un montant (le prix est choisi cote serveur), et jamais le
+        // texte de la case : le serveur le relit lui-meme a partir de la
+        // version et de la langue — voir `checkConsent`.
+        //
+        // `accepted: true` en dur est legitime ICI SEULEMENT : `openCheckout`
+        // n'est appele que par `confirmCheckout`, qui exige la case cochee.
+        body: JSON.stringify({
+          plan,
+          period: forPeriod,
+          consent: { accepted: true, version: CURRENT_CONSENT_VERSION, locale: lang },
+        }),
       })
 
       const data = await res.json().catch(() => null)
@@ -91,7 +114,7 @@ export default function Pricing() {
         // Convention du repo : le code technique reste dans la console,
         // l'utilisateur lit un message traduit.
         console.error('[pricing] checkout:', res.status, data?.error)
-        setError(p.checkoutError)
+        setError(data?.error === 'consent_outdated' ? p.consentOutdated : p.checkoutError)
         setPending(null)
         return
       }
@@ -104,7 +127,31 @@ export default function Pricing() {
       setError(p.checkoutError)
       setPending(null)
     }
-  }, [p.checkoutError])
+  }, [p.checkoutError, p.consentOutdated, lang])
+
+  /** Ouvre l'étape de consentement pour ce couple, case DÉCOCHÉE. */
+  const askConsent = useCallback((plan: PlanKey, forPeriod: BillingPeriod) => {
+    setError(null)
+    setConsentChecked(false)
+    setConsentFor({ plan, period: forPeriod })
+  }, [])
+
+  /**
+   * Seul chemin vers `openCheckout`. La garde sur la case double le `disabled`
+   * du bouton : un attribut HTML ne protège pas d'un gestionnaire appelé
+   * autrement (et la route re-vérifie de toute façon côté serveur).
+   */
+  function confirmCheckout() {
+    if (!consentFor || !consentChecked || pending) return
+    void openCheckout(consentFor.plan, consentFor.period)
+  }
+
+  function closeConsent() {
+    if (pending) return
+    setConsentFor(null)
+    setConsentChecked(false)
+    setError(null)
+  }
 
   function subscribe(plan: PlanKey) {
     // Visiteur non connecte : le checkout exige un `user_id` a rattacher a la
@@ -121,7 +168,7 @@ export default function Pricing() {
       return
     }
 
-    void openCheckout(plan, period)
+    askConsent(plan, period)
   }
 
   /**
@@ -134,13 +181,18 @@ export default function Pricing() {
    *   - connexion Google  -> la page entiere revient de `/auth/callback`, meme
    *     onglet, donc meme `sessionStorage`.
    *
+   * ⚠️ La reprise ROUVRE L'ÉTAPE DE CONSENTEMENT, elle ne va plus jamais
+   * directement chez Stripe. Le clic « Se connecter pour s'abonner » a eu lieu
+   * AVANT toute case à cocher : il exprime une intention d'achat, pas la
+   * demande expresse d'exécution immédiate. Sauter la modale ici serait le seul
+   * chemin de paiement sans consentement (et la route le refuserait en 400).
+   *
    * `takeCheckoutIntent` EFFACE avant de rendre : l'intention est consommee une
    * fois et une seule, y compris sous le double montage du mode strict de React.
-   * Sans cela, un echec d'ouverture relancerait un paiement au rendu suivant.
    *
    * La garde `resumed` couvre le meme risque cote React : un second passage de
    * l'effet (changement de `user` sans changement d'identite, re-render du
-   * provider) ne doit pas rouvrir un checkout deja lance.
+   * provider) ne doit pas rouvrir la modale une seconde fois.
    */
   const resumed = useRef(false)
 
@@ -151,18 +203,20 @@ export default function Pricing() {
     if (!intent) return
 
     resumed.current = true
-    // Le toggle suit la periodicite reprise : la page part vers Stripe, mais si
-    // la redirection echoue, ce qui reste a l'ecran doit correspondre a ce qui a
-    // ete tente.
+    // Le toggle suit la periodicite reprise : ce qui reste a l'ecran derriere la
+    // modale doit correspondre a ce qui est propose dedans.
     //
     // La regle `set-state-in-effect` vise les rendus en cascade ; ici le setState
-    // a lieu UNE seule fois par session (garde `resumed`), juste avant une
-    // redirection pleine page. C'est exactement le cas ou synchroniser l'affichage
-    // sur l'action en cours est le comportement voulu.
+    // a lieu UNE seule fois par session (garde `resumed`), pour synchroniser
+    // l'affichage sur une action en attente — le cas ou c'est voulu.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAnnual(intent.period === 'annuel')
-    void openCheckout(intent.plan, intent.period)
-  }, [user, openCheckout])
+    askConsent(intent.plan, intent.period)
+  }, [user, askConsent])
+
+  // Tier et prix de la modale ouverte, depuis les mêmes sources que les cartes.
+  const consentTierIndex = consentFor ? PRICING_TIERS.findIndex(t => t.plan === consentFor.plan) : -1
+  const consentTier = consentTierIndex >= 0 ? PRICING_TIERS[consentTierIndex] : null
 
   const segBtn = (active: boolean): React.CSSProperties => ({
     padding: '7px 16px',
@@ -372,10 +426,44 @@ export default function Pricing() {
 
       {/* Échec d'ouverture du checkout — sous la grille et pas dans une carte :
           l'erreur ne concerne pas un palier en particulier. */}
-      {error && (
+      {error && !consentFor && (
         <p role="alert" style={{ textAlign: 'center', color: '#E24B4A', fontSize: 13, marginTop: 24 }}>
           {error}
         </p>
+      )}
+
+      {/* Étape de consentement. Portail vers <body> : la section porte des
+          animations `.land-reveal` (transform), qui feraient d'un `position:
+          fixed` un positionnement relatif à la carte. Rendu uniquement après
+          interaction, donc jamais côté serveur (pas de `document` au SSR). */}
+      {consentFor && consentTier && typeof document !== 'undefined' && createPortal(
+        <CheckoutConsentModal
+          tierLabel={p.tiers[consentTierIndex].name}
+          periodLabel={consentFor.period === 'annuel' ? p.annual : p.monthly}
+          priceText={consentFor.period === 'annuel'
+            ? formatPrice(consentTier.annual, lang) + p.perYear
+            : formatPrice(consentTier.monthly, lang) + p.perMonth}
+          // Le texte EXACT que le serveur enregistrera — même module, même clé.
+          consentText={CONSENT_TEXTS[CURRENT_CONSENT_VERSION][lang]}
+          checked={consentChecked}
+          pending={pending !== null}
+          error={error}
+          termsHref="/cgv"
+          labels={{
+            title: p.consentTitle,
+            priceLabel: p.consentPriceLabel,
+            renewal: consentFor.period === 'annuel' ? p.consentRenewalAnnual : p.consentRenewalMonthly,
+            termsBefore: p.consentTermsBefore,
+            termsLink: p.consentTermsLink,
+            confirm: p.consentConfirm,
+            confirmLoading: p.consentConfirmLoading,
+            cancel: p.consentCancel,
+          }}
+          onToggle={() => setConsentChecked(v => !v)}
+          onConfirm={confirmCheckout}
+          onCancel={closeConsent}
+        />,
+        document.body,
       )}
 
       {/* Paliers à venir — sobre, sans promesse de date */}

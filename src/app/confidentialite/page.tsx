@@ -11,7 +11,7 @@ export default function ConfidentialitePage() {
     <LegalPage
       title="Politique de"
       accent="confidentialité"
-      updated="31 juillet 2026"
+      updated="11 septembre 2026"
       current="/confidentialite"
       intro={<>
         Wyrm Forge est un assistant de jeu pour League of Legends. Pour fonctionner, il traite
@@ -78,6 +78,18 @@ export default function ConfidentialitePage() {
             de l&apos;organisation du tournoi.</li>
         </List>
 
+        {/* `stripe_subscriptions` (20260909000003) et `checkout_consent_log`
+            (20260911000003). Aucune donnée de carte : elle reste chez Stripe. */}
+        <p style={{ marginTop: 16 }}><strong>Abonnement payant — uniquement si tu souscris</strong> :</p>
+        <List>
+          <li>tes identifiants de client et d&apos;abonnement chez Stripe, le palier souscrit, le
+            statut de l&apos;abonnement et ses dates d&apos;échéance ;</li>
+          <li>la preuve de ta demande d&apos;accès immédiat au service, recueillie avant le
+            paiement : date et heure, texte exact de la case cochée et sa version, langue
+            d&apos;affichage, palier et périodicité choisis, version des conditions générales de
+            vente.</li>
+        </List>
+
         <p style={{ marginTop: 16 }}><strong>Écailles (monnaie virtuelle interne)</strong> :</p>
         <List>
           <li>journal des mouvements (gains de quêtes, achats en boutique) ;</li>
@@ -142,8 +154,10 @@ export default function ConfidentialitePage() {
             Retirable à tout moment, sans justification.</li>
           <li><strong>Intérêt légitime</strong> — sécurité du service, prévention des abus,
             respect des quotas imposés par Riot Games, amélioration des fonctionnalités.</li>
-          <li><strong>Obligation légale</strong> — conservation des pièces comptables une fois
-            les abonnements payants activés.</li>
+          <li><strong>Obligation légale</strong> — conservation des pièces comptables des
+            abonnements payants, et de la preuve de ta demande d&apos;accès immédiat au service
+            (article L221-25 du Code de la consommation), que nous devons pouvoir produire en
+            cas de rétractation ou de litige.</li>
         </List>
       </Section>
 
@@ -165,9 +179,9 @@ export default function ConfidentialitePage() {
             aucun identifiant de compte, aucune adresse e-mail.</li>
           <li><strong>Resend</strong> — envoi des e-mails transactionnels (confirmation de compte,
             notification de demande de suivi).</li>
-          <li><strong>Stripe</strong> — traitement des paiements, dès l&apos;activation des
-            abonnements payants. Nous ne stockons aucune donnée de carte bancaire :
-            elles sont saisies directement chez Stripe.</li>
+          <li><strong>Stripe</strong> — traitement des paiements des abonnements, facturation et
+            portail de gestion de l&apos;abonnement. Nous ne stockons aucune donnée de carte
+            bancaire : elles sont saisies directement chez Stripe.</li>
         </List>
         <p style={{ marginTop: 12 }}>
           Certains de ces prestataires sont établis hors de l&apos;Union européenne. Les transferts
@@ -186,6 +200,16 @@ export default function ConfidentialitePage() {
             puis purge.</li>
           <li><strong>Journal des Écailles</strong> — conservé tant que le compte existe, pour
             garantir l&apos;intégrité du solde ; supprimé avec le compte.</li>
+          <li><strong>Données d&apos;abonnement</strong> — tant que le compte existe ; supprimées
+            avec le compte. Les factures sont conservées par Stripe pendant la durée imposée par
+            les obligations comptables (10 ans).</li>
+          {/* ⚠️ Aucune purge automatique n'existe : la première échéance tombe en
+              2031. À planifier avant cette date (AGENTS.md § CGV). Le détachement
+              du compte est, lui, automatique : FK `ON DELETE SET NULL`. */}
+          <li><strong>Preuve de ta demande d&apos;accès immédiat</strong> — 5 ans à compter de ta
+            souscription (délai de prescription des actions civiles), pour pouvoir la produire en
+            cas de litige. Si ton compte est supprimé avant, la preuve est conservée pour la même
+            durée, mais détachée de ton compte.</li>
           <li><strong>Riot ID recherchés (autocomplétion)</strong> — conservés sans limite de durée.
             Il s&apos;agit d&apos;identifiants de jeu publics, non rattachés à un compte Wyrm Forge.</li>
           <li><strong>Données de suivi « prac »</strong> — supprimées immédiatement en cas de
