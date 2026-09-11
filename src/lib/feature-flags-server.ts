@@ -66,15 +66,14 @@ export async function isPublicFlagEnabled(key: string): Promise<boolean> {
  * Lecture d'un feature flag depuis un COMPOSANT SERVEUR.
  *
  * `FeatureFlagsProvider` couvre tout ce qui est rendu côté client. Il ne peut rien
- * pour un layout `async` qui décide d'un `redirect()` avant même de rendre —
- * c'est le cas du shell prac, dont la garde doit tomber avant que la moindre
- * donnée interne ne parte au navigateur. D'où cette lecture serveur, qui partage
- * les fonctions PURES du provider (résolution des parents, repli asymétrique)
- * pour que les deux chemins ne puissent pas diverger.
+ * pour un layout `async` qui décide d'un `redirect()` avant même de rendre — une
+ * garde qui doit tomber avant que la moindre donnée ne parte au navigateur. D'où
+ * cette lecture serveur, qui partage les fonctions PURES du provider (résolution
+ * des parents, repli asymétrique) pour que les deux chemins ne divergent pas.
  *
  * ⚠️ Pas de cache : un kill switch dont la propagation dépendrait d'un cache
  * n'est pas un kill switch. Le coût est d'une requête par rendu serveur d'une
- * route ainsi gardée — négligeable, et `/prac/*` est déjà `force-dynamic`.
+ * route ainsi gardée — négligeable, ces routes étant déjà `force-dynamic`.
  *
  * Fail-open / fail-closed selon `flagFallback` : en cas d'erreur, un kill switch
  * laisse passer (une panne de base ne doit pas fermer un outil interne) et un

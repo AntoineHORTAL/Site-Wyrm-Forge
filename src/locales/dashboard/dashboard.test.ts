@@ -24,10 +24,9 @@ import { KIT_FORMULAS } from '@/lib/kit-snapshot'
 import { kitProgressMessage, kitRpcError } from './kit'
 import { queueLabel } from './common'
 import {
-  riotRankLabel, supabaseAuthError, consentRpcError, consentOkMessage, gamesLabel,
+  riotRankLabel, supabaseAuthError, gamesLabel,
 } from './profil'
 import { LOL_RANKS } from '@/app/profil/page'
-import { CONSENT_STATUSES, CONSENT_RPC_ERRORS } from '@/app/consent/page'
 import {
   TIERS, PROFILE_ROLES, PATCH_STATUSES, PATCH_GEN_REASONS, ADMIN_SETTING_KEYS, QUICK_DATES,
 } from '@/components/dashboard/tabs/AdminTab'
@@ -101,14 +100,14 @@ const INVARIANTS = new Set<string>([
   // Lot 6 — en-têtes de colonnes et libellés du panneau admin dont l'orthographe est
   // la même dans les deux langues (« Admin » et « Patch Notes » sont déjà plus haut).
   'Tier', 'Expiration', 'Actions', '📅 Date', '✕', 'https://...',
-  // Lot 7 — rangs LoL et libellés de /profil, /consent et AuthModal identiques dans
-  // les deux langues.
+  // Lot 7 — rangs LoL et libellés de /profil et AuthModal identiques dans les deux
+  // langues.
   'Bronze', 'KDA', 'Vision',
   // Résultat d'une partie : W/L dans les DEUX langues, aussi bien pour le bilan
-  // chiffré (/profil, /consent) que pour les pastilles d'une lettre (timeline Stats,
-  // liste /consent, ligne Post Game). Les MOTS « Victoire » / « Défaite » restent
-  // traduits, eux — un test dédié verrouille la distinction.
-  '{wins}W {losses}L', ' · {wins}W {losses}L', 'W', 'L',
+  // chiffré de /profil que pour les pastilles d'une lettre (timeline Stats, ligne
+  // Post Game). Les MOTS « Victoire » / « Défaite » restent traduits, eux — un test
+  // dédié verrouille la distinction.
+  '{wins}W {losses}L', 'W', 'L',
   // Gabarits sans mot traduisible.
   '{rate}% WR', 'Champ #{id}',
   // Message natif de Supabase : côté EN, la valeur EST la clé. C'est précisément le
@@ -954,7 +953,7 @@ describe('dico admin — marqueurs des gabarits', () => {
 })
 
 /**
- * Lot 7 — `/profil`, `/consent` et `AuthModal`. Trois tables indexées par une valeur
+ * Lot 7 — `/profil` et `AuthModal`. Tables indexées par une valeur
  * métier, comme aux lots précédents ; les jeux de valeurs sont importés des pages, où
  * ils sont recopiés du schéma (CHECK `chk_profiles_riot_rank`, CHECK sur
  * `tracked_players.status`, `RAISE EXCEPTION` de `respond_consent`).
@@ -969,21 +968,8 @@ describe('dico profil — tables d\'affichage des valeurs métier', () => {
       .toEqual(LOL_RANKS.map(r => r.key).sort())
   })
 
-  /**
-   * ⚠️ `pending` est ABSENT de `pills` volontairement : cet état affiche les boutons
-   * Accepter / Refuser, pas de pastille. Le test le formalise pour qu'un futur lot ne
-   * « complète » pas la table avec une entrée que rien ne rendrait.
-   */
-  it('a une pastille pour chaque statut qui en affiche une, et seulement ceux-là', () => {
-    const avecPastille = CONSENT_STATUSES.filter(s => s !== 'pending')
-    expect(Object.keys(dashboardFr.profil.consent.pills).sort()).toEqual([...avecPastille].sort())
-    expect(CONSENT_STATUSES).toContain('pending')
-  })
-
-  it('a un message pour chaque code levé par respond_consent', () => {
-    expect(Object.keys(dashboardFr.profil.consent.rpcErrors).sort())
-      .toEqual([...CONSENT_RPC_ERRORS].sort())
-  })
+  /* Les deux tests des tables `consent` (pastilles de `tracked_players.status` et codes
+     de `respond_consent`) ont été retirés le 2026-09-11 avec le module PRAC. */
 })
 
 /**
@@ -1040,31 +1026,8 @@ describe('dico profil — replis des helpers', () => {
     expect(riotRankLabel(dashboardEn.profil, '')).toBe('Not set')
   })
 
-  it('résout les trois codes de respond_consent, y compris enrobés par PostgREST', () => {
-    // La recherche est un `includes` : PostgREST enrobe le code levé par
-    // `RAISE EXCEPTION` dans un message plus large.
-    CONSENT_RPC_ERRORS.forEach(code => {
-      const brut = `invalid input: ${code} (SQLSTATE P0001)`
-      expect(consentRpcError(dashboardFr.profil, brut)).toBe(dashboardFr.profil.consent.rpcErrors[code])
-      expect(consentRpcError(dashboardEn.profil, brut)).not.toBe(dashboardEn.profil.consent.rpcFallback)
-    })
-  })
-
-  it('retombe sur le message générique pour une erreur sans code connu', () => {
-    // Erreur réseau ou permission : aucun code métier dedans.
-    expect(consentRpcError(dashboardFr.profil, 'TypeError: Failed to fetch'))
-      .toBe(dashboardFr.profil.consent.rpcFallback)
-  })
-
-  it('confirme chaque statut renvoyé par respond_consent', () => {
-    // La fonction ne renvoie jamais `pending` (aucune transition n'y mène) : les trois
-    // autres doivent avoir leur propre confirmation, distincte du repli.
-    CONSENT_STATUSES.filter(s => s !== 'pending').forEach(status => {
-      expect(consentOkMessage(dashboardFr.profil, status)).not.toBe(dashboardFr.profil.consent.okFallback)
-      expect(consentOkMessage(dashboardEn.profil, status)).not.toBe(dashboardEn.profil.consent.okFallback)
-    })
-    expect(consentOkMessage(dashboardFr.profil, null)).toBe(dashboardFr.profil.consent.okFallback)
-  })
+  /* Les trois tests des helpers `consentRpcError` / `consentOkMessage` sont partis le
+     2026-09-11 avec le module PRAC, en même temps que les helpers eux-mêmes. */
 
   it('accorde le singulier et le pluriel des parties', () => {
     expect(gamesLabel(dashboardFr.profil, 1)).toBe('1 partie')
@@ -1097,8 +1060,6 @@ describe('phrases coupées — ponctuation portée par le bon fragment', () => {
       dashboardFr.profil.deletion.introAfter,    dashboardEn.profil.deletion.introAfter,
       dashboardFr.profil.deletion.confirmBefore, dashboardEn.profil.deletion.confirmBefore,
       dashboardFr.profil.deletion.confirmAfter,  dashboardEn.profil.deletion.confirmAfter,
-      dashboardFr.profil.consent.pendingBefore,  dashboardEn.profil.consent.pendingBefore,
-      dashboardFr.profil.consent.pendingAfter,   dashboardEn.profil.consent.pendingAfter,
     ]
     // L'espace est déjà dans le JSX, entre les deux expressions : la porter AUSSI dans
     // le dico produirait une double espace, invisible en relecture.
@@ -1108,28 +1069,15 @@ describe('phrases coupées — ponctuation portée par le bon fragment', () => {
     })
   })
 
-  it('compose la phrase de la vue self sans marqueur résiduel', () => {
-    const C = dashboardEn.profil.consent
-    const record = C.record.replace('{wins}', '8').replace('{losses}', '4')
-    const phrase = C.selfIntroOther.replace('{count}', '12').replace('{record}', record)
-    expect(phrase).toBe('Here is the data recorded about your performance (12 games · 8W 4L).')
-    // Même bilan côté FR : W/L, pas V/D.
-    const fr = dashboardFr.profil.consent
-    expect(fr.selfIntroOther
-      .replace('{count}', '12')
-      .replace('{record}', fr.record.replace('{wins}', '8').replace('{losses}', '4')))
-      .toBe('Voici les données enregistrées sur tes performances (12 parties · 8W 4L).')
-    // Sans agrégats, `{record}` est remplacé par du vide : la parenthèse doit rester.
-    expect(C.selfIntroOne.replace('{count}', '1').replace('{record}', ''))
-      .toBe('Here is the data recorded about your performance (1 game).')
-  })
+  /* `compose la phrase de la vue self sans marqueur résiduel` portait sur les phrases
+     coupées de /consent : retiré le 2026-09-11 avec le module PRAC. */
 })
 
 /**
  * Deux notions distinctes, désormais alignées sur la MÊME convention :
- *  - le BILAN chiffré (« 8W 4L »), sur /profil comme sur /consent ;
+ *  - le BILAN chiffré (« 8W 4L ») de /profil ;
  *  - la PASTILLE d'une partie (« W » / « L »), une seule lettre dans un rond de 20 px,
- *    servie par `common` (timeline de Stats, liste de /consent) et redéclarée dans
+ *    servie par `common` (timeline de Stats) et redéclarée dans
  *    `analyse.postgame` pour la ligne de match Post Game.
  * Décision produit de clôture du chantier : W/L PARTOUT, y compris en français. Ces
  * tests verrouillent l'absence de V/D résiduel, et le fait que les quatre pastilles
@@ -1139,9 +1087,6 @@ describe("initiales de résultat — W/L partout, dans les deux langues", () => 
   it('écrit le bilan en W/L dans les deux langues', () => {
     expect(dashboardFr.profil.page.winLoss).toBe('{wins}W {losses}L')
     expect(dashboardEn.profil.page.winLoss).toBe('{wins}W {losses}L')
-    expect(dashboardFr.profil.consent.record).toBe(dashboardEn.profil.consent.record)
-    expect(dashboardFr.profil.consent.record).not.toContain('V')
-    expect(dashboardFr.profil.consent.record).not.toContain('D')
   })
 
   it('écrit les pastilles en W/L dans les deux langues', () => {

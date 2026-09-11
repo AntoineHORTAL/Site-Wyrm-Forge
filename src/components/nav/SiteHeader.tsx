@@ -22,12 +22,11 @@ import { useDashboardNav } from '@/components/providers/DashboardNavProvider'
 /**
  * Routes sans header de site.
  *
- * `/prac` est un outil interne servi sur son propre sous-domaine
- * (prac.wyrm-forge.com, `robots: noindex`) : son layout porte déjà sa propre
- * navigation et sa garde d'accès. Lui superposer l'en-tête public afficherait
- * deux barres et des liens hors sujet.
+ * Liste VIDE depuis le retrait du module PRAC (2026-09-11) : `/prac` en était
+ * l'unique entrée. Le mécanisme est conservé — il resservira à la première
+ * route qui porte sa propre navigation.
  */
-const HEADERLESS_PREFIXES = ['/prac']
+const HEADERLESS_PREFIXES: string[] = []
 
 export default function SiteHeader() {
   const pathname = usePathname()

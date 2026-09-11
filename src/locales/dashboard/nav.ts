@@ -28,7 +28,6 @@ export const NAV_TAB_IDS = [
   'jungle', 'builds', 'scenarios',
   'workshop-builds', 'workshop-jungle',
   'matchup', 'postgame',
-  'tournois',
 ] as const
 
 export type NavTabId = (typeof NAV_TAB_IDS)[number]
@@ -60,7 +59,6 @@ const tabsFr: Record<NavTabId, TabLabel> = {
   'workshop-jungle':  { label: 'Workshop Jungle',  short: 'W. Jungle' },
   matchup:            { label: 'Match Up',         short: 'Match Up' },
   postgame:           { label: 'Post Game',        short: 'Post Game' },
-  tournois:           { label: 'Tournois',         short: 'Tournois' },
 }
 
 const tabsEn: Record<NavTabId, TabLabel> = {
@@ -79,7 +77,6 @@ const tabsEn: Record<NavTabId, TabLabel> = {
   'workshop-jungle':  { label: 'Workshop Jungle',  short: 'W. Jungle' },
   matchup:            { label: 'Match Up',         short: 'Match Up' },
   postgame:           { label: 'Post Game',        short: 'Post Game' },
-  tournois:           { label: 'Tournaments',      short: 'Tournaments' },
 }
 
 /* Intitulés des groupes de la sidebar / du drawer. Les `id` sont structurels. */
@@ -88,7 +85,6 @@ const groupsFr = {
   perso:      'Personnalisation',
   workshop:   'Workshop',
   ia:         'Analyse IA',
-  soon:       'Bientôt',
 }
 
 export type NavGroupId = keyof typeof groupsFr
@@ -98,7 +94,6 @@ const groupsEn: Record<NavGroupId, string> = {
   perso:      'Customisation',
   workshop:   'Workshop',
   ia:         'AI Analysis',
-  soon:       'Coming soon',
 }
 
 /**
@@ -157,7 +152,6 @@ const pageTitlesFr = {
   'workshop-jungle': { title: 'Workshop Jungle',  subtitle: 'Jungle paths de la communauté' },
   matchup:           { title: 'Match Up',         subtitle: 'Analyse tes matchups en temps réel' },
   postgame:          { title: 'Post Game',        subtitle: 'Analyse détaillée après la partie' },
-  tournois:          { title: 'Tournois',         subtitle: 'Bientôt disponible' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'Résumés des mises à jour League of Legends' },
   ecailles:          { title: 'La Forge',         subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
   kit:               { title: 'Kit sur mesure',   subtitle: 'Un accompagnement construit pour ton jeu' },
@@ -178,7 +172,6 @@ const pageTitlesEn: Record<PageTitleId, { title: string; subtitle: string }> = {
   'workshop-jungle': { title: 'Workshop Jungle',  subtitle: 'Community jungle paths' },
   matchup:           { title: 'Match Up',         subtitle: 'Analyse your matchups in real time' },
   postgame:          { title: 'Post Game',        subtitle: 'Detailed post-game analysis' },
-  tournois:          { title: 'Tournaments',      subtitle: 'Coming soon' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'League of Legends update summaries' },
   ecailles:          { title: 'The Forge',        subtitle: 'Scales, daily quests and cosmetics shop' },
   kit:               { title: 'Custom kit',       subtitle: 'Coaching built around your game' },

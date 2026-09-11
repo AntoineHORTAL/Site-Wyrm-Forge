@@ -16,7 +16,6 @@ import MatchUpTab from './tabs/MatchUpTab'
 import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import KitTab from './tabs/KitTab'
-import ConsentBanner from './ConsentBanner'
 import CheckoutReturn from './CheckoutReturn'
 import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'
 import { useFlag } from '@/components/providers/FeatureFlagsProvider'
@@ -38,7 +37,6 @@ const IconWBuild   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill=
 const IconWJungle  = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 const IconMatchUp  = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
 const IconPostGame = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-const IconTournois = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
 const IconAdmin    = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
 const IconChamps   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><path d="M9 12h6"/></svg>
 const IconScenarios= () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6l9-3 9 3"/><path d="M3 6v12l9 3 9-3V6"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>
@@ -129,12 +127,9 @@ export const tabGroups: TabGroup[] = [
       { id: 'postgame', icon: <IconPostGame /> },
     ],
   },
-  {
-    id: 'soon',
-    tabs: [
-      { id: 'tournois', icon: <IconTournois />, soon: true },
-    ],
-  },
+  // Le groupe `soon` a été retiré le 2026-09-11 avec le module Tournois : il ne
+  // contenait que cet onglet. Le drapeau `soon` de `TabDef` reste en place — il
+  // est générique et resservira au prochain onglet annoncé avant d'exister.
 ]
 
 /* Flat list for drawer in Nav */
@@ -292,9 +287,6 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
 
       {/* ── MAIN CONTENT ── */}
       <main className="dash-main">
-        {/* Bandeau demande de suivi prac en attente — auto-masqué si aucun dossier pending */}
-        <ConsentBanner />
-
         {/* Retour de Stripe Checkout — auto-masqué hors `?checkout=…`. Monté ici
             et pas dans `page.tsx` (contrairement à SubscriptionReminder, qui est
             une modale plein écran) : c'est un bandeau de flux, il appartient à la
@@ -391,10 +383,6 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
         {/* Post Game : une seule des 9 combinaisons prévues (simple × perso). */}
         {activeTab === 'postgame' && (postgameAiEnabled ? <PostGameTab profile={profile} /> : notice)}
 
-        {/* Soon: Tournois */}
-        {activeTab === 'tournois' && (
-          <SoonScreen title="Tournois" c={c} />
-        )}
       </main>
 
       {/* ── COLONNE PUBLICITAIRE (palier gratuit uniquement) ──
@@ -488,19 +476,6 @@ function LockedScreen({ title, subtitle, labels, c, badge }: {
   )
 }
 
-/* ── Soon screen ── */
-function SoonScreen({ title, c }: { title: string; c: boolean }) {
-  return (
-    <div style={{
-      textAlign: 'center', padding: '60px 32px', borderRadius: 12,
-      border: `2px dashed ${c ? 'rgba(186,117,23,0.25)' : '#27272A'}`,
-    }}>
-      <div style={{ fontSize: 36, marginBottom: 16 }}>🏆</div>
-      <h3 style={{ fontSize: 20, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>{title}</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '0 auto 8px', maxWidth: 400 }}>
-        Cette fonctionnalité est en cours de développement.
-      </p>
-      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>Reste à l'affût — ça arrive bientôt.</p>
-    </div>
-  )
-}
+/* `SoonScreen` a été retiré le 2026-09-11 : son unique appelant était l'onglet
+   Tournois. Ne pas le confondre avec `ComingSoonScreen` de `FeatureScreens`,
+   qui est toujours utilisé par Kit et Scénarios et n'a rien à voir. */

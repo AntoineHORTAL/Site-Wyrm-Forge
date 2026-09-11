@@ -11,9 +11,8 @@
  * milliers de lignes. Chaque module porte sa propre dérivation de type ; ce fichier
  * ne fait que les assembler.
  *
- * Périmètre (validé) : dashboard + Nav connecté + /profil + /consent + AuthModal +
- * builder/ + ecailles/. EXCLUS : /prac/*, et toutes les pages
- * publiques, qui restent en français.
+ * Périmètre (validé) : dashboard + Nav connecté + /profil + AuthModal + builder/ +
+ * ecailles/. EXCLUES : toutes les pages publiques, qui restent en français.
  *
  * ⏳ Les modules sont vides : le Lot 0 pose la structure, chaque lot suivant remplit
  * le sien (voir l'en-tête de chaque fichier pour le lot qui lui correspond).

@@ -236,7 +236,8 @@ export const landingFr = {
           'Workshop illimité',
           'Analyses IA illimitées (Opus)',
           'Builds & paths illimités',
-          'Comparaison rangs supérieurs',
+          // « Comparaison rangs supérieurs » RETIRÉ le 2026-09-11 (décision HORTAL) :
+          // promis sur la grille, jamais implémenté. Backlog : AGENTS.md § À faire plus tard.
         ],
       },
     ],
@@ -484,7 +485,6 @@ export const landingEn: LandingDict = {
           'Unlimited workshop',
           'Unlimited AI analyses (Opus)',
           'Unlimited builds & paths',
-          'Compare against higher ranks',
         ],
       },
     ],

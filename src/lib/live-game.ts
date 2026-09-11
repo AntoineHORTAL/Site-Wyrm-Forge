@@ -116,9 +116,6 @@ export function splitTeams<T extends { team_id: number }>(rows: T[]): SplitTeams
 // `locales/dashboard/common.ts` (`queues` + `queueLabel`), où elle existe dans les
 // deux langues. Elle est toujours recopiée UNE fois, simplement ailleurs — les
 // libellés français y sont identiques à ceux qui étaient ici.
-//
-// `lib/prac.ts` garde sa propre table : `/prac/*` est hors périmètre du chantier
-// i18n, et cette dette-là reste documentée telle quelle.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entrées : plateforme, Riot ID, PUUID

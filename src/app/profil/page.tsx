@@ -936,7 +936,11 @@ function DeletionRequest({ profile }: { profile: UserProfile }) {
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
           {D.protectedBefore}{' '}
-          <a href="mailto:admin@wyrm-forge.com" style={{ color: '#EF9F27' }}>admin@wyrm-forge.com</a>
+          {/* contact@ et non admin@ : décision du 2026-09-11 d'une adresse publiée UNIQUE
+              sur tout le produit. Cet encart ne s'affiche qu'aux comptes de l'équipe, mais
+              c'est bien une adresse affichée, et deux adresses en circulation, c'est la
+              question à laquelle il a fallu répondre pour les mentions légales. */}
+          <a href="mailto:contact@wyrm-forge.com" style={{ color: '#EF9F27' }}>contact@wyrm-forge.com</a>
           {D.protectedAfter}
         </div>
       </section>

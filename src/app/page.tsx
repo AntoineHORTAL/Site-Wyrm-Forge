@@ -7,7 +7,6 @@ import Community from '@/components/landing/Community'
 import Pricing from '@/components/landing/Pricing'
 import FinalCTA from '@/components/landing/FinalCTA'
 import FAQ from '@/components/landing/FAQ'
-import Footer from '@/components/landing/Footer'
 import Dashboard, { dashTabs } from '@/components/dashboard/Dashboard'
 import SubscriptionReminder from '@/components/dashboard/SubscriptionReminder'
 import { useSession } from '@/components/providers/SessionProvider'
@@ -106,7 +105,9 @@ export default function Home() {
       <Pricing />
       <FinalCTA />
       <FAQ />
-      <Footer />
+      {/* Le <Footer /> a déménagé dans le layout racine : il est désormais rendu
+          sur TOUTES les routes, connectées comprises, pour que les liens légaux
+          soient atteignables partout. Le remettre ici le rendrait deux fois. */}
     </>
   )
 }

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
-import { LegalPage, Section, List, Todo } from '@/components/legal/LegalPage'
+// `Todo` n'est plus importé : cette page n'a plus aucune information manquante.
+// Les trous restants du dossier légal vivent tous dans /mentions-legales.
+import { LegalPage, Section, List } from '@/components/legal/LegalPage'
 
 export const metadata: Metadata = {
   title: 'Politique de confidentialité — Wyrm Forge',
@@ -11,7 +13,7 @@ export default function ConfidentialitePage() {
     <LegalPage
       title="Politique de"
       accent="confidentialité"
-      updated="31 juillet 2026"
+      updated="11 septembre 2026"
       current="/confidentialite"
       intro={<>
         Wyrm Forge est un assistant de jeu pour League of Legends. Pour fonctionner, il traite
@@ -22,9 +24,12 @@ export default function ConfidentialitePage() {
     >
       <Section title="1. Responsable du traitement">
         <p>
-          Le responsable du traitement est <Todo>dénomination sociale de la SASU</Todo>,
-          société en cours d&apos;immatriculation, dont le siège est situé <Todo>adresse du siège</Todo>.
+          Le responsable du traitement est la société <strong>Wyrm Forge</strong>, société par
+          actions simplifiée unipersonnelle au capital de 500 €, dont le siège social est situé
+          5 Rue du 23 Janvier, 21000 Dijon, France. Ses mentions d&apos;immatriculation complètes
+          figurent dans nos mentions légales.
         </p>
+
         <p style={{ marginTop: 10 }}>
           Pour toute question relative à tes données personnelles :{' '}
           <a href="mailto:contact@wyrm-forge.com" style={{ color: 'var(--gold-pale)' }}>
@@ -72,10 +77,7 @@ export default function ConfidentialitePage() {
         <p style={{ marginTop: 16 }}><strong>Contenus que tu crées</strong> :</p>
         <List>
           <li>builds d&apos;items, jungle paths, to-do lists, scénarios de macro, analyses de match up ;</li>
-          <li>contributions publiées sur le Workshop, visibles par les autres utilisateurs ;</li>
-          <li>inscriptions à des tournois : nom d&apos;équipe, pseudo Riot et pseudo Discord.
-            Le pseudo Discord n&apos;est jamais affiché publiquement, il n&apos;est visible que
-            de l&apos;organisation du tournoi.</li>
+          <li>contributions publiées sur le Workshop, visibles par les autres utilisateurs.</li>
         </List>
 
         <p style={{ marginTop: 16 }}><strong>Écailles (monnaie virtuelle interne)</strong> :</p>
@@ -93,44 +95,50 @@ export default function ConfidentialitePage() {
           utilisée de manière transitoire pour limiter le nombre de requêtes par visiteur
           (protection anti-abus et respect des quotas Riot). Elle n&apos;est pas conservée dans un
           journal consultable et ne sert à aucun profilage.</p>
-
-        <p style={{ marginTop: 16 }}>
-          <strong>Suivi « prac » (outil interne)</strong> — un administrateur peut demander à suivre
-          tes performances dans le temps. Cette demande t&apos;est notifiée par e-mail et
-          <strong> rien n&apos;est enregistré tant que tu n&apos;as pas explicitement accepté</strong>.
-          Tu peux révoquer ce consentement à tout moment ; les données suivies sont alors
-          immédiatement supprimées.
-        </p>
       </Section>
 
       <Section title="3. Cookies et stockage local">
         <p>
-          Wyrm Forge dépose <strong>un seul cookie strictement nécessaire</strong> à son
-          fonctionnement, décrit ci-dessous. Nous n&apos;utilisons aucun outil de mesure
-          d&apos;audience.
+          Deux choses seulement peuvent être déposées ou lues sur ton appareil : un cookie de
+          session <strong>strictement nécessaire</strong> au fonctionnement du service, et le
+          script publicitaire de Google, qui n&apos;est chargé <strong>qu&apos;avec ton
+          consentement</strong>. Nous n&apos;utilisons aucun outil de mesure d&apos;audience.
         </p>
+
+        <p style={{ marginTop: 16 }}><strong>Cookie strictement nécessaire</strong> — déposé
+          dans tous les cas, aucun consentement requis :</p>
         <List>
           <li><code>sb-…-auth-token</code> — cookie de session émis par Supabase Auth. Il te
             maintient connecté d&apos;une page à l&apos;autre. Attributs <code>SameSite=Lax</code>
             et <code>Secure</code> en production. Sans lui, la connexion est impossible.</li>
         </List>
-        <p style={{ marginTop: 12 }}>
-          Le site intègre par ailleurs le script de vérification fourni par Google dans le cadre
-          de l&apos;inscription de Wyrm Forge au programme publicitaire <strong>Google AdSense</strong>.
-          Ce script est chargé sur l&apos;ensemble des pages et est susceptible de déposer des
-          cookies sur ton appareil. <strong>Aucune publicité n&apos;est diffusée à ce jour.</strong>
+        <p style={{ marginTop: 16 }}><strong>Script publicitaire</strong> — soumis à ton
+          consentement préalable :</p>
+        <p>
+          Wyrm Forge est inscrit au programme publicitaire <strong>Google AdSense</strong>. Le
+          script fourni par Google est susceptible de déposer des cookies et de lire des
+          identifiants sur ton appareil. Il n&apos;est chargé <strong>que si tu y as
+          consenti</strong>.
         </p>
         <p style={{ marginTop: 12 }}>
-          Aucun bandeau de consentement ne t&apos;est encore présenté : un dispositif de recueil
-          du consentement (CMP) conforme au RGPD est en cours de mise en place, et sera déployé
-          avant l&apos;activation de toute publicité. D&apos;ici là, tu peux t&apos;opposer au dépôt
-          de ces cookies via les réglages de ton navigateur.
+          Le bandeau de recueil du consentement (CMP) est encore en cours de mise en place.
+          Tant qu&apos;il n&apos;est pas déployé, aucun consentement ne peut être recueilli, et le
+          verrou reste donc fermé par défaut : <strong>le script de Google n&apos;est pas chargé,
+          aucune requête n&apos;est envoyée à Google depuis ton navigateur et aucun cookie
+          publicitaire n&apos;est déposé.</strong> Aucune publicité n&apos;est diffusée à ce jour.
         </p>
+        <p style={{ marginTop: 16 }}><strong>Stockage local</strong> — ces données restent
+          <strong> uniquement sur ton appareil</strong> et ne nous sont jamais transmises :</p>
+        <List>
+          <li><code>wf.matchups.v2</code> et <code>wf.matchups.v1</code> — tes scénarios de
+            Match Up ;</li>
+          <li><code>wf-lang</code> et <code>wf-landing-lang</code> — ta langue d&apos;affichage ;</li>
+          <li><code>wf.stripe.checkout-intent</code> — le palier que tu venais de choisir, gardé
+            le temps de te connecter pour reprendre le paiement là où tu l&apos;avais laissé ;</li>
+          <li>ta préférence de thème.</li>
+        </List>
         <p style={{ marginTop: 12 }}>
-          Certaines données restent <strong>uniquement sur ton appareil</strong>, dans le stockage
-          local du navigateur, et ne nous sont jamais transmises : tes scénarios de Match Up
-          (<code>wf.matchups.v2</code>) et quelques préférences d&apos;affichage. Vider les données
-          de ton navigateur les efface définitivement.
+          Vider les données de ton navigateur les efface définitivement.
         </p>
       </Section>
 
@@ -138,8 +146,8 @@ export default function ConfidentialitePage() {
         <List>
           <li><strong>Exécution du contrat</strong> — créer et gérer ton compte, fournir les outils
             du service, gérer un éventuel abonnement.</li>
-          <li><strong>Consentement</strong> — liaison de ton compte Riot, suivi « prac ».
-            Retirable à tout moment, sans justification.</li>
+          <li><strong>Consentement</strong> — liaison de ton compte Riot. Retirable à tout
+            moment, sans justification.</li>
           <li><strong>Intérêt légitime</strong> — sécurité du service, prévention des abus,
             respect des quotas imposés par Riot Games, amélioration des fonctionnalités.</li>
           <li><strong>Obligation légale</strong> — conservation des pièces comptables une fois
@@ -154,8 +162,11 @@ export default function ConfidentialitePage() {
           strictement pour la finalité indiquée :
         </p>
         <List>
-          <li><strong>Supabase</strong> — hébergement de la base de données et gestion de
-            l&apos;authentification. C&apos;est là que résident ton compte et tes contenus.</li>
+          <li><strong>Supabase</strong> — hébergement de la base de données, de
+            l&apos;authentification et des fichiers, et envoi des e-mails liés à ton compte
+            (confirmation d&apos;inscription, réinitialisation de mot de passe). C&apos;est là
+            que résident ton compte et tes contenus. <strong>Le projet est hébergé en Irlande,
+            dans l&apos;Union européenne</strong> : tes données y sont stockées et traitées.</li>
           <li><strong>Vercel</strong> — hébergement et diffusion du site web.</li>
           <li><strong>Riot Games</strong> — l&apos;API officielle de League of Legends. Nos serveurs
             lui transmettent ton Riot ID ou ton PUUID pour récupérer tes données de jeu.
@@ -163,16 +174,40 @@ export default function ConfidentialitePage() {
           <li><strong>Anthropic</strong> — génération des analyses IA (Match Up, résumés de patch
             notes). Seul le contexte de la simulation est envoyé (champions, niveaux, objets) ;
             aucun identifiant de compte, aucune adresse e-mail.</li>
-          <li><strong>Resend</strong> — envoi des e-mails transactionnels (confirmation de compte,
-            notification de demande de suivi).</li>
           <li><strong>Stripe</strong> — traitement des paiements, dès l&apos;activation des
             abonnements payants. Nous ne stockons aucune donnée de carte bancaire :
             elles sont saisies directement chez Stripe.</li>
         </List>
+        <p style={{ marginTop: 16 }}><strong>Où sont tes données, et ce qui sort de l&apos;UE</strong></p>
+        <p>
+          Le lieu de stockage et la nationalité du prestataire sont deux questions distinctes, et
+          elles n&apos;ont pas la même réponse :
+        </p>
+        <List>
+          <li><strong>Supabase</strong> — tes données sont stockées <strong>en Irlande, dans
+            l&apos;UE</strong>. Mais la société qui exploite le service, Supabase, Inc., est
+            établie à Singapour, pays qui ne bénéficie pas d&apos;une décision d&apos;adéquation
+            de la Commission européenne. Un accès depuis l&apos;extérieur de l&apos;UE reste donc
+            possible, notamment pour l&apos;administration technique et le support. Cet accès est
+            encadré par les clauses contractuelles types de la Commission européenne, intégrées à
+            l&apos;accord de traitement des données (DPA) de Supabase.</li>
+          <li><strong>Les autres prestataires</strong> — Vercel, Stripe et Anthropic sont
+            établis aux États-Unis. Les transferts correspondants s&apos;appuient sur les clauses
+            contractuelles types de la Commission européenne et, pour ceux qui y sont certifiés,
+            sur le cadre de protection des données UE–États-Unis (Data Privacy Framework).</li>
+        </List>
+        {/* À COMPLÉTER PAR HORTAL — vérifier et consigner, prestataire par prestataire :
+            (1) que le DPA de Supabase est bien signé et quelle version des CCT il intègre ;
+            (2) lesquels de Vercel / Stripe / Anthropic sont effectivement certifiés
+            au Data Privacy Framework (la liste officielle est publique et évolue) ;
+            (3) l'existence d'une analyse de transfert pour Singapour, qui n'est couvert par
+            AUCUNE décision d'adéquation. Tant que ce n'est pas fait, le paragraphe ci-dessus
+            décrit l'intention, pas une conformité vérifiée. */}
         <p style={{ marginTop: 12 }}>
-          Certains de ces prestataires sont établis hors de l&apos;Union européenne. Les transferts
-          correspondants s&apos;appuient sur les clauses contractuelles types de la Commission
-          européenne. <Todo>confirmer la région d&apos;hébergement Supabase et les garanties de transfert</Todo>
+          Tu peux nous demander une copie des garanties encadrant ces transferts en écrivant à{' '}
+          <a href="mailto:contact@wyrm-forge.com" style={{ color: 'var(--gold-pale)' }}>
+            contact@wyrm-forge.com
+          </a>.
         </p>
       </Section>
 
@@ -188,8 +223,6 @@ export default function ConfidentialitePage() {
             garantir l&apos;intégrité du solde ; supprimé avec le compte.</li>
           <li><strong>Riot ID recherchés (autocomplétion)</strong> — conservés sans limite de durée.
             Il s&apos;agit d&apos;identifiants de jeu publics, non rattachés à un compte Wyrm Forge.</li>
-          <li><strong>Données de suivi « prac »</strong> — supprimées immédiatement en cas de
-            révocation du consentement ou de retrait du roster.</li>
         </List>
       </Section>
 
@@ -208,8 +241,8 @@ export default function ConfidentialitePage() {
             vers ton compte Riot. Tu peux annuler ta demande tant qu&apos;elle n&apos;a pas été traitée.</li>
           <li><strong>Portabilité</strong> — écris-nous à contact@wyrm-forge.com pour recevoir une
             copie de tes données dans un format structuré et lisible par machine.</li>
-          <li><strong>Retrait du consentement</strong> — délier ton compte Riot depuis ton profil,
-            ou refuser/révoquer un suivi « prac » depuis la page de consentement.</li>
+          <li><strong>Retrait du consentement</strong> — délier ton compte Riot depuis ton
+            profil, à tout moment et sans justification.</li>
         </List>
         <p style={{ marginTop: 12 }}>
           Nous répondons à toute demande dans un délai d&apos;un mois. Si tu estimes que tes droits

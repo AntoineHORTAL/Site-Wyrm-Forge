@@ -21,7 +21,6 @@ export type DashTab =
   | 'jungle' | 'builds' | 'scenarios'
   | 'workshop-builds' | 'workshop-jungle'
   | 'matchup' | 'postgame'
-  | 'tournois'
   | 'patchnotes'
   | 'ecailles'
   | 'kit'
