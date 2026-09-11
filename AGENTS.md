@@ -2395,9 +2395,7 @@ factures ». Règle d'affichage partagée interface ↔ route :
 - **L215-1-1 al. 2 : confirmer la résiliation sur support durable** (date de fin,
   effets). Troisième obligation qui dépend du transport e-mail absent (avec L215-1 et
   L221-13), sauf si les e-mails Stripe le couvrent — à vérifier dans le Dashboard.
-- **« Comparaison rangs supérieurs »** (grille, Maître) : aucune fonctionnalité
-  réservée à Maître ne correspond à ce libellé dans le code. Même classe de problème
-  que la grille IA — décision HORTAL à prendre.
+- ~~**« Comparaison rangs supérieurs »**~~ ✅ retirée de la grille le 2026-09-11 (décision HORTAL) — voir § À faire plus tard.
 - Les autres limites de la grille (blocs d'overlay, imports, builds) ne sont pas
   appliquées côté serveur : l'abonné reçoit au moins ce qui est annoncé, sans risque
   juridique, mais la grille ne décrit pas la réalité.
