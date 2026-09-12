@@ -4,8 +4,14 @@ import {
   reminderStillValid,
   renderEmail,
   reminderWindow,
+  resolveEmailLocale,
+  tierLabel,
+  DEFAULT_EMAIL_LOCALE,
+  EMAIL_LOCALES,
+  EMAIL_TEXTS,
   type ClaimedEmail,
   type EmailKind,
+  type EmailLocale,
   type EmailPayload,
   type FinishOutcome,
   type RenewalReminderPayload,
@@ -13,7 +19,9 @@ import {
   type WorkerDeps,
 } from '../../../supabase/functions/_shared/subscription-emails'
 import { sendEmail } from '../../../supabase/functions/_shared/resend'
-import { orderConfirmationIntent, renewalReminderIntent, type EmailIntent } from './subscription-emails'
+import {
+  cancellationIntent, orderConfirmationIntent, renewalReminderIntent, type EmailIntent,
+} from './subscription-emails'
 
 /**
  * Côté Edge Function : traitement de la file en claim-then-send, gabarits, et
@@ -68,14 +76,25 @@ function harness(opts: {
   send?: WorkerDeps['send']
   state?: SubscriptionState | null
   recipient?: string | null
+  /** Langue enregistrée avec la preuve de CETTE commande (`checkout_consent_log.locale`). */
+  consentLocale?: string | null
+  /** Dernière langue connue du compte — `undefined` ⇒ aucune preuve, donc `null`. */
+  knownLocale?: string | null
+  /** Remplace entièrement la lecture de la dernière langue connue (pour la faire échouer). */
+  localeOf?: WorkerDeps['localeOf']
 }) {
-  const sent: { to: string; subject: string; idempotencyKey: string; text: string }[] = []
+  const sent: { to: string; subject: string; html: string; idempotencyKey: string; text: string }[] = []
   const logs: { level: string; message: string }[] = []
   const deps: WorkerDeps = {
     claim: async (limit) => opts.queue.claim(opts.now(), limit),
     recipientOf: async () => (opts.recipient === undefined ? 'joueur@example.com' : opts.recipient),
     subscriptionState: async () => (opts.state === undefined ? null : opts.state),
-    consentOf: async () => ({ text: 'Je demande à accéder à mon abonnement immédiatement…', terms_version: '2026-09-11' }),
+    consentOf: async () => ({
+      text: 'Je demande à accéder à mon abonnement immédiatement…',
+      terms_version: '2026-09-11',
+      locale: opts.consentLocale ?? null,
+    }),
+    localeOf: opts.localeOf ?? (async () => opts.knownLocale ?? null),
     send: opts.send ?? (async (m) => { sent.push(m); return { ok: true, id: `re_${sent.length}`, status: 200 } }),
     finish: async (id, o) => opts.queue.finish(id, o, opts.now()),
     links: LINKS,
@@ -322,5 +341,272 @@ describe('helper Resend — ne lève jamais sur une panne', () => {
 
   it('clé absente ⇒ erreur de configuration, sans nommer le secret', async () => {
     await expect(sendEmail(params)).rejects.toThrow('Configuration serveur incomplète.')
+  })
+})
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LANGUE DES E-MAILS — source, repli, et gabarit réellement choisi
+   ════════════════════════════════════════════════════════════════════════════
+   La langue vient de `checkout_consent_log.locale` : celle de la preuve de la
+   commande pour `order_confirmation`, la dernière connue du compte pour les
+   deux autres. Trois propriétés se testent ici :
+
+     • la NORMALISATION (`fr-FR`, `EN`, valeur inconnue, absente) ;
+     • le CHOIX du gabarit de bout en bout, à travers `processDueEmails` — pas
+       seulement `renderEmail`, parce que le bug probable est dans le câblage
+       (une locale lue mais pas transmise) ;
+     • le REPLI en français, qui doit être SÛR (l'e-mail part quand même) et
+       JOURNALISÉ (un rappel L215-1 dans la mauvaise langue ne doit pas passer
+       inaperçu). */
+
+describe('langue des e-mails — normalisation', () => {
+  it('reconnaît les deux langues du catalogue, étiquette régionale comprise', () => {
+    for (const v of ['fr', 'FR', ' fr ', 'fr-FR', 'fr-CA']) expect(resolveEmailLocale(v), v).toBe('fr')
+    for (const v of ['en', 'EN', 'en-GB', 'en-US']) expect(resolveEmailLocale(v), v).toBe('en')
+  })
+
+  it('retombe sur le FRANÇAIS pour toute valeur absente, vide ou hors catalogue', () => {
+    // Le comportement d'avant la traduction : un e-mail part toujours, et il
+    // part en français quand on ne sait pas faire mieux.
+    for (const v of [null, undefined, '', '   ', 'de', 'es-ES', 42, {}, []]) {
+      expect(resolveEmailLocale(v), String(v)).toBe(DEFAULT_EMAIL_LOCALE)
+    }
+    expect(DEFAULT_EMAIL_LOCALE).toBe('fr')
+  })
+
+  it('le catalogue de langues est celui de la case de consentement', () => {
+    // `CONSENT_LOCALES` de src/lib/stripe/checkout-consent.ts : c'est la même
+    // colonne qui alimente les deux, elles ne peuvent pas diverger.
+    expect([...EMAIL_LOCALES]).toEqual(['fr', 'en'])
+  })
+})
+
+describe('langue des e-mails — dictionnaire FR / EN', () => {
+  /** Chemins de toutes les feuilles (`order.subject`, `tiers.forgeron`, …). */
+  function leafPaths(value: unknown, prefix = '', out: string[] = []): string[] {
+    if (typeof value !== 'object' || value === null) { out.push(prefix); return out }
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      leafPaths(v, prefix ? `${prefix}.${k}` : k, out)
+    }
+    return out
+  }
+
+  it('les deux langues portent exactement les mêmes clés', () => {
+    // Le typage le garantit à la compilation (`typeof` du FR) ; ce test attrape
+    // le cas où quelqu'un contourne le type pour livrer plus vite.
+    expect(leafPaths(EMAIL_TEXTS.en).sort()).toEqual(leafPaths(EMAIL_TEXTS.fr).sort())
+  })
+
+  it('aucune chaîne n’est restée en français côté anglais', () => {
+    const fr = EMAIL_TEXTS.fr, en = EMAIL_TEXTS.en
+    const pairs: [string, string, string][] = [
+      ['order.intro', fr.order.intro, en.order.intro],
+      ['order.heading', fr.order.heading, en.order.heading],
+      ['order.noCommitment', fr.order.noCommitment, en.order.noCommitment],
+      ['order.withdrawalIntro', fr.order.withdrawalIntro, en.order.withdrawalIntro],
+      ['cancellation.title', fr.cancellation.title, en.cancellation.title],
+      ['cancellation.noRefund', fr.cancellation.noRefund, en.cancellation.noRefund],
+      ['cancellation.backToFree', fr.cancellation.backToFree, en.cancellation.backToFree],
+      ['reminder.manage', fr.reminder.manage, en.reminder.manage],
+      ['reminder.doNothing', fr.reminder.doNothing, en.reminder.doNothing],
+      ['footerNoticeText', fr.footerNoticeText, en.footerNoticeText],
+    ]
+    for (const [path, a, b] of pairs) expect(b, path).not.toBe(a)
+  })
+
+  it('les paliers sont nommés comme sur le site, dans chaque langue', () => {
+    // Mêmes libellés que la grille tarifaire, la modale de paiement et les CGV.
+    expect(tierLabel('forgeron', 'fr')).toBe('Forgeron')
+    expect(tierLabel('maître', 'fr')).toBe('Maître')
+    expect(tierLabel('forgeron', 'en')).toBe('Blacksmith')
+    expect(tierLabel('maître', 'en')).toBe('Master')
+    // `maitre` sans accent (clé ASCII des métadonnées Stripe) = même palier.
+    expect(tierLabel('maitre', 'en')).toBe('Master')
+    // Palier inconnu : on affiche ce qu'on a plutôt que rien.
+    expect(tierLabel('legion', 'en')).toBe('Legion')
+  })
+
+  it('sans langue fournie, `renderEmail` rend le français — le comportement d’avant', () => {
+    const m = renderEmail('order_confirmation', orderIntent().payload, { links: LINKS })
+    expect(m.html).toContain('<html lang="fr"')
+    expect(m.subject).toContain('Forgeron')
+  })
+})
+
+describe('gabarits EN — le contenu exigé par la loi survit à la traduction', () => {
+  const ctx = { links: LINKS, locale: 'en' as EmailLocale, consentText: 'I request immediate access…', termsVersion: '2026-09-11' }
+
+  it('commande : palier, prix, périodicité, 1er prélèvement, portail, CGV, rétractation, texte accepté', () => {
+    const m = renderEmail('order_confirmation',
+      { ...orderIntent().payload, amount_paid_cents: 150 } as EmailPayload, ctx)
+    expect(m.html).toContain('<html lang="en"')
+    expect(m.subject).toContain('Blacksmith')
+    // Montants et dates dans la convention anglaise (en-GB, comme `formatPrice`
+    // et `lib/intl.ts` sur le site), mais dates TOUJOURS en Europe/Paris : ce
+    // sont les dates contractuelles annoncées par les CGV et le portail Stripe.
+    for (const s of ['Blacksmith', 'monthly', '€3.00', 'per month', '11 September 2026', '€1.50',
+      LINKS.profile, LINKS.cgv, '14 days', 'I request immediate access…', '11 October 2026']) {
+      expect(m.text, s).toContain(s)
+      expect(m.html, s).toContain(s)
+    }
+  })
+
+  it('résiliation : confirmation, date de fin d’accès, pas de remboursement partiel', () => {
+    const m = renderEmail('cancellation_confirmation', {
+      tier: 'maître', period: 'annuel', access_until: '2027-09-11T10:00:00.000Z', requested_at: '2026-10-01T08:00:00.000Z',
+    }, ctx)
+    for (const s of ['cancellation', '11 September 2027', 'not partially refunded', '1 October 2026']) {
+      expect(m.text.toLowerCase(), s).toContain(s.toLowerCase())
+    }
+    expect(m.subject).toContain('11 September 2027')
+    expect(m.subject).toContain('Master')
+  })
+
+  it('rappel : date de reconduction mise en évidence, montant, lien pour résilier', () => {
+    // L215-1 exige un encadré apparent : le <blockquote> en tête doit porter la
+    // date dans les deux langues, sinon la traduction a fait perdre la mention.
+    const m = renderEmail('renewal_reminder', reminderIntent().payload, ctx)
+    expect(m.html).toMatch(/<blockquote[^>]*>Renewal date: 11 September 2027/)
+    for (const s of ['€60.00', '11 September 2027', LINKS.profile, 'L215-1', 'not to renew']) {
+      expect(m.text, s).toContain(s)
+    }
+  })
+
+  it('échappe le HTML des valeurs insérées, en anglais aussi', () => {
+    const m = renderEmail('order_confirmation', orderIntent().payload,
+      { links: LINKS, locale: 'en', consentText: '<script>x</script>' })
+    expect(m.html).not.toContain('<script>')
+    expect(m.html).toContain('&lt;script&gt;')
+  })
+
+  it('la mention « e-mail de service » est traduite, l’adresse du siège non', () => {
+    const en = renderEmail('order_confirmation', orderIntent().payload, ctx)
+    expect(en.html).toContain('5 Rue du 23 Janvier, 21000 Dijon')
+    expect(en.text).toContain('not marketing')
+    expect(en.text).not.toContain('publicitaire')
+  })
+})
+
+describe('🔴 le gabarit choisi suit la langue enregistrée', () => {
+  const AT = () => Date.parse('2026-09-11T10:05:00Z')
+
+  const cancelIntent = () => cancellationIntent({
+    userId: USER, subscriptionId: SUB, eventId: 'evt_1', tier: 'maître', period: 'annuel',
+    scheduledNow: true, scheduledBefore: false,
+    accessUntil: '2027-09-11T10:00:00.000Z', requestedAt: '2026-09-11T08:00:00.000Z',
+  })!
+
+  it('commande : la locale de LA preuve de cette commande fait foi', async () => {
+    const q = new FakeQueue(); q.enqueue(orderIntent())
+    const h = harness({ queue: q, now: AT, consentLocale: 'en', knownLocale: 'fr' })
+    await processDueEmails(h.deps)
+    // La preuve l'emporte sur la dernière langue connue : c'est CE texte-là que
+    // la personne a lu au moment de payer.
+    expect(h.sent[0].subject).toContain('Blacksmith')
+    expect(h.sent[0].html).toContain('<html lang="en"')
+  })
+
+  it('commande sans preuve rattachée : on retombe sur la dernière langue connue', async () => {
+    // `consent_id` peut être null (souscription d'avant le recueil, ou preuve
+    // introuvable) : la commande garde quand même la bonne langue.
+    const q = new FakeQueue()
+    q.enqueue(orderConfirmationIntent({
+      userId: USER, subscriptionId: SUB, tier: 'forgeron', period: 'mensuel', amountPaidCents: 300,
+      listPriceCents: 300, currency: 'eur', firstChargeAt: '2026-09-11T10:00:00.000Z',
+      nextRenewalAt: null, consentId: null,
+    })!)
+    const h = harness({ queue: q, now: AT, knownLocale: 'en' })
+    await processDueEmails(h.deps)
+    expect(h.sent[0].subject).toContain('Blacksmith')
+  })
+
+  it('résiliation : dernière langue connue du compte', async () => {
+    const q = new FakeQueue(); q.enqueue(cancelIntent())
+    const h = harness({ queue: q, now: AT, knownLocale: 'en' })
+    await processDueEmails(h.deps)
+    expect(h.sent[0].subject).toContain('Cancellation recorded')
+    expect(h.sent[0].html).toContain('<html lang="en"')
+  })
+
+  it('rappel annuel : dernière langue connue du compte', async () => {
+    const q = new FakeQueue(); q.enqueue(reminderIntent())
+    const at = Date.parse('2027-07-27T10:00:00Z')
+    const h = harness({ queue: q, now: () => at, knownLocale: 'en', state: liveState })
+    await processDueEmails(h.deps)
+    expect(h.sent[0].subject).toContain('Renewal of your Master subscription')
+    expect(h.sent[0].html).toContain('<html lang="en"')
+  })
+
+  it('la même file rend le français quand la langue enregistrée est « fr »', async () => {
+    const q = new FakeQueue(); q.enqueue(cancelIntent())
+    const h = harness({ queue: q, now: AT, knownLocale: 'fr' })
+    await processDueEmails(h.deps)
+    expect(h.sent[0].subject).toContain('Résiliation enregistrée')
+    expect(h.sent[0].html).toContain('<html lang="fr"')
+  })
+})
+
+describe('🔴 langue inconnue : repli français, jamais un échec silencieux', () => {
+  const AT = () => Date.parse('2026-09-11T10:05:00Z')
+
+  it('aucune preuve pour ce compte ⇒ français, et le repli est journalisé', async () => {
+    const q = new FakeQueue(); q.enqueue(orderConfirmationIntent({
+      userId: USER, subscriptionId: SUB, tier: 'forgeron', period: 'mensuel', amountPaidCents: 300,
+      listPriceCents: 300, currency: 'eur', firstChargeAt: '2026-09-11T10:00:00.000Z',
+      nextRenewalAt: null, consentId: null,
+    })!)
+    const h = harness({ queue: q, now: AT, knownLocale: null })
+    const r = await processDueEmails(h.deps)
+
+    expect(r.sent).toBe(1)                                   // l'e-mail PART
+    expect(h.sent[0].html).toContain('<html lang="fr"')      // dans le comportement d'avant
+    expect(h.logs.some(l => l.message.includes('aucune langue connue'))).toBe(true)
+  })
+
+  it('langue enregistrée hors catalogue ⇒ français, journalisé en warn', async () => {
+    const q = new FakeQueue(); q.enqueue(cancellationIntent({
+      userId: USER, subscriptionId: SUB, eventId: 'evt_2', tier: 'maître', period: 'annuel',
+      scheduledNow: true, scheduledBefore: false,
+      accessUntil: '2027-09-11T10:00:00.000Z', requestedAt: '2026-09-11T08:00:00.000Z',
+    })!)
+    const h = harness({ queue: q, now: AT, knownLocale: 'de-DE' })
+    const r = await processDueEmails(h.deps)
+
+    expect(r.sent).toBe(1)
+    expect(h.sent[0].subject).toContain('Résiliation enregistrée')
+    const warn = h.logs.find(l => l.message.includes('hors catalogue'))
+    expect(warn?.level).toBe('warn')
+  })
+
+  it('lecture de la langue en PANNE ⇒ l’e-mail part quand même, en français', async () => {
+    // Un rappel L215-1 ou une confirmation de commande ne doit pas être sacrifié
+    // parce qu'une requête de confort a échoué : la sanction du défaut
+    // d'information est bien plus lourde qu'un e-mail dans la mauvaise langue.
+    const q = new FakeQueue(); q.enqueue(reminderIntent())
+    const at = Date.parse('2027-07-27T10:00:00Z')
+    const h = harness({
+      queue: q, now: () => at, state: liveState,
+      localeOf: async () => { throw new Error('timeout') },
+    })
+    const r = await processDueEmails(h.deps)
+
+    expect(r).toMatchObject({ sent: 1, failed: 0, skipped: 0 })
+    expect(q.rows[0].status).toBe('sent')
+    expect(h.sent[0].html).toContain('<html lang="fr"')
+    const warn = h.logs.find(l => l.message.includes('langue indéterminable'))
+    expect(warn?.level).toBe('warn')
+  })
+
+  it('un compte supprimé n’interroge même pas la langue', async () => {
+    // La ligne est passée en `skipped: account_deleted` avant tout rendu : pas
+    // de requête inutile, et surtout pas de `localeOf(null)`.
+    const q = new FakeQueue(); q.enqueue(orderIntent())
+    q.rows[0].user_id = null
+    let asked = 0
+    const h = harness({ queue: q, now: AT, localeOf: async () => { asked++; return 'en' } })
+    const r = await processDueEmails(h.deps)
+
+    expect(r.skipped).toBe(1)
+    expect(asked).toBe(0)
   })
 })
