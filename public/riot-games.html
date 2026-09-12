@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wyrm Forge — Product status</title>
+<meta name="description" content="A plain overview of what's live, built, in progress, and under consideration on Wyrm Forge." />
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wf-bg: #0A0612;
+    --wf-bg-alt: #150828;
+    --wf-text: #E8E6F0;
+    --wf-text-dim: #A79FC2;
+    --wf-gold: #BA7517;
+    --wf-gold-light: #EF9F27;
+    --wf-gold-pale: #FAC775;
+    --wf-purple: #7F77DD;
+    --wf-purple-dk: #534AB7;
+    --wf-font-display: 'Cinzel', serif;
+    --wf-font-body: 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--wf-bg);
+    color: var(--wf-text);
+    font-family: var(--wf-font-body);
+  }
+  main {
+    padding: 0 1.5rem 6rem;
+    max-width: 880px;
+    margin: 0 auto;
+  }
+  h1, h2 {
+    font-family: var(--wf-font-display);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .wf-hero {
+    padding: 5rem 0 3rem;
+    border-bottom: 1px solid rgba(239, 159, 39, 0.15);
+  }
+  .wf-eyebrow {
+    color: var(--wf-gold-light);
+    font-size: 0.875rem;
+    margin: 0 0 1rem;
+  }
+  .wf-hero h1 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    line-height: 1.15;
+    margin: 0 0 1.25rem;
+    max-width: 18ch;
+  }
+  .wf-lede {
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: var(--wf-text-dim);
+    max-width: 62ch;
+  }
+  .wf-seam {
+    height: 3px;
+    margin: 0 auto;
+    background: linear-gradient(90deg, transparent, var(--wf-gold) 20%, var(--wf-gold-light) 50%, var(--wf-gold) 80%, transparent);
+    opacity: 0.6;
+  }
+  .wf-stage {
+    position: relative;
+    padding: 3rem 0;
+    border-bottom: 1px solid rgba(239, 159, 39, 0.12);
+  }
+  .wf-stage:last-child { border-bottom: none; }
+  .wf-stage-head { margin-bottom: 1.75rem; }
+  .wf-kicker {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: var(--wf-purple);
+    margin-bottom: 0.6rem;
+  }
+  .wf-stage h2 {
+    font-size: 1.6rem;
+    margin: 0 0 0.5rem;
+    background: linear-gradient(90deg, var(--wf-gold-pale), var(--wf-gold-light));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .wf-stage-blurb {
+    color: var(--wf-text-dim);
+    max-width: 58ch;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .wf-stage-body { display: grid; gap: 1.75rem; }
+  .wf-group-label {
+    font-family: var(--wf-font-body);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--wf-text-dim);
+    margin: 0 0 0.75rem;
+  }
+  .wf-item-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.9rem;
+  }
+  .wf-item {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) 1fr;
+    gap: 0.5rem 1.25rem;
+    padding: 0.9rem 1rem;
+    background: var(--wf-bg-alt);
+    border: 1px solid rgba(127, 119, 221, 0.15);
+    border-radius: 6px;
+  }
+  .wf-item-name { font-weight: 600; color: var(--wf-gold-pale); }
+  .wf-item-detail { color: var(--wf-text-dim); line-height: 1.5; }
+  @media (max-width: 620px) {
+    .wf-item { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="wf-hero">
+    <p class="wf-eyebrow">For Riot Games — product key review</p>
+    <h1>What's actually in Wyrm Forge, right now</h1>
+    <p class="wf-lede">
+      Wyrm Forge is a companion site and desktop overlay for League of Legends. This page is a
+      plain, current snapshot of the product for anyone reviewing our production API key request:
+      what's live, what's built but not yet switched on, what we're actively working on, and what's
+      still just an idea.
+    </p>
+  </header>
+
+  <div class="wf-seam" aria-hidden="true"></div>
+
+  <section class="wf-stage" aria-labelledby="forged-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Stage 1 of 4 — shipped</span>
+      <h2 id="forged-title">Forged</h2>
+      <p class="wf-stage-blurb">Live in production today, on the website and inside the desktop app.</p>
+    </div>
+    <div class="wf-stage-body">
+      <div>
+        <h3 class="wf-group-label">Website — wyrm-forge.com</h3>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Bilingual site &amp; dashboard</span><span class="wf-item-detail">Marketing pages and player dashboard, in French and English.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Player &amp; match search</span><span class="wf-item-detail">Look up a summoner and browse recent match history.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Subscription tiers</span><span class="wf-item-detail">A free tier plus two paid tiers, with card payments handled through Stripe.</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="wf-group-label">Desktop companion app</h3>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">In-game overlay</span><span class="wf-item-detail">Live stats and item timings, read from Riot's Live Client Data API while a game is running.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Comeback tracker</span><span class="wf-item-detail">Reads how a game is trending and flags momentum swings.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Build assistant</span><span class="wf-item-detail">Suggests the next item purchase based on the current game state.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Post-game summary</span><span class="wf-item-detail">A recap screen shown once the game ends.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Jungle pathing on the minimap</span><span class="wf-item-detail">Shows a suggested route directly on the in-game minimap.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Automatic updates</span><span class="wf-item-detail">The app updates itself; no manual download for new versions.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="wf-stage" aria-labelledby="tempered-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Stage 2 of 4 — built, switched off</span>
+      <h2 id="tempered-title">Tempered</h2>
+      <p class="wf-stage-blurb">Finished and tested internally, kept behind a switch so nothing new appears until it's ready for everyone at once.</p>
+    </div>
+    <div class="wf-stage-body">
+      <div>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Staged rollout system</span><span class="wf-item-detail">Lets us turn a feature on for every player at the same time on the site and in the app, rather than a partial or silent release.</span></li>
+          <li class="wf-item"><span class="wf-item-name">A handful of launch features</span><span class="wf-item-detail">Including an in-app currency, seasonal challenges, and daily quests — built, tested, and waiting for the switch.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="wf-stage" aria-labelledby="furnace-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Stage 3 of 4 — in progress</span>
+      <h2 id="furnace-title">In the furnace</h2>
+      <p class="wf-stage-blurb">Actively being designed or built right now.</p>
+    </div>
+    <div class="wf-stage-body">
+      <div>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Personal coaching packs</span><span class="wf-item-detail">A paid service built around a custom champion kit and a live 1:1 review with a coach.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Clans &amp; guilds</span><span class="wf-item-detail">Letting players group together, with a shared ranking.</span></li>
+          <li class="wf-item"><span class="wf-item-name">"Legion" plan</span><span class="wf-item-detail">A shared subscription for a group of five friends.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Match outcome prediction</span><span class="wf-item-detail">An estimate of a game's odds while it's in progress.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Wider automated testing</span><span class="wf-item-detail">Extending our test coverage as the app grows.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Self-service billing</span><span class="wf-item-detail">Letting players cancel or change their card without contacting us directly.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="wf-stage" aria-labelledby="ore-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Stage 4 of 4 — under consideration</span>
+      <h2 id="ore-title">Raw ore</h2>
+      <p class="wf-stage-blurb">Ideas we've discussed, with nothing built and no date attached.</p>
+    </div>
+    <div class="wf-stage-body">
+      <div>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Tournaments</span><span class="wf-item-detail">Cosmetic rewards only — no entry fee and no cash prize, to stay within French gambling law.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Video / replay analysis</span><span class="wf-item-detail">Reviewing a recorded game rather than a live one.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Beyond League of Legends</span><span class="wf-item-detail">A long-term idea to support other Riot titles, starting with TFT.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
