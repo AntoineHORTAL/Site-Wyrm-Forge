@@ -2670,9 +2670,11 @@ reste `false` tant qu'aucune CMP n'existe.
   emplacements réservent leur espace mais **ne chargent rien**. Tant que c'est le cas,
   aucune impression n'est servie — la demande d'examen peut partir, la monétisation
   non. Voir § Emplacements publicitaires (dashboard) pour la dette associée.
-- **`ADSENSE_CLIENT_ID`** porte toujours son `<Todo>` : deux identifiants circulent
-  dans les documents du projet, un seul est bon, et un identifiant erroné fait échouer
-  la vérification **en silence**. À confirmer sur le Dashboard AdSense.
+- ~~**`ADSENSE_CLIENT_ID`** porte toujours son `<Todo>`~~ ✅ **CONFIRMÉ PAR HORTAL le
+  2026-09-12** sur le Dashboard Google AdSense : `ca-pub-2383615103865834`, la valeur
+  que le dépôt portait déjà — rien n'a changé, seul le doute est levé. Le second
+  identifiant qui circulait dans les documents du projet
+  (`ca-pub-2386151503865834`) était une faute de frappe dans la note, pas dans le code.
 - **`/champion/[id]`** (fiche d'un champion) est encore `'use client'` + `useEffect`,
   donc `ƒ` et vide sans JS — ~170 pages dans ce cas. Hors périmètre de ce chantier,
   mais c'est désormais le plus gros gisement de contenu non servi du site, et

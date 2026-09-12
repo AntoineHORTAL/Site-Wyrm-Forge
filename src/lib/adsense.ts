@@ -15,14 +15,20 @@
 /**
  * Identifiant éditeur AdSense.
  *
- * ⚠️ À COMPLÉTER PAR HORTAL — un second identifiant circule dans les documents
- * du projet : `ca-pub-2386151503865834`. Celui retenu ici est celui qui était
- * déjà déployé dans `layout.tsx` (balise meta ET script), et c'est le seul que
- * le dépôt ait jamais porté. Les deux ne diffèrent que par quelques chiffres du
- * milieu, ce qui ressemble à une faute de frappe dans l'un des deux — mais un
- * identifiant erroné fait échouer la vérification du compte en silence, sans
- * message d'erreur. Confirmer lequel est le bon sur le Dashboard AdSense, puis
- * corriger ICI : c'est le seul endroit à changer.
+ * ✅ CONFIRMÉ PAR HORTAL le 2026-09-12, sur le Dashboard Google AdSense. Aucune
+ * valeur n'a changé : c'est celle que le dépôt portait déjà.
+ *
+ * Le doute venait d'un second identifiant qui circulait dans les documents du
+ * projet (`ca-pub-2386151503865834`), et qui ne diffère que par quelques
+ * chiffres du milieu — une faute de frappe dans la note, pas dans le code. La
+ * levée du doute méritait d'être écrite ici plutôt que seulement classée :
+ * sans elle, la question se reposerait au premier relecteur qui remarquerait
+ * les deux valeurs.
+ *
+ * ⚠️ Ce qui reste vrai : un identifiant erroné fait échouer la vérification du
+ * compte **en silence**, sans message d'erreur. Toute modification future se
+ * fait ICI et nulle part ailleurs — la balise meta du layout et le `src=` du
+ * script en dérivent tous les deux.
  */
 export const ADSENSE_CLIENT_ID = 'ca-pub-2383615103865834'
 
