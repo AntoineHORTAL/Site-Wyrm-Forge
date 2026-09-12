@@ -62,8 +62,10 @@ export const mentionsFr = {
             <li>Numéro de TVA intracommunautaire : <Todo>régime de TVA à trancher avec le
               comptable (Dougs) : numéro intracommunautaire, ou mention de franchise en base
               (art. 293 B du CGI)</Todo></li>
-            <li>Directeur de la publication : le président de la SASU
-              {' '}<Todo>nom du président, s&apos;il doit être affiché nommément</Todo></li>
+            {/* Nom CONFIRMÉ par HORTAL le 2026-09-12. L'art. 6 III 1° a) de la LCEN exige
+                le nom du directeur de la publication pour un service édité à titre
+                professionnel : ce n'était donc pas « s'il doit être affiché », c'était dû. */}
+            <li>Directeur de la publication : Antoine HORTAL, président de la SASU</li>
           </List>
         </>
       ),
@@ -265,8 +267,8 @@ export const mentionsEn: MentionsDict = {
             <li>Intra-EU VAT number: <Todo>VAT regime still to be settled with the accountant
               (Dougs): either an intra-EU VAT number, or the French small-business exemption
               wording “TVA non applicable, art. 293 B du CGI”</Todo></li>
-            <li>Publication director (directeur de la publication): the chairman of the SASU
-              {' '}<Todo>name of the chairman, if it must be displayed by name</Todo></li>
+            <li>Publication director (directeur de la publication): Antoine HORTAL, chairman
+              of the SASU</li>
           </List>
         </>
       ),

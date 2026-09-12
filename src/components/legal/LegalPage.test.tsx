@@ -117,12 +117,19 @@ describe('pages légales — le corps du document est traduit', () => {
   it('/mentions-legales garde ses trous visibles dans les deux langues', () => {
     const fr = render(MentionsLegalesContent, 'fr')
     const en = render(MentionsLegalesContent, 'en')
-    // Trois trous rendus : TVA, nom du président, médiateur (nom / adresse / URL).
+    // Trous rendus : TVA et médiateur (nom / adresse / URL). Le nom du directeur
+    // de la publication en était un jusqu'au 2026-09-12 ; il est désormais
+    // renseigné (Antoine HORTAL).
     expect(fr).toContain('À COMPLÉTER PAR HORTAL')
     expect(en).toContain('TO BE COMPLETED BY HORTAL')
-    const count = (html: string) => html.split('HORTAL').length - 1
-    expect(count(en)).toBe(count(fr))
-    expect(count(fr)).toBeGreaterThan(0)
+    // ⚠️ On compte le PRÉFIXE DU BADGE, pas la chaîne « HORTAL » : depuis que le
+    // nom du directeur de la publication est affiché, « HORTAL » apparaît aussi
+    // comme patronyme. Compter le mot ferait passer ce test pour de mauvaises
+    // raisons — et le ferait rater un badge retiré d'un seul côté.
+    const count = (html: string, marqueur: string) => html.split(marqueur).length - 1
+    expect(count(en, 'TO BE COMPLETED BY HORTAL'))
+      .toBe(count(fr, 'À COMPLÉTER PAR HORTAL'))
+    expect(count(fr, 'À COMPLÉTER PAR HORTAL')).toBeGreaterThan(0)
   })
 
   it('/cgv rend le formulaire de rétractation dans les deux langues', () => {

@@ -69,7 +69,11 @@ export const cgvFr = {
       body: (
         <>
           {/* Identité reprise de `locales/legal/mentions.tsx` (chantier du 2026-09-11).
-              Nom du président non affiché, comme dans les mentions légales. */}
+              Le nom du président (Antoine HORTAL) est affiché dans les MENTIONS LÉGALES,
+              pas ici : l'art. L221-5 du Code de la consommation demande au vendeur son
+              identité et ses coordonnées, pas le nom de son dirigeant. Ne pas le recopier
+              pour « faire pareil » — ce serait une donnée personnelle de plus, publiée
+              sans obligation qui la fonde. */}
           <List>
             <li>Wyrm Forge, société par actions simplifiée unipersonnelle (SASU) au capital de
               500 €</li>
