@@ -11,6 +11,7 @@ import {
   EMAIL_TEXTS,
   type ClaimedEmail,
   type EmailKind,
+  type EmailLinks,
   type EmailLocale,
   type EmailPayload,
   type FinishOutcome,
@@ -22,6 +23,7 @@ import { sendEmail } from '../../../supabase/functions/_shared/resend'
 import {
   cancellationIntent, orderConfirmationIntent, renewalReminderIntent, type EmailIntent,
 } from './subscription-emails'
+import { LANG_PARAM } from '@/lib/lang-param'
 
 /**
  * Côté Edge Function : traitement de la file en claim-then-send, gabarits, et
@@ -66,7 +68,9 @@ class FakeQueue {
   }
 }
 
-const LINKS = { profile: 'https://wyrm-forge.com/profil', cgv: 'https://wyrm-forge.com/cgv', portalLogin: null }
+// Annoté `EmailLinks` (et non inféré) : sans cela `portalLogin` vaudrait le type
+// `null`, et un test qui le remplace par l'URL du portail Stripe ne compilerait pas.
+const LINKS: EmailLinks = { profile: 'https://wyrm-forge.com/profil', cgv: 'https://wyrm-forge.com/cgv', portalLogin: null }
 const USER = 'u-1'
 const SUB = 'sub_1'
 
@@ -608,5 +612,70 @@ describe('🔴 langue inconnue : repli français, jamais un échec silencieux', 
 
     expect(r.skipped).toBe(1)
     expect(asked).toBe(0)
+  })
+})
+
+/* ════════════════════════════════════════════════════════════════════════════
+   🔴 LIENS SORTANTS — la langue voyage dans l'URL
+   ════════════════════════════════════════════════════════════════════════════
+   Un e-mail anglais dont le lien pointe sur `/cgv` tout court fait atterrir son
+   destinataire sur la version FRANÇAISE : la langue du site vit dans le
+   `localStorage`, qui ne franchit ni l'e-mail ni l'appareil. Le cas est la
+   règle (lien ouvert depuis l'application mail d'un téléphone), pas l'exception.
+
+   ⚠️ Le nom du paramètre est écrit des DEUX côtés — `LANG_PARAM`
+   (`src/lib/lang-param.ts`, lu par `LanguageProvider`) et une constante locale
+   du module Deno, qui ne peut pas importer `src/`. Ces tests comparent le lien
+   RENDU à `LANG_PARAM` : c'est ce qui interdit aux deux côtés de diverger. */
+
+describe('🔴 liens des e-mails — la langue voyage dans l’URL', () => {
+  const ctx = (locale: EmailLocale, links = LINKS) => ({ links, locale, consentText: null, termsVersion: null })
+
+  const cancelPayload = {
+    tier: 'maître' as const, period: 'annuel' as const,
+    access_until: '2027-09-11T10:00:00.000Z', requested_at: '2026-09-11T08:00:00.000Z',
+  }
+
+  const cases: [string, EmailKind, EmailPayload][] = [
+    ['commande', 'order_confirmation', orderIntent().payload],
+    ['résiliation', 'cancellation_confirmation', cancelPayload],
+    ['rappel annuel', 'renewal_reminder', reminderIntent().payload],
+  ]
+
+  it.each(cases)('%s (EN) : /cgv et /profil portent ?lang=en', (_label, kind, payload) => {
+    const m = renderEmail(kind, payload, ctx('en'))
+    expect(m.text).toContain(`${LINKS.cgv}?${LANG_PARAM}=en`)
+    expect(m.text).toContain(`${LINKS.profile}?${LANG_PARAM}=en`)
+    // Le HTML porte le même lien que le texte brut : c'est le <a href>, pas
+    // seulement le libellé visible.
+    expect(m.html).toContain(`href="${LINKS.cgv}?${LANG_PARAM}=en"`)
+    // Plus AUCUN lien nu vers le site : c'est exactement le bug corrigé.
+    expect(m.text).not.toMatch(new RegExp(`${LINKS.cgv}(?!\\?)`))
+  })
+
+  it.each(cases)('%s (FR) : les mêmes liens portent ?lang=fr', (_label, kind, payload) => {
+    // Estampillé dans les DEUX langues, pas seulement en anglais : un abonné
+    // français dont le navigateur a gardé « en » d'une visite précédente doit
+    // lui aussi atterrir dans la langue de l'e-mail qu'il vient de lire.
+    const m = renderEmail(kind, payload, ctx('fr'))
+    expect(m.text).toContain(`${LINKS.cgv}?${LANG_PARAM}=fr`)
+    expect(m.text).toContain(`${LINKS.profile}?${LANG_PARAM}=fr`)
+  })
+
+  it('le portail Stripe n’est PAS estampillé — ce n’est pas une URL à nous', () => {
+    // Stripe gère sa propre langue ; `?lang=` y serait un paramètre parasite.
+    const portalLogin = 'https://billing.stripe.com/p/login/test_x'
+    const m = renderEmail('renewal_reminder', reminderIntent().payload, ctx('en', { ...LINKS, portalLogin }))
+    expect(m.text).toContain(portalLogin)
+    expect(m.text).not.toContain(`${portalLogin}?${LANG_PARAM}`)
+    // Le lien CGV, lui, reste estampillé : les deux ne se confondent pas.
+    expect(m.text).toContain(`${LINKS.cgv}?${LANG_PARAM}=en`)
+  })
+
+  it('de bout en bout : l’e-mail réellement envoyé porte la langue de son gabarit', async () => {
+    const q = new FakeQueue(); q.enqueue(orderIntent())
+    const h = harness({ queue: q, now: () => Date.parse('2026-09-11T10:05:00Z'), consentLocale: 'en' })
+    await processDueEmails(h.deps)
+    expect(h.sent[0].text).toContain(`${LINKS.cgv}?${LANG_PARAM}=en`)
   })
 })

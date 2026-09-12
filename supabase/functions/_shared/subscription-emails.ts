@@ -434,8 +434,41 @@ function toText(d: EmailTexts, title: string, blocks: Block[]): string {
   return [title, '', ...lines, '', '--', FOOTER_ADDRESS, d.footerNoticeText].join('\n')
 }
 
-function manageLink(links: EmailLinks): string {
-  return links.portalLogin ?? links.profile
+/* ── LIENS SORTANTS : la langue voyage dans l'URL ──────────────────────────
+   Un e-mail ANGLAIS dont le lien pointe sur `/cgv` tout court fait atterrir son
+   destinataire sur la version FRANÇAISE : la langue du site vit dans le
+   `localStorage`, qui ne franchit ni l'e-mail ni l'appareil. Le cas est la
+   règle, pas l'exception — un lien ouvert depuis l'application mail d'un
+   téléphone s'ouvre dans un navigateur qui n'a jamais visité le site.
+
+   Les liens des e-mails portent donc `?lang=fr|en`, lu par `LanguageProvider`
+   au chargement (`src/lib/lang-param.ts`). Les liens DU SITE, eux, n'en portent
+   pas : la navigation normale suit l'état du provider comme avant.
+
+   ⚠️ Le nom du paramètre est écrit DEUX FOIS — ici (module Deno, qui ne peut
+   pas importer `src/`) et dans `LANG_PARAM` (`src/lib/lang-param.ts`). Les deux
+   côtés sont verrouillés ensemble par `subscription-emails-worker.test.ts`, qui
+   compare le lien rendu à cette constante. */
+const LANG_PARAM = 'lang'
+
+/**
+ * Ajoute la langue à une URL DU SITE (`links.profile`, `links.cgv`, construites
+ * comme `${SITE_URL}/…` — ni query ni fragment, le `?` suffit donc ; le `&` est
+ * là pour le jour où ce ne serait plus vrai).
+ */
+function siteLink(url: string, locale: EmailLocale): string {
+  return `${url}${url.includes('?') ? '&' : '?'}${LANG_PARAM}=${locale}`
+}
+
+/**
+ * Lien « gérer mon abonnement ».
+ *
+ * ⚠️ Le lien « no-code » du portail Stripe, quand il est configuré, n'est PAS
+ * estampillé : c'est une URL de Stripe, qui a sa propre gestion de langue — un
+ * `?lang=` y serait un paramètre parasite. Seul le repli `/profil` est à nous.
+ */
+function manageLink(links: EmailLinks, locale: EmailLocale): string {
+  return links.portalLogin ?? siteLink(links.profile, locale)
 }
 
 export function renderEmail(kind: EmailKind, payload: EmailPayload, ctx: RenderContext): RenderedEmail {
@@ -466,14 +499,14 @@ function renderOrder(d: EmailTexts, locale: EmailLocale, p: OrderConfirmationPay
       ? [{ kind: 'li' as const, text: d.order.nextRenewalLine(formatEmailDate(p.next_renewal_at, locale)) }]
       : []),
     { kind: 'h', text: d.order.noCommitmentHeading },
-    { kind: 'p', text: d.order.noCommitment, href: manageLink(ctx.links) },
+    { kind: 'p', text: d.order.noCommitment, href: manageLink(ctx.links, locale) },
     { kind: 'h', text: d.order.withdrawalHeading },
     { kind: 'p', text: d.order.withdrawalIntro },
     ...(ctx.consentText ? [{ kind: 'quote' as const, text: ctx.consentText }] : []),
     {
       kind: 'p',
       text: d.order.withdrawalTerms(ctx.termsVersion ? formatEmailDate(ctx.termsVersion, locale) : null),
-      href: ctx.links.cgv,
+      href: siteLink(ctx.links.cgv, locale),
     },
   ]
   return { subject: d.order.subject(tier), html: toHtml(d, title, blocks), text: toText(d, title, blocks) }
@@ -488,8 +521,8 @@ function renderCancellation(d: EmailTexts, locale: EmailLocale, p: CancellationP
     { kind: 'li', text: d.cancellation.accessUntil(tier, accessUntil) },
     { kind: 'li', text: d.cancellation.noRefund },
     { kind: 'li', text: d.cancellation.backToFree },
-    { kind: 'p', text: d.cancellation.reactivate, href: manageLink(ctx.links) },
-    { kind: 'p', text: d.cancellation.terms, href: ctx.links.cgv },
+    { kind: 'p', text: d.cancellation.reactivate, href: manageLink(ctx.links, locale) },
+    { kind: 'p', text: d.cancellation.terms, href: siteLink(ctx.links.cgv, locale) },
   ]
   return { subject: d.cancellation.subject(tier, accessUntil), html: toHtml(d, title, blocks), text: toText(d, title, blocks) }
 }
@@ -506,8 +539,8 @@ function renderReminder(d: EmailTexts, locale: EmailLocale, p: RenewalReminderPa
     { kind: 'p', text: d.reminder.legalIntro(tier, date) },
     { kind: 'li', text: d.reminder.amountLine(amount, p.amount_is_estimate) },
     { kind: 'li', text: d.reminder.optOut(date) },
-    { kind: 'p', text: d.reminder.manage, href: manageLink(ctx.links) },
-    { kind: 'p', text: d.reminder.doNothing, href: ctx.links.cgv },
+    { kind: 'p', text: d.reminder.manage, href: manageLink(ctx.links, locale) },
+    { kind: 'p', text: d.reminder.doNothing, href: siteLink(ctx.links.cgv, locale) },
   ]
   return { subject: d.reminder.subject(tier, date), html: toHtml(d, title, blocks), text: toText(d, title, blocks) }
 }

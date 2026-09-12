@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useCallback, useEffect, useState } from 'react'
 import { landingDicts, type Lang, type LandingDict } from '@/locales/landing'
+import { resolveInitialLang } from '@/lib/lang-param'
 
 /* Clé localStorage — préfixe `wf-` comme le reste des préférences du site.
    Renommée depuis `wf-landing-lang` quand la portée est passée de la vitrine à tout
@@ -33,22 +34,44 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>('fr')
 
   useEffect(() => {
+    let stored: string | null = null
     try {
-      const stored =
+      stored =
         window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
-      // Le setState en effet ci-dessous est ICI la solution, pas le problème : c'est ce
-      // qui garantit que le premier rendu client est identique au rendu serveur. Lire
-      // localStorage pendant le rendu (ce que suggère la règle) provoquerait le mismatch
-      // d'hydratation qu'on cherche à éviter.
-      if (stored === 'fr' || stored === 'en') {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- voir ci-dessus
-        setLangState(stored)
-        // Convergence : la valeur lue depuis l'ancienne clé est recopiée sous la
-        // nouvelle, pour que la migration n'ait lieu qu'une fois par navigateur.
-        window.localStorage.setItem(STORAGE_KEY, stored)
-      }
     } catch {
-      /* stockage indisponible (navigation privée, cookies bloqués) → on reste en FR */
+      /* stockage indisponible (navigation privée, cookies bloqués) → `stored` reste null */
+    }
+
+    // Priorité URL > préférence stockée > français. La règle est dans un module
+    // PUR (`lib/lang-param.ts`), où elle se teste sans jsdom ; ici on ne fait que
+    // lui passer ce que seul le navigateur peut fournir.
+    //
+    // ⚠️ `window.location.search` et NON `useSearchParams()` : ce hook force le
+    // rendu dynamique de tout l'arbre sous lui, et ce provider est monté dans le
+    // layout RACINE — les pages actuellement prérendues en statique (vitrine,
+    // pages légales, /champions…) cesseraient toutes de l'être. Ici, le
+    // paramètre n'est lu qu'APRÈS l'hydratation, comme le stockage.
+    const initial = resolveInitialLang(window.location.search, stored)
+    if (!initial) return
+
+    // Le setState en effet ci-dessous est ICI la solution, pas le problème : c'est ce
+    // qui garantit que le premier rendu client est identique au rendu serveur. Lire
+    // localStorage (ou l'URL) pendant le rendu provoquerait le mismatch d'hydratation
+    // qu'on cherche à éviter.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- voir ci-dessus
+    setLangState(initial.lang)
+
+    try {
+      // Convergence, dans les deux cas :
+      //  • `storage` — la valeur lue depuis l'ANCIENNE clé est recopiée sous la
+      //    nouvelle, pour que la migration n'ait lieu qu'une fois par navigateur ;
+      //  • `url` — la langue demandée par le lien devient la préférence de ce
+      //    navigateur. Sans cela, le premier lien du pied de page (qui recharge
+      //    la page entière, sans le paramètre) ramènerait le visiteur en
+      //    français : le bug qu'on corrige, repoussé d'un clic.
+      window.localStorage.setItem(STORAGE_KEY, initial.lang)
+    } catch {
+      /* non persistable : le choix reste valable jusqu'au rechargement */
     }
   }, [])
 

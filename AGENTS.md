@@ -2397,6 +2397,44 @@ comme la grille tarifaire, la modale de paiement et les CGV), les montants
   de celles qu'annoncent le site, les CGV et le portail Stripe ;
 - les **références d'articles** (`L215-1`), comme dans les pages légales.
 
+**🔴 Les liens des e-mails portent la langue (`?lang=`) — et eux seuls.**
+Un e-mail anglais dont le lien pointait sur `/cgv` tout court faisait atterrir son
+destinataire sur la version FRANÇAISE : la langue du site vit dans le `localStorage`,
+qui ne franchit ni l'e-mail ni l'appareil. Le cas est la RÈGLE, pas l'exception — un
+lien ouvert depuis l'application mail d'un téléphone s'ouvre dans un navigateur qui
+n'a jamais visité le site.
+
+- Les liens `/cgv` et `/profil` des trois gabarits sont estampillés `?lang=fr|en`
+  (`siteLink`), **dans les deux langues** : un abonné français dont le navigateur a
+  gardé « en » d'une visite précédente doit lui aussi atterrir dans la langue de
+  l'e-mail qu'il vient de lire.
+- **Le lien « no-code » du portail Stripe n'est PAS estampillé** : c'est une URL de
+  Stripe, qui a sa propre gestion de langue ; `?lang=` y serait un paramètre parasite.
+- Côté site, `LanguageProvider` lit le paramètre au chargement. Règle de priorité
+  dans un module PUR, `src/lib/lang-param.ts` : **URL > préférence stockée > rien**
+  (et « rien » signifie : on ne touche pas à l'état, on n'écrit pas dans le stockage —
+  un visiteur qui n'a jamais choisi de langue ne doit pas repartir avec une préférence
+  qu'il n'a pas exprimée).
+- La langue venue de l'URL est **persistée** sous `wf-lang`. Sans cela, le premier
+  lien du pied de page — qui recharge la page entière, sans le paramètre — ramènerait
+  le visiteur en français : le bug corrigé, repoussé d'un clic.
+- **Aucune URL du site ne porte ce paramètre** : la navigation normale suit l'état du
+  provider comme avant. Ce n'est pas un routage i18n par URL, il y a toujours une
+  seule URL par page. Un test vérifie qu'aucun `href` des pages légales ne le porte.
+
+> ⚠️ **`window.location.search`, et surtout PAS `useSearchParams()`.** Ce hook force
+> le rendu dynamique de tout l'arbre sous lui, et le provider est monté dans le layout
+> RACINE : la vitrine, les quatre pages légales, /champions et /matches cesseraient
+> toutes d'être prérendues en statique. Le paramètre est donc lu dans le même `useEffect`
+> que le stockage, APRÈS l'hydratation — ce qui préserve aussi l'égalité du rendu
+> serveur et du premier rendu client. (Vérifié : la table des routes du `next build`
+> est inchangée, `/cgu` et `/cgv` restent `○`.)
+
+> ⚠️ Le nom du paramètre est écrit **deux fois** : `LANG_PARAM` (`src/lib/lang-param.ts`)
+> et une constante locale du module Deno, qui ne peut pas importer `src/` (même
+> contrainte que le dictionnaire, voir ci-dessus). `subscription-emails-worker.test.ts`
+> compare le lien RENDU à `LANG_PARAM` : c'est ce qui interdit aux deux côtés de diverger.
+
 > ⚠️ **Le dictionnaire vit DANS `_shared/subscription-emails.ts`**, pas dans un module
 > frère. L'Edge Function tourne sous Deno, qui **exige** l'extension (`./x.ts`), et
 > `tsc` la **refuse** (`allowImportingTsExtensions`) — or ce module est aussi compilé
@@ -2409,13 +2447,18 @@ comme la grille tarifaire, la modale de paiement et les CGV), les montants
 sont de simples `select` sur `checkout_consent_log` (service_role ; la table reste
 inaccessible aux clients).
 
-**Tests** (`src/lib/stripe/subscription-emails-worker.test.ts`, 47 tests) :
+**Tests** (`src/lib/stripe/subscription-emails-worker.test.ts`, 55 tests ;
+`src/lib/lang-param.test.ts`, 12 tests) :
 normalisation des étiquettes, parité des clés FR/EN, aucune chaîne EN restée en
 français, contenu légal présent dans le gabarit anglais (encadré L215-1 daté, montant,
 liens, texte de consentement, échappement HTML), choix du gabarit **de bout en bout à
 travers `processDueEmails`** — c'est là qu'est le bug probable, une locale lue mais
 pas transmise — et les quatre replis : compte sans preuve, valeur hors catalogue,
-`localeOf` en panne, compte supprimé (qui n'interroge même pas la langue).
+`localeOf` en panne, compte supprimé (qui n'interroge même pas la langue). Côté
+liens : `?lang=` présent sur `/cgv` et `/profil` dans les trois gabarits et dans les
+deux langues, absent du portail Stripe, et la règle de priorité URL > stockage > rien.
+`LegalPage.test.tsx` referme la chaîne : un `?lang=en` sans préférence locale rend bien
+la page en anglais, et aucun lien du site ne porte le paramètre.
 
 **Validé** : 27/27 sur le projet test (migration + `supabase/tests/20260911000004_…`
 dans une transaction annulée — rien n'a persisté, job cron compris) ; tests vitest
@@ -2629,6 +2672,10 @@ la formate avec `formatDate(…, lang, { dateStyle: 'long' })`. Deux conséquenc
   français journalisé. Aucune migration.
 - Le **`metadata`** des 4 routes (voir ci-dessus).
 - Le **Kit sur mesure**, qui aura ses propres conditions (déjà hors périmètre).
+
+> ✅ L'écart « un lien d'e-mail anglais ouvre la page en français » est corrigé depuis
+> le 2026-09-12 : les liens sortants portent `?lang=`, lu par `LanguageProvider`.
+> Voir § E-mails transactionnels › Langue des e-mails.
 
 ---
 
