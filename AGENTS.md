@@ -1280,7 +1280,7 @@ AND (NOT (EXISTS ( SELECT 1
 | `/summoner/[region]/[gameName]/[tagLine]` | Fonctionnel — historique joueur public, autocomplete `searched_summoners`, comparaison de rang (Vue A percentile + Vue B vs avg) |
 | ~~`/tournois*`~~ | **SUPPRIMÉ le 2026-09-03** (décision HORTAL) — front retiré en entier : 11 routes, 19 composants, `lib/tournois*`, le bloc CSS XV2 et le routage de sous-domaine du proxy. Suppression **nette**, sans redirection : le sous-domaine et `wyrm-forge.com/tournois*` renvoient 404. La BASE et les Edge Functions sont intactes — voir § Base de données — module Tournois. |
 | `/live/[region]/[riotId]` | Fonctionnel (Lots D1→D5) — les 9 états d'interface du contrat `riot-live-game` (§ Contrat client normatif ci-dessous), composition des 2 équipes, **rangs + winrate des 10 joueurs**. Logique dans `src/lib/live-game.ts` (module pur testé : types, fetch, libellés, `elapsedSeconds`, `splitTeams`, `fetchParticipantRanks`), rendu dans `src/components/live/LiveComposition.tsx`, icônes via `src/lib/ddragon.ts`, libellés de rang via `src/lib/lol-tiers.ts`. **Plus d'appel EF inline** (extrait au Lot D2). Les rangs viennent de 10 appels `riot-rank?puuid=` en `Promise.allSettled` (jamais `all` : un rejet ne doit dégrader QUE sa ligne) — `ranks` reste `null` côté EF. Coût mesuré en réel (29/07/2026) : **11 appels Riot à froid** (1 spectator + 10 league-v4), **0 pour un 2ᵉ participant de la même partie** (mutualisation du cache). Verrou de 30 s sur « Actualiser » : c'est lui qui borne `riot-rank` à 2 chargements/min, soit pile son bucket `isRateLimited` de 20/min. **Point d'entrée depuis `/summoner`** (Lot D5) : bouton « Partie en direct → » dans l'en-tête joueur, construit par `buildLiveHref` (module pur testé). Il propage `?puuid=` **quand il est déjà résolu** par le chargement de `/summoner` (riot-rank ou riot-matches) → la page cible emprunte le chemin canonique de l'EF, **12 appels → 11**. PUUID absent ou mal formé (GUID LCU 36 car.) ⇒ **omis**, repli sur le Riot ID seul : lien toujours valide, juste un account-v1 de plus. Deux décisions actées : (1) le bouton **ne pré-vérifie PAS `in_game`** — le faire coûterait un appel spectator-v5 à chaque visite de `/summoner` pour une info périmée dès le clic ; « pas en partie » se découvre sur la page cible, où c'est un état NOMINAL ; (2) `prefetch={false}` sur le `next/link` est **fonctionnel, pas cosmétique** — le prefetch par défaut déclencherait une requête RSC vers `/live` dès l'entrée du lien dans le viewport, ce qu'interdit le STOP D5 (zéro requête réseau après le chargement initial de `/summoner`). |
-| `/confidentialite`, `/mentions-legales`, `/cgu` | Fonctionnel (Lot P1.a) — pages légales statiques, câblées depuis la barre basse du `Footer` (les 3 liens y sont des routes réelles ; **les colonnes du haut aussi depuis le 2026-09-03** — les 9 `'#'` restants ont été soit rebranchés, soit retirés avec leur libellé). **Versions de départ, PAS la version juridique finale** — relecture par un juriste prévue. Server Components (pour exporter `metadata`) qui rendent la coquille cliente partagée `src/components/legal/LegalPage.tsx` (`LegalPage` + helpers `Section` / `List` / `Todo`). ⚠️ Les informations manquantes sont marquées par le composant **`<Todo>`**, qui les rend **visibles à l'écran** en `[À COMPLÉTER — …]` : c'est volontaire (un placeholder invisible en commentaire serait publié tel quel sans que personne ne le voie). À renseigner dès l'immatriculation de la SASU : raison sociale, capital, siège, SIREN/SIRET, RCS, TVA, directeur de publication, adresse postale Supabase, région d'hébergement, médiateur de la consommation, modalités de facturation Stripe. |
+| `/confidentialite`, `/mentions-legales`, `/cgu`, `/cgv` | Fonctionnel (Lot P1.a, **traduites FR/EN** le 2026-09-12 — voir § Traduction EN des pages légales) — pages légales statiques, câblées depuis la barre basse du `Footer` (les 3 liens y sont des routes réelles ; **les colonnes du haut aussi depuis le 2026-09-03** — les 9 `'#'` restants ont été soit rebranchés, soit retirés avec leur libellé). **Versions de départ, PAS la version juridique finale** — relecture par un juriste prévue. Chaque `page.tsx` est un Server Component RÉDUIT À `metadata` + le composant de contenu client correspondant (`src/components/legal/*Content.tsx`), qui lit le dictionnaire de la langue courante (`src/locales/legal/`) et le rend dans la coquille partagée `src/components/legal/LegalPage.tsx` ; les helpers `Section` / `List` / `Todo` vivent désormais dans `LegalBlocks.tsx` (rupture de cycle d'imports). ⚠️ Les informations manquantes sont marquées par le composant **`<Todo>`**, qui les rend **visibles à l'écran** en `[À COMPLÉTER PAR HORTAL — …]` / `[TO BE COMPLETED BY HORTAL — …]` **dans les deux langues** : c'est volontaire (un placeholder invisible en commentaire serait publié tel quel sans que personne ne le voie), et une version EN qui paraîtrait complète serait pire encore. `grep -rn HORTAL src` les liste toutes, FR et EN. À renseigner dès l'immatriculation de la SASU : raison sociale, capital, siège, SIREN/SIRET, RCS, TVA, directeur de publication, adresse postale Supabase, région d'hébergement, médiateur de la consommation, modalités de facturation Stripe. |
 
 ### Impact d'items (`/match/...`) — précisions techniques
 - **Cache v3** (depuis 2026-07-31) : `riot-match-detail` utilise `match:v3:${routing}:${matchId}`. Historique des versions : v1 (origine) → v2 (`playerStats` de timeline) → **v3 (runes complètes : 6 perks + stat shards)**.
@@ -2218,13 +2218,14 @@ ancien abonné redescendu au gratuit, la résiliation programmée, les cinq stat
 
 Suite à l'audit légal du 2026-09-10. Périmètre : abonnements Forgeron / Maître
 seulement. **Le Kit sur mesure est HORS périmètre** (contrat de prestation distinct,
-rétractation pleinement applicable) ; la traduction EN des CGU/CGV aussi.
+rétractation pleinement applicable). ~~La traduction EN des CGU/CGV aussi~~ → **FAITE le
+2026-09-12**, voir § Traduction EN des pages légales.
 
 ### Ce qui a été livré
 
 | Élément | Où |
 |---|---|
-| Page CGV (L221-5) | `src/app/cgv/page.tsx` — route dédiée, FR seul, liée depuis le footer, la nav des pages légales et la modale de paiement |
+| Page CGV (L221-5) | `src/app/cgv/page.tsx` + `src/locales/legal/cgv.tsx` — route dédiée, **FR et EN**, liée depuis le footer, la nav des pages légales et la modale de paiement |
 | Clauses d'abonnement partagées CGU § 8 ↔ CGV § 2-5 | `src/components/legal/SubscriptionTerms.tsx` — **un seul texte rendu à deux endroits**, montants lus dans `PRICING_TIERS` |
 | CGU § 2 / § 9 bornées pour le payant, § 8 au présent, § 10 sans prorata | `src/app/cgu/page.tsx` |
 | Texte versionné de la case + ordre « preuve puis session » | `src/lib/stripe/checkout-consent.ts` (**module PUR**, `checkout-consent.test.ts`) |
@@ -2266,9 +2267,13 @@ l'abonnement + remboursement partiel depuis le Dashboard Stripe), à faire sous
 > SHA-256 dans `checkout-consent.test.ts`. Jamais réécrire une version publiée : le
 > test d'empreinte échoue exprès.
 >
-> ⚠️ **Changer les CGV** = avancer la date `updated` de `cgv/page.tsx` ET
-> `CGV_VERSION` ensemble (vérifié par test) — c'est la version enregistrée avec
-> chaque preuve.
+> ⚠️ **Changer les CGV** = avancer la date `updated` **des DEUX dictionnaires**
+> (`cgvFr` et `cgvEn` de `src/locales/legal/cgv.tsx`, au format ISO `AAAA-MM-JJ`) ET
+> `CGV_VERSION` ensemble — c'est la version enregistrée avec chaque preuve.
+> `checkout-consent.test.ts` relit le dictionnaire et échoue si les trois divergent.
+> La date n'est plus rédigée : `LegalPage` la formate dans la langue lue
+> (« 11 septembre 2026 » / « 11 September 2026 »), ce qui rend impossible d'annoncer
+> deux versions selon la langue.
 
 ### Table `checkout_consent_log` (migration 20260911000003)
 
@@ -2440,6 +2445,124 @@ factures ». Règle d'affichage partagée interface ↔ route :
 - **Encadré de garantie légale** (CGV § 7) reproduit d'après le modèle du décret
   n° 2022-424 pour les contenus/services numériques : à faire vérifier **mot pour
   mot** contre Légifrance.
+
+---
+
+## 🌍 Traduction EN des pages légales (chantier du 2026-09-12)
+
+### 🔴 Pourquoi — art. 6 Rome I, pas du confort d'interface
+
+Le contrat conclu par un consommateur résidant dans un autre État membre reste soumis
+aux **dispositions impératives de SON droit**, et il ne peut pas être réputé avoir
+accepté des conditions qu'il n'était pas en mesure de lire. Un site qui se **présente
+en anglais** (vitrine, dashboard, /profil, modale de paiement) et ne propose ses
+conditions de vente qu'en français prend donc le risque que le consentement à ces
+clauses soit écarté. La traduction est ce qui rend les clauses **opposables** à
+l'abonné anglophone — ce n'est pas une amélioration d'ergonomie.
+
+### Architecture — pourquoi le contenu a quitté les `page.tsx`
+
+Le site **n'a pas de routage i18n par URL** : la langue est un état client unique
+(`LanguageProvider` + `localStorage` `wf-lang`), partagé par la vitrine, le dashboard
+et les pages publiques. Les pages légales étaient des Server Components avec leur
+texte en dur — impossible d'y lire la langue.
+
+| Élément | Où |
+|---|---|
+| Dictionnaires FR/EN des 4 documents | `src/locales/legal/{mentions,confidentialite,cgu,cgv}.tsx` — `xxFr` fait foi, `xxEn: typeof xxFr` |
+| Coquille (retour, date, bandeau bêta, nav croisée, pied) | `src/locales/legal/shell.ts` — **module FEUILLE**, voir le cycle ci-dessous |
+| Clauses d'abonnement partagées CGU § 8 ↔ CGV § 2-5 | `src/locales/legal/subscription.tsx` (texte) + `src/components/legal/SubscriptionTerms.tsx` (rendu, montants) |
+| Assemblage FR/EN pour les tests | `src/locales/legal/index.ts` — **jamais importé par une page** (il tirerait les 4 documents dans chaque bundle) |
+| Corps de page, client | `src/components/legal/{MentionsLegales,Confidentialite,Cgu,Cgv}Content.tsx` |
+| `page.tsx` | réduits à `metadata` + `<XxxContent />` |
+| Helpers `Section` / `List` / `Todo` | **déplacés** de `LegalPage.tsx` vers `LegalBlocks.tsx` |
+
+**⚠️ Le cycle d'imports qu'il ne faut pas réintroduire.** Les dictionnaires rendent
+`<Section>` / `<Todo>`, donc ils importent `LegalBlocks`. Si `LegalBlocks` (ou
+`LegalPage`) lisait la coquille via `./index`, on aurait
+`LegalPage → index → cgu → LegalBlocks → index`. D'où la règle : **`shell.ts` ne doit
+rien importer de `./index`**, et `LegalPage` / `LegalBlocks` l'importent en direct.
+Même raison pour `SubscriptionTerms.tsx`, qui importe `./subscription` et non l'index.
+
+**Un hook par document** (`useCgv()`, `useCgu()`, `useMentions()`,
+`useConfidentialite()`), et pas un `useLegal()` global : chaque page légale est une
+route distincte, un hook global ferait entrer les quatre documents dans le bundle de
+chacune. Même raisonnement que la séparation `landing` / `dashboard`.
+
+### 🔴 La date de mise à jour est une DATE, plus une phrase
+
+`updated` vaut désormais l'ISO `'2026-09-11'` dans chaque dictionnaire ; `LegalPage`
+la formate avec `formatDate(…, lang, { dateStyle: 'long' })`. Deux conséquences :
+
+- les deux langues **ne peuvent pas** annoncer deux dates différentes — pour les CGV,
+  cette date EST `CGV_VERSION`, la version enregistrée avec chaque preuve de
+  consentement ;
+- la `Date` est construite **à partir des composants** (`new Date(y, m - 1, d)`) et
+  non par `new Date('2026-09-11')`, qui serait minuit UTC : dans un fuseau à l'ouest
+  de Greenwich, la date affichée reculerait d'un jour et ne correspondrait plus à
+  `CGV_VERSION`.
+
+### Conventions de traduction (à respecter pour toute nouvelle clause)
+
+- **Dénominations juridiques françaises sans équivalent** (SASU, RCS, SIREN/SIRET,
+  « directeur de la publication », franchise en base de TVA) : **conservées en
+  français et glosées** entre parenthèses. Traduire « SASU » par « limited company »
+  désignerait une autre forme sociale, et le lecteur ne retrouverait pas l'entité
+  dans les registres.
+- **Références d'articles** : laissées en français (« article L221-18 du Code de la
+  consommation ») — c'est ce numéro qui permet de retrouver le texte.
+- **Encadré réglementaire de garantie légale** (CGV § 7) : le décret n° 2022-424
+  n'impose ce libellé **qu'en français**. La version EN est une traduction de
+  courtoisie, annoncée comme telle dans l'encadré ; **c'est le texte français qui
+  fait foi**. Ne pas « améliorer » l'un sans l'autre.
+- **Noms de paliers** : `profiles.tier` reste « Forgeron » / « Maître » en base, mais
+  le libellé AFFICHÉ suit la langue (« Blacksmith » / « Master »), comme la grille
+  tarifaire et la modale de paiement. Un contrat qui nommerait le palier autrement
+  que l'écran de souscription serait illisible pour l'abonné.
+- **Identifiants techniques** (`wf-lang`, `wf.matchups.v2`, `sb-…-auth-token`) : **pas
+  traduits** — le lecteur doit les retrouver tels quels dans son navigateur.
+- **Aucune divergence de fond entre FR et EN.** Pas une phrase de plus d'un côté que
+  de l'autre, même vraie et même utile : une clause présente dans une seule langue
+  fait exactement le tort que ce chantier corrige. Les faits qui ne concernent que le
+  lecteur anglophone vont dans AGENTS.md, pas dans le contrat.
+- **`metadata` reste FR** (titre d'onglet, description) : elle est produite côté
+  serveur, où la langue du visiteur n'est pas connue. La traduire supposerait des URL
+  localisées, que le site n'a pas.
+
+### Ce que les tests verrouillent
+
+`src/locales/legal/legal.test.ts` (dictionnaires, 28 tests) et
+`src/components/legal/LegalPage.test.tsx` (4 pages **rendues** dans les 2 langues,
+28 tests) :
+
+- parité de clés FR/EN, aucune section vide, `updated` identique et au format ISO ;
+- **aucun titre de section identique au français** — le symptôme du copier-coller non
+  traduit. Si un titre devait un jour être légitimement identique, déclarer
+  l'exception dans le test plutôt que de le désarmer ;
+- **autant de `<Todo>` en EN qu'en FR**, section par section, clauses d'abonnement
+  comprises ;
+- la bascule change réellement le HTML des 4 pages : coquille, date formatée, nav
+  croisée, note de traduction (EN seulement), montants (`3€` / `€3`), noms de paliers ;
+- `HEADERLESS_PREFIXES` (`SiteHeader.tsx`) **ne contient aucune route légale** — les
+  pages légales n'ont pas de bascule à elles, elle vit dans `Nav` : y masquer le
+  header enfermerait un visiteur arrivé en anglais dans un document qu'il ne peut
+  plus changer de langue.
+
+### ⏳ Ce qui reste en français — à décider par HORTAL
+
+- **Les e-mails transactionnels d'abonnement** (`order_confirmation`,
+  `cancellation_confirmation`, `renewal_reminder`) sont **FR uniquement** :
+  `supabase/functions/_shared/subscription-emails.ts` code en dur `<html lang="fr">`
+  et des gabarits français, et **rien ne porte la langue** — ni colonne de
+  `subscription_emails` (migration 20260911000004), ni préférence en base (la langue
+  vit dans `localStorage`, elle ne survit pas au serveur). C'est un **écart réel** :
+  la confirmation de commande est l'information de l'art. L221-13 sur support durable,
+  et l'abonné anglophone la reçoit en français. Une extension supposerait (1) une
+  préférence de langue persistée — ou la réutilisation de `checkout_consent_log.locale`,
+  qui existe déjà et est exacte pour `order_confirmation`, (2) des gabarits EN,
+  (3) `lang` dans `<html>`. **Non fait ici, hors périmètre du chantier.**
+- Le **`metadata`** des 4 routes (voir ci-dessus).
+- Le **Kit sur mesure**, qui aura ses propres conditions (déjà hors périmètre).
 
 ---
 

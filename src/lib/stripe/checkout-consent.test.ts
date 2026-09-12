@@ -228,19 +228,33 @@ describe('textes versionnés', () => {
 })
 
 describe('version des CGV enregistrée avec la preuve', () => {
-  it('correspond à la date « Dernière mise à jour » de la page /cgv', () => {
+  // Le document vit dans `src/locales/legal/cgv.tsx` depuis le chantier de
+  // traduction (la page n'est plus qu'une coquille qui exporte `metadata`), et
+  // la date y est au format ISO : c'est `LegalPage` qui la rend en toutes
+  // lettres dans la langue lue. Le fichier est relu en TEXTE plutôt qu'importé
+  // parce qu'il contient du JSX qui tire tout l'arbre React — la propriété
+  // vérifiée, elle, est une simple chaîne.
+  const source = readFileSync(path.resolve(__dirname, '../../locales/legal/cgv.tsx'), 'utf8')
+
+  it('correspond à la date « Dernière mise à jour » du document /cgv', () => {
     // Si les CGV changent sans que `CGV_VERSION` avance, les nouveaux abonnés
     // seraient enregistrés comme ayant accepté une version qui ne désigne plus
     // le texte qu'ils ont lu.
-    const page = readFileSync(path.resolve(__dirname, '../../app/cgv/page.tsx'), 'utf8')
-    const match = page.match(/updated="(\d{1,2}) (\S+) (\d{4})"/)
-    expect(match, 'date de mise à jour introuvable dans cgv/page.tsx').not.toBeNull()
+    const dates = [...source.matchAll(/^ {2}updated: '(\d{4}-\d{2}-\d{2})',$/gm)]
+      .map(m => m[1])
+    expect(dates.length, 'date de mise à jour introuvable dans locales/legal/cgv.tsx')
+      .toBeGreaterThan(0)
+    for (const iso of dates) expect(iso).toBe(CGV_VERSION)
+  })
 
-    const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
-      'août', 'septembre', 'octobre', 'novembre', 'décembre']
-    const [, d, m, y] = match!
-    const iso = `${y}-${String(MONTHS.indexOf(m) + 1).padStart(2, '0')}-${d.padStart(2, '0')}`
-    expect(iso).toBe(CGV_VERSION)
+  it('est la MÊME dans les deux langues', () => {
+    // `cgvFr` et `cgvEn` portent chacun leur `updated`. Deux dates différentes
+    // feraient annoncer deux versions du contrat selon la langue lue, alors
+    // qu'une seule est enregistrée avec la preuve de consentement.
+    const dates = [...source.matchAll(/^ {2}updated: '(\d{4}-\d{2}-\d{2})',$/gm)]
+      .map(m => m[1])
+    expect(dates).toHaveLength(2)
+    expect(dates[0]).toBe(dates[1])
   })
 })
 
