@@ -2343,7 +2343,10 @@ première échéance 2031).
 **Validé** : 27/27 sur le projet test (migration + `supabase/tests/20260911000004_…`
 dans une transaction annulée — rien n'a persisté, job cron compris) ; tests vitest
 (`src/lib/stripe/subscription-emails*.test.ts`) ; `deno check` de l'EF OK.
-**NON appliqué** ni sur test ni en prod ; aucun e-mail réel envoyé (pas de clé).
+**✅ Migration appliquée en prod le 2026-09-12** (`db push`, projet `cuscgmgqakxnfwnsrhhv`) —
+**toujours pas sur le projet test**. Aucun e-mail réel envoyé à ce jour : seul `EMAIL_FROM` est
+posé. Tant que `RESEND_API_KEY` et `SUBSCRIPTION_EMAILS_TOKEN` manquent, l'EF répond 503 sans
+rien réclamer ; tant que les deux secrets Vault manquent, le cron ne la réveille pas (§ pré-requis).
 
 **⚠️ Pré-requis de mise en service, dans cet ordre :**
 1. Secrets Edge Functions (prod) : `supabase secrets set RESEND_API_KEY=… EMAIL_FROM=…
