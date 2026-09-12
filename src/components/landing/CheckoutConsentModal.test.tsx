@@ -146,11 +146,12 @@ describe('dictionnaires de la modale', () => {
     }
   })
 
-  it('ne promettent pas un rappel avant renouvellement qui n’existe pas encore', () => {
-    // Aucun envoi d'e-mail n'est branché (obligation L215-1 non couverte à ce
-    // jour) : la modale ne doit pas l'annoncer.
+  it('annoncent le rappel avant reconduction pour l’annuel seulement (L215-1)', () => {
+    // Le rappel est envoyé par l'EF `subscription-emails` depuis le 2026-09-11.
+    // Le mensuel, contrat sans durée déterminée, n'en a pas : il ne doit pas le promettre.
     for (const d of [landingFr, landingEn]) {
-      expect(d.pricing.consentRenewalAnnual).not.toMatch(/prévenu|rappel|remind|notif/i)
+      expect(d.pricing.consentRenewalAnnual).toMatch(/prévenu|notified/i)
+      expect(d.pricing.consentRenewalMonthly).not.toMatch(/prévenu|rappel|remind|notif/i)
     }
   })
 })

@@ -52,6 +52,13 @@ verify_jwt = true
 # 20260911000002. Le sous-domaine prac.wyrm-forge.com, la variable
 # NEXT_PUBLIC_PRAC_HOST et le secret PRAC_WEBHOOK_SECRET restent à retirer hors dépôt.
 
+# subscription-emails : envoi des e-mails d'abonnement (L221-13, L215-1-1, L215-1),
+# appelée par pg_cron (`trigger_subscription_emails_drain`, migration 20260911000004),
+# jamais par un navigateur. Pas de JWT utilisateur : la barrière est l'en-tête
+# X-Internal-Token = SUBSCRIPTION_EMAILS_TOKEN, vérifié EN CODE en temps constant.
+[functions.subscription-emails]
+verify_jwt = false
+
 # ── Fonctions nécessitant un user connecté ───────────────────────────────────
 # verify_jwt = true déclaré EXPLICITEMENT (était le défaut implicite). La clé anon
 # reste un JWT valide accepté par la plateforme ; la vérification du VRAI user est

@@ -16,6 +16,21 @@ import {
   shouldStopBillingForDeletedAccount,
   cancelAndDiscardRenewal,
 } from '@/lib/stripe/account-deletion'
+import {
+  cancellationIntent,
+  enqueueSafely,
+  isCancellationScheduled,
+  orderConfirmationIntent,
+  periodFromInterval,
+  renewalReminderIntent,
+  wasCancellationScheduled,
+  type EmailIntent,
+} from '@/lib/stripe/subscription-emails'
+
+/** La RPC a-t-elle appliqué l'événement ? Faux seulement pour un événement périmé ou sans client. */
+function isApplied(result: unknown): boolean {
+  return (result as { applied?: boolean } | null)?.applied !== false
+}
 
 /**
  * Réception des événements Stripe — le SEUL endroit qui fait changer un palier.
@@ -28,6 +43,11 @@ import {
  *   • `customer.subscription.deleted`   — fin effective
  *   • `invoice.created`                 — FILET « compte supprimé » uniquement
  *                                          (voir `stopBillingForDeletedAccount`)
+ *
+ * E-mails d'abonnement (confirmation de commande, de résiliation, rappel de
+ * reconduction annuelle) : cette route ne fait que les METTRE EN FILE, après
+ * l'enregistrement, sans jamais pouvoir échouer à cause d'eux — voir
+ * `queueSubscriptionEmails`. L'envoi est fait par l'EF `subscription-emails`.
  *
  * ⚠️ `invoice.created` doit être COCHÉ dans la configuration de l'endpoint
  * (Dashboard Stripe → Developers → Webhooks), en test ET en live. Sans lui, le
@@ -268,6 +288,120 @@ async function applySubscription(
   return data
 }
 
+/**
+ * Met en file les e-mails d'abonnement que cet événement appelle — APRÈS
+ * l'enregistrement de l'abonnement, et sans JAMAIS pouvoir le remettre en cause.
+ *
+ * ⚠️ Ne lève jamais, par construction : tout est dans un try/catch, et le dépôt
+ * passe par `enqueueSafely`. Un e-mail qui ne peut pas être mis en file est
+ * journalisé en `console.error` (à envoyer à la main), et le webhook répond 200
+ * comme d'habitude. L'ENVOI, lui, n'a pas lieu ici : l'Edge Function
+ * `subscription-emails` s'en charge, dans un autre processus.
+ *
+ *  • `checkout.session.completed`                → confirmation de commande (L221-13)
+ *  • `customer.subscription.updated`, résiliation
+ *    qui PASSE à programmée                      → confirmation de résiliation (L215-1-1)
+ *  • tout événement d'un abonnement ANNUEL vivant → rappel de reconduction programmé (L215-1)
+ */
+async function queueSubscriptionEmails(
+  admin: ReturnType<typeof createAdminClient>,
+  stripe: Stripe,
+  args: {
+    event: Stripe.Event
+    userId: string
+    subscription: Stripe.Subscription
+    session?: Stripe.Checkout.Session
+    /** Faux si l'événement était périmé (garde d'ordre) : pas de confirmation de résiliation. */
+    applied: boolean
+  },
+): Promise<void> {
+  const { event, userId, subscription, session, applied } = args
+  try {
+    const item      = subscription.items?.data?.[0]
+    const price     = item?.price && typeof item.price === 'object' ? item.price : null
+    const listPrice = price?.unit_amount != null ? price.unit_amount * (item?.quantity ?? 1) : null
+    const currency  = price?.currency ?? null
+    const period    = periodFromInterval(price?.recurring?.interval)
+      ?? (periodForPriceId(idOf(item?.price), priceEnv()) as 'mensuel' | 'annuel' | null)
+    const tier      = tierOf(subscription)
+    const renewalAt = periodEndOf(subscription)
+    const cancelled = isCancellationScheduled(subscription)
+
+    const intents: (EmailIntent | null)[] = []
+
+    if (session) {
+      intents.push(orderConfirmationIntent({
+        userId, subscriptionId: subscription.id, tier, period,
+        amountPaidCents: session.amount_total ?? null,
+        listPriceCents: listPrice,
+        currency: session.currency ?? currency,
+        firstChargeAt: unixToIso(event.created) ?? new Date().toISOString(),
+        nextRenewalAt: renewalAt,
+        consentId: session.metadata?.consent_id ?? subscription.metadata?.consent_id ?? null,
+      }))
+    }
+
+    if (event.type === 'customer.subscription.updated' && applied) {
+      const previous = (event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes
+      intents.push(cancellationIntent({
+        userId, subscriptionId: subscription.id, eventId: event.id, tier, period,
+        scheduledNow: cancelled,
+        scheduledBefore: wasCancellationScheduled(previous),
+        accessUntil: unixToIso(subscription.cancel_at ?? null) ?? renewalAt,
+        requestedAt: unixToIso(event.created) ?? new Date().toISOString(),
+      }))
+    }
+
+    if (period === 'annuel' && !cancelled && renewalAt) {
+      // Montant de la PROCHAINE facture, remises comprises — aperçu Stripe. En
+      // cas d'échec, repli sur le prix catalogue, signalé comme estimation.
+      let amount = listPrice
+      let amountCurrency = currency
+      let estimate = true
+      try {
+        const preview = await stripe.invoices.createPreview({ subscription: subscription.id })
+        amount = preview.amount_due
+        amountCurrency = preview.currency
+        estimate = false
+      } catch (e) {
+        console.warn('[stripe/webhook] aperçu de facture indisponible — montant du rappel estimé', {
+          subscription_id: subscription.id, error: e instanceof Error ? e.message : e,
+        })
+      }
+      intents.push(renewalReminderIntent({
+        userId, subscriptionId: subscription.id, tier, period,
+        status: subscription.status, scheduledCancellation: cancelled,
+        renewalAt, amountCents: amount, currency: amountCurrency, amountIsEstimate: estimate,
+      }))
+    }
+
+    const report = await enqueueSafely(intents, async (intent) => {
+      const { data, error } = await admin.rpc('enqueue_subscription_email', {
+        p_user_id:         intent.userId,
+        p_subscription_id: intent.subscriptionId,
+        p_kind:            intent.kind,
+        p_dedup_key:       intent.dedupKey,
+        p_payload:         intent.payload,
+        p_not_before:      intent.notBefore,
+      })
+      if (error) throw new Error(error.message)
+      return String(data)
+    })
+
+    if (report.failed.length > 0) {
+      console.error('[stripe/webhook] e-mail NON mis en file — obligation légale à traiter À LA MAIN', {
+        user_id: userId, subscription_id: subscription.id, failed: report.failed,
+      })
+    } else if (report.enqueued.length > 0) {
+      console.log('[stripe/webhook] e-mails mis en file', { subscription_id: subscription.id, enqueued: report.enqueued })
+    }
+  } catch (e) {
+    console.error('[stripe/webhook] préparation des e-mails en échec — abonnement NON affecté', {
+      subscription_id: subscription.id, error: e instanceof Error ? e.message : e,
+    })
+  }
+}
+
 export async function POST(request: NextRequest) {
   // ── 1. Signature ───────────────────────────────────────────────────────────
   //
@@ -338,6 +472,10 @@ export async function POST(request: NextRequest) {
         }
 
         const result = await applySubscription(admin, userId, subscription, event.created)
+        // APRÈS l'enregistrement ; ne lève jamais (voir `queueSubscriptionEmails`).
+        await queueSubscriptionEmails(admin, stripe, {
+          event, userId, subscription, session, applied: isApplied(result),
+        })
         return NextResponse.json({ received: true, result })
       }
 
@@ -365,6 +503,10 @@ export async function POST(request: NextRequest) {
         // ne force PAS le statut à la main — si Stripe livrait un jour autre
         // chose, la politique doit voir la vraie valeur, pas la nôtre.
         const result = await applySubscription(admin, userId, subscription, event.created)
+        // APRÈS l'enregistrement ; ne lève jamais (voir `queueSubscriptionEmails`).
+        await queueSubscriptionEmails(admin, stripe, {
+          event, userId, subscription, applied: isApplied(result),
+        })
         return NextResponse.json({ received: true, result })
       }
 

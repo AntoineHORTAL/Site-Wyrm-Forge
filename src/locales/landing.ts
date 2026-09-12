@@ -205,11 +205,11 @@ export const landingFr = {
     consentTitle: 'Abonnement {tier}',
     consentPriceLabel: 'Prix :',
     perYear: ' /an',
-    // Ni promesse de rappel avant renouvellement ici : aucun envoi n'existe
-    // encore (voir AGENTS.md § CGV, obligation L215-1). Ne pas l'annoncer tant
-    // qu'il n'est pas branché.
+    // Le rappel avant reconduction annuelle (L215-1) est envoyé par l'EF
+    // `subscription-emails` depuis le 2026-09-11 : l'annonce est désormais vraie.
+    // Le mensuel n'en a pas (contrat sans durée déterminée, hors L215-1).
     consentRenewalMonthly: "Renouvelé automatiquement chaque mois, à la date anniversaire de ta souscription. Sans engagement : résiliable à tout moment depuis ton profil, avec effet à la fin du mois payé.",
-    consentRenewalAnnual: "Renouvelé automatiquement chaque année, à la date anniversaire de ta souscription. Résiliable à tout moment depuis ton profil, avec effet à la fin de l'année payée.",
+    consentRenewalAnnual: "Renouvelé automatiquement chaque année, à la date anniversaire de ta souscription — tu es prévenu par e-mail avant chaque reconduction. Résiliable à tout moment depuis ton profil, avec effet à la fin de l'année payée.",
     consentTermsBefore: 'Avant de payer, prends connaissance de nos',
     consentTermsLink: 'conditions générales de vente',
     consentConfirm: 'Continuer vers le paiement',
@@ -481,7 +481,7 @@ export const landingEn: LandingDict = {
     consentPriceLabel: 'Price:',
     perYear: ' /year',
     consentRenewalMonthly: 'Renews automatically every month, on the anniversary date of your subscription. No commitment: cancel anytime from your profile, effective at the end of the paid month.',
-    consentRenewalAnnual: 'Renews automatically every year, on the anniversary date of your subscription. Cancel anytime from your profile, effective at the end of the paid year.',
+    consentRenewalAnnual: 'Renews automatically every year, on the anniversary date of your subscription — you are notified by email before each renewal. Cancel anytime from your profile, effective at the end of the paid year.',
     // Les CGV n'existent qu'en français (traduction = chantier séparé) : le
     // lien le dit, plutôt que d'ouvrir une page dans une langue inattendue.
     consentTermsBefore: 'Before paying, please read our',
