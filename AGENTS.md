@@ -90,9 +90,14 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
   Next). « Joueurs » → `/matches` est le seul lien-route. `landing.test.ts` verrouille
   l'appariement position-par-position avec `nav.links` du dictionnaire.
 
-### Emplacements publicitaires (dashboard uniquement)
+### Emplacements publicitaires (dashboard)
 
-- **Point d'intégration UNIQUE** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. La vitrine publique n'est jamais concernée (branche `else` de `page.tsx`).
+> Les pages PUBLIQUES en portent aussi depuis le 2026-09-12 (`/patch-notes`,
+> `/champions`) — voir § Pages publiques et examen AdSense. Les deux verrous de
+> `lib/ads.ts` y sont les mêmes ; seule la lecture du palier change pour un
+> visiteur anonyme (`shouldShowPublicAds`).
+
+- **Point d'intégration UNIQUE côté dashboard** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. **La vitrine (`/`) n'est toujours PAS concernée** : décision du chantier AdSense, pas de publicité sur la page qui doit convaincre.
 - **Deux verrous indépendants**, tous deux dans `src/lib/ads.ts` :
   - `shouldShowAds(tier, isAdmin)` — **seul `apprenti` voit des pubs**. C'est une LISTE BLANCHE d'un élément, jamais une liste noire des paliers payants : un palier ajouté demain n'affiche rien par défaut. Palier inconnu ou profil non chargé ⇒ pas de pub.
   - `hasAdConsent()` — renvoie `false` **en dur** tant qu'aucune CMP n'existe. Aucun script tiers n'est chargé, donc aucun cookie publicitaire. C'est le seul endroit à modifier le jour où la CMP arrive.
@@ -1275,7 +1280,7 @@ AND (NOT (EXISTS ( SELECT 1
 
 | Route | État |
 |---|---|
-| `/patch-notes` | Fonctionnel — liste publique SSR |
+| `/patch-notes` | Fonctionnel — liste publique SSR. **2 emplacements publicitaires entre les patchs** depuis le 2026-09-12 (§ Pages publiques et examen AdSense) |
 | `/match/[platform]/[matchId]` | Fonctionnel — vue détail avec Impact d'items (Vue 1 stats + Vue 2 Meraki) |
 | `/summoner/[region]/[gameName]/[tagLine]` | Fonctionnel — historique joueur public, autocomplete `searched_summoners`, comparaison de rang (Vue A percentile + Vue B vs avg) |
 | ~~`/tournois*`~~ | **SUPPRIMÉ le 2026-09-03** (décision HORTAL) — front retiré en entier : 11 routes, 19 composants, `lib/tournois*`, le bloc CSS XV2 et le routage de sous-domaine du proxy. Suppression **nette**, sans redirection : le sous-domaine et `wyrm-forge.com/tournois*` renvoient 404. La BASE et les Edge Functions sont intactes — voir § Base de données — module Tournois. |
@@ -2560,6 +2565,118 @@ factures ». Règle d'affichage partagée interface ↔ route :
 - **Encadré de garantie légale** (CGV § 7) reproduit d'après le modèle du décret
   n° 2022-424 pour les contenus/services numériques : à faire vérifier **mot pour
   mot** contre Légifrance.
+
+---
+
+## 📄 Pages publiques et examen AdSense (chantier du 2026-09-12)
+
+Motif de refus reçu : **« Contenu à faible valeur informative »**. Diagnostic fait à
+la main, en récupérant le HTML **sans exécuter de JavaScript** — c'est ce que voit le
+robot d'examen :
+
+| Page | Avant | Après |
+|---|---|---|
+| `/` | **« Chargement... » et rien d'autre** — `page.tsx` court-circuitait sur `loading`, qui vaut `true` au rendu serveur | vitrine complète + section éditoriale · **62 Ko** |
+| `/champions` | barre de filtres vide, liste chargée dans un `useEffect` | **173 champions, 173 liens, 175 `alt`** · **232 Ko** |
+| `/matches` | outil de recherche, vide par nature | inchangé, mais **`noindex, follow`** |
+| `/patch-notes` | déjà solide (SSR, contenu statique riche) | inchangé, + 2 emplacements pub |
+
+### 🔴 La règle générale que ce chantier installe
+
+**Un composant client rend quand même son HTML au SSR — à condition que son parent le
+rende.** Les deux pages en défaut ne souffraient pas d'être « clientes » : elles
+souffraient d'un **garde de chargement** ou d'un **`useEffect`** placé AVANT le
+contenu. Le correctif n'a donc pas été de tout réécrire en Server Component, mais de
+retirer ce qui s'interposait.
+
+> ⚠️ Avant de toucher à une page publique, mesurer ce qu'elle SERT :
+> `npx next build && grep -c 'Chargement' .next/server/app/<page>.html`
+> Le fichier prérendu est la réponse exacte que reçoit un robot.
+
+### `/champions` — Server Component + îlot client
+
+- `src/app/champions/page.tsx` — Server Component, `export const revalidate = 3600`,
+  lit `fetchChampionCatalog()` (`src/lib/champions-catalog.ts`) et rend un **chapô
+  éditorial** (classes, échelle de difficulté, origine des données).
+- `src/components/champions/ChampionsExplorer.tsx` — îlot CLIENT par-dessus une liste
+  déjà rendue. **Invariant : l'état initial est `NO_FILTERS`, donc le premier rendu
+  contient TOUS les champions.** Ne pas y introduire de pagination ni de filtre par
+  défaut sans remesurer le HTML servi — ce serait la coquille vide par un autre chemin.
+- Les cartes sont des **`<Link>`**, plus des `div onClick` + `router.push` : les
+  ~170 fiches `/champion/[id]` étaient jusque-là **invisibles pour un robot**.
+- Le « ← Retour » `router.back()` est devenu un `<Link href="/">` : un bouton qui
+  dépend de l'historique ne mène nulle part quand la page est ouverte depuis un
+  résultat de recherche.
+- Survol et libellés masqués passés en CSS (`.champ-card`, `.sr-only` dans
+  `globals.css`) : une carte sans état React est rendable par le serveur, et ~170
+  `useState` de survol disparaissent au passage.
+
+### `/` — la vitrine n'attend plus la session
+
+`app/page.tsx` rend directement `user ? dashboard : vitrine`. L'état serveur
+(`user === null`) produit donc la vitrine COMPLÈTE.
+
+> ⚠️ **Contrepartie assumée** : un utilisateur connecté voit brièvement la vitrine
+> avant que sa session ne soit résolue, là où il voyait « Chargement... ». C'est le
+> même transitoire avec un contenu différent — et c'est **déjà** ce que fait le header
+> du layout racine, qui passe de `mode="visitor"` à `mode="user"` sur toutes les
+> routes. Le supprimer demanderait de lire le cookie Supabase côté serveur, ce qui
+> rendrait **tout le site dynamique**, vitrine et pages légales comprises.
+
+Nouvelle section éditoriale `src/components/landing/About.tsx` (+ bloc `about` dans
+`locales/landing.ts`, FR/EN) : du **texte suivi**, là où le reste de la vitrine est
+fait de titres courts et de cartes. Ton aligné sur le dossier légal — aucune promesse
+de résultat en jeu (CGU § 9), non-affiliation à Riot Games rappelée (CGU § 11).
+
+### `/matches` — `noindex, follow`
+
+Page-OUTIL : hors saisie d'un Riot ID, un titre, un paragraphe et un champ. Elle reste
+accessible et utilisable ; seule son indexation est retirée.
+
+> ⚠️ `follow: true` et non `noindex, nofollow` : les résultats
+> (`/matches/[region]/[riotId]`) portent de vraies données de parties, et ces liens
+> sont le seul chemin qui y mène.
+>
+> ⚠️ Contrairement à ce qu'on croit souvent, cette page **est liée deux fois** depuis
+> la navigation globale : « Joueurs » dans le header (`PLAYER_SEARCH_HREF`) et
+> « Rechercher un joueur » dans le footer. Ne pas retirer ces liens en croyant « finir
+> le travail » — `noindex, follow` est précisément fait pour cette situation.
+
+### Emplacements publicitaires sur les pages PUBLIQUES
+
+`src/components/ads/PublicAdSlot.tsx` — pendant de `DashboardAdRail` hors dashboard.
+Il n'ajoute **aucun mécanisme de consentement** : `AdSlot` garde `hasAdConsent()`, qui
+reste `false` tant qu'aucune CMP n'existe.
+
+- **`shouldShowPublicAds()`** (`lib/ads.ts`) — le verrou COMMERCIAL, adapté au public :
+  session non résolue ⇒ **rien** (sinon 250 px réservés puis retirés = le CLS
+  qu'`AdSlot` existe pour éviter) ; visiteur **anonyme** ⇒ **oui**, il est par
+  définition sur l'offre gratuite ; visiteur connecté ⇒ `shouldShowAds()` habituel.
+  C'est la seule différence avec le rail, et elle est nécessaire : `shouldShowAds(null)`
+  vaut `false`, donc appliquer la règle du dashboard n'afficherait **jamais** le
+  moindre emplacement là où le site en a besoin.
+- **Placement** — format `rectangle-300` (300×250), qui ne touche ni `AD_FORMATS` ni
+  `--ad-slot-w` (la variable CSS n'est posée que dans `.dash-adrail`) :
+
+| Page | Emplacements | Où |
+|---|---|---|
+| `/patch-notes` | 2 | **entre** les patchs, après le 2ᵉ et le 5ᵉ (`AD_AFTER_INDEX`) — jamais à l'intérieur d'un `<article>`, jamais avant le premier |
+| `/champions` | 1 | **en fin** de grille (prop `footer`) — la grille n'est jamais coupée en deux |
+| `/` et `/matches` | **0** | pas de pub sur la page qui doit convaincre, ni sur une page désindexée |
+
+### Ce qui reste à faire
+
+- **La CMP est toujours absente** : `hasAdConsent()` renvoie `false`, donc les
+  emplacements réservent leur espace mais **ne chargent rien**. Tant que c'est le cas,
+  aucune impression n'est servie — la demande d'examen peut partir, la monétisation
+  non. Voir § Emplacements publicitaires (dashboard) pour la dette associée.
+- **`ADSENSE_CLIENT_ID`** porte toujours son `<Todo>` : deux identifiants circulent
+  dans les documents du projet, un seul est bon, et un identifiant erroné fait échouer
+  la vérification **en silence**. À confirmer sur le Dashboard AdSense.
+- **`/champion/[id]`** (fiche d'un champion) est encore `'use client'` + `useEffect`,
+  donc `ƒ` et vide sans JS — ~170 pages dans ce cas. Hors périmètre de ce chantier,
+  mais c'est désormais le plus gros gisement de contenu non servi du site, et
+  `champions-catalog.ts` fournit déjà la moitié du chemin.
 
 ---
 

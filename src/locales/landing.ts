@@ -130,6 +130,66 @@ export const landingFr = {
     ],
   },
 
+  /* ── Section éditoriale « Qu'est-ce que Wyrm Forge ? » ──
+     Ajoutée au chantier AdSense du 2026-09-12. Contrairement aux autres blocs de
+     la vitrine, celui-ci est du TEXTE SUIVI et non des cartes : c'est la partie
+     qui explique le produit à quelqu'un qui n'en a jamais entendu parler, et
+     c'est ce qui manquait à une page composée de titres courts et d'icônes. */
+  about: {
+    eyebrow: 'À propos',
+    titleBefore: "Qu'est-ce que ",
+    titleAccent: 'Wyrm Forge',
+    titleAfter: ' ?',
+    intro:
+      "Wyrm Forge est un assistant de jeu pour League of Legends, composé d'une application "
+      + "Windows et d'un site web qui partagent le même compte. Il ne modifie pas le jeu et ne "
+      + "joue à votre place sur aucun point : il rassemble, au même endroit, les informations "
+      + "que l'on va autrement chercher sur cinq onglets différents — et il les prépare avant "
+      + "la partie, quand on a encore le temps de réfléchir.",
+    sections: [
+      {
+        title: 'Un overlay que vous composez vous-même',
+        body:
+          "L'overlay se superpose à League of Legends en mode fenêtré ou fenêtré sans bordures. "
+          + "Vous choisissez les modules affichés et leur place à l'écran : timers de jungle et "
+          + "d'objectifs, compte de sbires par minute, score de vision, temps de recharge des "
+          + "sorts d'invocateur, écart d'or. Rien n'est imposé, et ce qui ne vous sert pas "
+          + "n'occupe pas l'écran. Il peut se masquer automatiquement en jeu ou rester visible "
+          + "en permanence, selon ce que vous préférez.",
+      },
+      {
+        title: 'Des builds et des chemins de jungle réutilisables',
+        body:
+          "L'éditeur de builds sert à écrire un ordre d'objets, une page de runes et un ordre de "
+          + "compétences pour un champion donné, puis à le retrouver en partie sans le "
+          + "reconstruire de mémoire. L'éditeur de jungle paths fait la même chose pour les "
+          + "chemins : ordre des camps, timings de réapparition, position à l'écran. Les deux "
+          + "s'échangent avec le reste de la communauté depuis le Workshop, et tout ce que vous "
+          + "créez reste votre propriété.",
+      },
+      {
+        title: 'Des analyses, et ce qu’elles valent',
+        body:
+          "Wyrm Forge lit votre historique via l'API officielle de Riot Games et en tire des "
+          + "statistiques par champion, par rôle et par file : évolution du KDA, des sbires par "
+          + "minute, du score de vision, comparaison avec la moyenne de votre palier. Des "
+          + "analyses assistées par intelligence artificielle complètent la lecture — préparation "
+          + "d'un match up, bilan d'après-partie, résumé des patch notes en français. Ce sont des "
+          + "indications, pas des vérités : aucune ne garantit un résultat en jeu, et elles ne "
+          + "remplacent pas votre propre lecture de la partie.",
+      },
+      {
+        title: 'Gratuit, et sans risque pour votre compte',
+        body:
+          "Une offre gratuite complète reste disponible en permanence : l'application se "
+          + "télécharge et s'utilise sans rien payer. Des abonnements existent pour relever les "
+          + "limites d'usage, mais ils ne conditionnent aucune fonctionnalité essentielle. "
+          + "Wyrm Forge n'injecte rien dans le jeu, ne lit pas sa mémoire et n'automatise aucune "
+          + "action : il n'utilise que l'API publique de Riot Games, dans le cadre du Riot Games "
+          + "API Developer Agreement. Wyrm Forge n'est ni affilié ni approuvé par Riot Games.",
+      },
+    ],
+  },
   /* ── Section Communauté / confiance ── */
   community: {
     eyebrow: 'Confiance & légitimité',
@@ -429,6 +489,57 @@ export const landingEn: LandingDict = {
     ],
   },
 
+  about: {
+    eyebrow: 'About',
+    titleBefore: 'What is ',
+    titleAccent: 'Wyrm Forge',
+    titleAfter: '?',
+    intro:
+      'Wyrm Forge is a companion tool for League of Legends, made of a Windows application and a '
+      + 'website that share the same account. It does not modify the game and never plays for '
+      + 'you: it gathers, in one place, the information you would otherwise chase across five '
+      + 'browser tabs — and it prepares it before the game, while you still have time to think.',
+    sections: [
+      {
+        title: 'An overlay you lay out yourself',
+        body:
+          'The overlay sits on top of League of Legends in windowed or borderless mode. You '
+          + 'choose which modules are shown and where: jungle and objective timers, creep score '
+          + 'per minute, vision score, summoner spell cooldowns, gold difference. Nothing is '
+          + 'imposed, and what you do not use does not take up screen space. It can hide itself '
+          + 'automatically during the game or stay visible at all times, as you prefer.',
+      },
+      {
+        title: 'Builds and jungle paths you can reuse',
+        body:
+          'The build editor is there to write down an item order, a rune page and a skill order '
+          + 'for a given champion, then find it again in game without rebuilding it from memory. '
+          + 'The jungle path editor does the same for routes: camp order, respawn timings, '
+          + 'on-screen position. Both can be shared with the rest of the community through the '
+          + 'Workshop, and everything you create remains yours.',
+      },
+      {
+        title: 'Analyses, and what they are worth',
+        body:
+          'Wyrm Forge reads your match history through the official Riot Games API and draws '
+          + 'statistics from it, by champion, by role and by queue: how your KDA, creep score per '
+          + 'minute and vision score evolve, compared with the average for your rank. '
+          + 'AI-assisted analyses round this out — match up preparation, post-game review, patch '
+          + 'note summaries. These are indications, not truths: none of them guarantees a result '
+          + 'in game, and they do not replace your own reading of the match.',
+      },
+      {
+        title: 'Free, and safe for your account',
+        body:
+          'A complete free plan remains permanently available: the application can be downloaded '
+          + 'and used without paying anything. Subscriptions exist to raise usage limits, but '
+          + 'they gate no essential feature. Wyrm Forge injects nothing into the game, does not '
+          + 'read its memory and automates no action: it uses only the public Riot Games API, '
+          + 'under the Riot Games API Developer Agreement. Wyrm Forge is neither affiliated with '
+          + 'nor endorsed by Riot Games.',
+      },
+    ],
+  },
   community: {
     eyebrow: 'Trust & legitimacy',
     titleBefore: 'Join a ',

@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import Hero from '@/components/landing/Hero'
 import Features from '@/components/landing/Features'
+import About from '@/components/landing/About'
 import Community from '@/components/landing/Community'
 import Pricing from '@/components/landing/Pricing'
 import FinalCTA from '@/components/landing/FinalCTA'
@@ -32,7 +33,9 @@ export type { DashTab, UserProfile } from '@/lib/session-types'
 const DEEP_LINKABLE_TABS = new Set<string>([...dashTabs.map(t => t.id), 'tarifs', 'admin'])
 
 export default function Home() {
-  const { user, profile, loading, isAdmin, balance, balanceLoading, refreshBalance } = useSession()
+  // `loading` n'est plus lu : la vitrine est rendue tant qu'aucun utilisateur
+  // n'est résolu, ce qui EST l'état du rendu serveur. Voir le bloc ci-dessous.
+  const { user, profile, isAdmin, balance, balanceLoading, refreshBalance } = useSession()
   const { activeTab, setActiveTab, forgeRequest } = useDashboardNav()
 
   // Deep-link vers un onglet : `/?tab=…`. Utilisé par le lien « Voir les tarifs »
@@ -68,16 +71,35 @@ export default function Home() {
     if (peekCheckoutIntent(sessionIntentStorage())) setActiveTab('tarifs')
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Chargement...</div>
-      </div>
-    )
-  }
-
-  // `Nav`, la modale de connexion et le LanguageProvider vivent tous dans le layout
-  // racine : cette page ne rend plus que son propre contenu.
+  /* 🔴 PAS de court-circuit sur `loading` — chantier AdSense du 2026-09-12.
+   *
+   * Cette page rendait « Chargement... » tant que la session n'était pas
+   * résolue. Comme `loading` vaut `true` au rendu SERVEUR (la session est une
+   * notion purement client), le HTML servi pour `/` ne contenait QUE ce mot :
+   * un visiteur sans JavaScript, et le robot d'examen AdSense qui juge sur le
+   * HTML brut, ne voyaient pas une ligne du produit. D'où le motif de refus
+   * « contenu à faible valeur informative » sur la page la plus importante.
+   *
+   * En rendant directement `user ? dashboard : vitrine`, l'état serveur
+   * (`user === null`) produit la vitrine COMPLÈTE — Hero, Fonctionnalités, la
+   * section éditoriale, les tarifs et la FAQ sont tous des composants clients,
+   * mais un composant client rend quand même son HTML au SSR dès lors que son
+   * parent le rend.
+   *
+   * ⚠️ CONTREPARTIE ASSUMÉE : un utilisateur CONNECTÉ voit brièvement la
+   * vitrine avant que sa session ne soit résolue, là où il voyait auparavant un
+   * « Chargement... ». C'est le même transitoire, avec un contenu différent —
+   * et c'est déjà exactement ce que fait le header du layout racine, qui passe
+   * de `mode="visitor"` à `mode="user"` sur TOUTES les routes. Le supprimer
+   * demanderait de lire la session côté serveur (cookie Supabase), ce qui
+   * rendrait dynamique l'intégralité du site, vitrine comprise.
+   *
+   * ⚠️ Ne pas réintroduire d'écran d'attente ici sans mesurer le HTML servi
+   * (`curl https://wyrm-forge.com | grep -c Wyrm`) : ce serait rouvrir le
+   * défaut que ce chantier corrige.
+   *
+   * `Nav`, la modale de connexion et le LanguageProvider vivent tous dans le
+   * layout racine : cette page ne rend plus que son propre contenu. */
   return user ? (
     <>
       <Dashboard
@@ -101,6 +123,7 @@ export default function Home() {
     <>
       <Hero />
       <Features />
+      <About />
       <Community />
       <Pricing />
       <FinalCTA />

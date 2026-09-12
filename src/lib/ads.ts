@@ -52,6 +52,41 @@ export function shouldShowAds(tier: string | null | undefined, isAdmin = false):
 }
 
 /**
+ * Le palier doit-il voir des emplacements sur une page PUBLIQUE ?
+ *
+ * `shouldShowAds` répond « non » à un palier inconnu, et c'est le bon défaut
+ * DANS LE DASHBOARD : un profil non encore chargé y appartient forcément à
+ * quelqu'un, et lui réserver une colonne pour la retirer ensuite dégraderait un
+ * abonné. Sur une page publique (/champions, /patch-notes), l'hypothèse tombe :
+ * la majorité des visiteurs n'ont PAS de compte, leur `tier` est absent non
+ * parce qu'il n'est pas chargé mais parce qu'il n'existe pas. Les traiter comme
+ * « palier inconnu » reviendrait à ne jamais afficher le moindre emplacement là
+ * où le site en a précisément besoin.
+ *
+ * D'où la règle, en trois temps :
+ *   1. session non résolue  → RIEN. On ne sait pas encore, et réserver 250 px
+ *      pour les retirer une seconde plus tard est le pire des deux mondes ;
+ *   2. visiteur anonyme     → OUI. Il est, par définition, sur l'offre gratuite ;
+ *   3. visiteur connecté    → on retombe sur le verrou commercial habituel.
+ *
+ * ⚠️ Le verrou LÉGAL n'est pas ici : `AdSlot` garde `hasAdConsent()` en interne,
+ * et il reste `false` tant qu'aucune CMP n'existe. Cette fonction ne décide que
+ * du DROIT COMMERCIAL à un emplacement, jamais du chargement d'un script.
+ */
+export function shouldShowPublicAds(viewer: {
+  /** `true` tant que `SessionProvider` n'a pas résolu l'utilisateur. */
+  loading: boolean
+  /** Un compte est-il connecté sur cette page ? */
+  signedIn: boolean
+  tier: string | null | undefined
+  isAdmin?: boolean
+}): boolean {
+  if (viewer.loading) return false
+  if (!viewer.signedIn) return true
+  return shouldShowAds(viewer.tier, viewer.isAdmin ?? false)
+}
+
+/**
  * Le consentement publicitaire est-il acquis pour ce visiteur ?
  *
  * ⛔️ RENVOIE `false` EN DUR — c'est délibéré, pas un oubli.

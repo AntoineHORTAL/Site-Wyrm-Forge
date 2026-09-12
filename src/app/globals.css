@@ -942,3 +942,28 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   a { color: #555 !important; }
   @page { margin: 1.5cm; }
 }
+
+/* ─── /champions : cartes et accessibilité ───
+   Le survol et le libellé masqué sont en CSS et non en état React : la grille
+   rend ~170 cartes, et un `useState` de survol par carte, c'est 170 composants
+   qui se re-rendent au passage de la souris pour un effet purement visuel.
+   Surtout, une carte sans état peut être rendue par le SERVEUR — c'est ce qui
+   met les 170 champions dans le HTML servi (chantier AdSense). */
+.champ-card:hover,
+.champ-card:focus-visible {
+  border-color: #EF9F27 !important;
+  transform: translateY(-2px);
+}
+.champ-card:focus-visible { outline: 2px solid #EF9F27; outline-offset: 2px; }
+
+/* Libellé réservé aux lecteurs d'écran — visuellement absent, jamais
+   `display:none` (qui le retirerait aussi de l'arbre d'accessibilité). */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

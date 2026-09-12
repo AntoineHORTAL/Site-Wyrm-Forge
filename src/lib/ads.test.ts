@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { shouldShowAds, hasAdConsent, AD_FORMATS, AD_BREAKPOINTS } from './ads'
+import { shouldShowAds, shouldShowPublicAds, hasAdConsent, AD_FORMATS, AD_BREAKPOINTS } from './ads'
 
 describe('verrou commercial — qui voit des publicités', () => {
   it('le palier gratuit voit les pubs', () => {
@@ -39,6 +39,54 @@ describe('verrou commercial — qui voit des publicités', () => {
     // Cohérent avec `effectiveTier` dans page.tsx, qui pose le marqueur 'admin'
     // à l'affichage pour les admins quelle que soit la valeur en base.
     expect(shouldShowAds('apprenti', true)).toBe(false)
+  })
+})
+
+describe('🔴 verrou commercial sur une page PUBLIQUE', () => {
+  // `shouldShowAds` refuse un palier inconnu, et c'est le bon défaut DANS le
+  // dashboard : un profil non chargé appartient forcément à quelqu'un. Sur
+  // /champions et /patch-notes, la majorité des visiteurs n'ont pas de compte —
+  // appliquer la même règle n'y afficherait JAMAIS le moindre emplacement.
+  const anonyme  = { loading: false, signedIn: false, tier: null }
+  const gratuit  = { loading: false, signedIn: true,  tier: 'apprenti' }
+  const abonne   = { loading: false, signedIn: true,  tier: 'forgeron' }
+
+  it('un visiteur anonyme voit les emplacements — il est sur l’offre gratuite', () => {
+    expect(shouldShowPublicAds(anonyme)).toBe(true)
+    // La différence avec le dashboard tient ici, et nulle part ailleurs.
+    expect(shouldShowAds(null)).toBe(false)
+  })
+
+  it('un abonné payant n’en voit aucun, connecté sur une page publique', () => {
+    expect(shouldShowPublicAds(abonne)).toBe(false)
+    for (const tier of ['forgeron', 'maître', 'légion', 'monarque']) {
+      expect(shouldShowPublicAds({ loading: false, signedIn: true, tier }), tier).toBe(false)
+    }
+  })
+
+  it('un connecté au palier gratuit en voit', () => {
+    expect(shouldShowPublicAds(gratuit)).toBe(true)
+  })
+
+  it('un admin n’en voit jamais, connecté ou non résolu', () => {
+    expect(shouldShowPublicAds({ ...gratuit, isAdmin: true })).toBe(false)
+  })
+
+  it('🔴 RIEN tant que la session n’est pas résolue', () => {
+    // Réserver 250 px de hauteur pour les retirer une seconde plus tard, c'est
+    // provoquer le décalage de contenu (CLS) qu'`AdSlot` existe pour éviter —
+    // et montrer brièvement un emplacement à quelqu'un qui paie pour ne pas en
+    // avoir.
+    expect(shouldShowPublicAds({ loading: true, signedIn: false, tier: null })).toBe(false)
+    expect(shouldShowPublicAds({ loading: true, signedIn: true, tier: 'apprenti' })).toBe(false)
+    expect(shouldShowPublicAds({ loading: true, signedIn: true, tier: 'forgeron' })).toBe(false)
+  })
+
+  it('ne contourne PAS le verrou légal', () => {
+    // Les deux verrous sont indépendants : celui-ci n'ouvre qu'un droit
+    // commercial. Tant qu'aucune CMP n'existe, `AdSlot` ne charge rien.
+    expect(shouldShowPublicAds(anonyme)).toBe(true)
+    expect(hasAdConsent()).toBe(false)
   })
 })
 

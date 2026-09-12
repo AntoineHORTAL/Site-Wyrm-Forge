@@ -2,9 +2,11 @@
 // Server Component — SSR complet pour le SEO.
 // Les données (patches + version DDragon) sont lues côté serveur et passées à PatchCard.
 
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import PatchCard, { type PatchNote } from '@/components/patch-notes/PatchCard'
+import PublicAdSlot from '@/components/ads/PublicAdSlot'
 
 export const metadata = {
   title: 'Patch Notes LoL — Wyrm Forge',
@@ -13,6 +15,16 @@ export const metadata = {
 }
 
 const DDN = 'https://ddragon.leagueoflegends.com'
+
+/**
+ * Index (base 0) des patchs APRÈS lesquels un emplacement publicitaire est rendu.
+ *
+ * Deux emplacements seulement, et aucun avant le premier patch : la page doit
+ * s'ouvrir sur son contenu. Avec moins de 3 patchs publiés, seul le premier
+ * emplacement existe — `AD_AFTER_INDEX.includes(idx)` ne peut pas viser un
+ * article qui n'est pas rendu.
+ */
+const AD_AFTER_INDEX = [1, 4]
 
 async function fetchDdragonVersion(): Promise<string> {
   try {
@@ -100,19 +112,35 @@ export default async function PatchNotesPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 48 }}>
             {list.map((patch, idx) => (
-              <article
-                key={patch.id}
-                style={{
-                  borderRadius: 16,
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  background: 'rgba(26,20,34,0.6)',
-                  padding: 'clamp(20px, 4vw, 36px)',
-                  animationDelay: `${idx * 0.06}s`,
-                }}
-                className="pn-rise"
-              >
-                <PatchCard patch={patch} ddragonVersion={ddragonVersion} />
-              </article>
+              <Fragment key={patch.id}>
+                <article
+                  style={{
+                    borderRadius: 16,
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(26,20,34,0.6)',
+                    padding: 'clamp(20px, 4vw, 36px)',
+                    animationDelay: `${idx * 0.06}s`,
+                  }}
+                  className="pn-rise"
+                >
+                  <PatchCard patch={patch} ddragonVersion={ddragonVersion} />
+                </article>
+
+                {/* ── Emplacements publicitaires ENTRE les patchs ──
+                    Deux au maximum, et jamais À L'INTÉRIEUR d'un résumé : chaque
+                    <article> reste d'un seul tenant, de son titre à sa dernière
+                    ligne. Une pub qui coupe un paragraphe est ce qui fait fermer
+                    l'onglet — et ce que les régies pénalisent.
+
+                    Positions choisies sur la respiration de la page : après le
+                    2ᵉ patch (le lecteur a lu ce qu'il venait chercher, le patch
+                    courant) et après le 5ᵉ (il est en train de parcourir les
+                    archives). Le `gap: 48` de la colonne les isole déjà
+                    visuellement des articles. */}
+                {AD_AFTER_INDEX.includes(idx) && (
+                  <PublicAdSlot name={`patch-notes-${idx + 1}`} />
+                )}
+              </Fragment>
             ))}
           </div>
         )}
