@@ -482,10 +482,12 @@ export const landingEn: LandingDict = {
     perYear: ' /year',
     consentRenewalMonthly: 'Renews automatically every month, on the anniversary date of your subscription. No commitment: cancel anytime from your profile, effective at the end of the paid month.',
     consentRenewalAnnual: 'Renews automatically every year, on the anniversary date of your subscription — you are notified by email before each renewal. Cancel anytime from your profile, effective at the end of the paid year.',
-    // Les CGV n'existent qu'en français (traduction = chantier séparé) : le
-    // lien le dit, plutôt que d'ouvrir une page dans une langue inattendue.
+    // Les CGV EXISTENT en anglais depuis le chantier de traduction des pages
+    // légales (`src/locales/legal/cgv.tsx`) : la réserve « (in French) » qui
+    // accompagnait ce lien a donc été retirée. Elle était là pour ne pas ouvrir
+    // une page dans une langue inattendue — ce n'est plus le cas.
     consentTermsBefore: 'Before paying, please read our',
-    consentTermsLink: 'terms of sale (in French)',
+    consentTermsLink: 'terms of sale',
     consentConfirm: 'Continue to payment',
     consentConfirmLoading: 'Redirecting…',
     consentCancel: 'Cancel',
