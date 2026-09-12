@@ -40,8 +40,8 @@
 import { createClient }             from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors, jsonResponse } from '../_shared/cors.ts'
 import { getUser, requireSecret }   from '../_shared/auth.ts'
+import { isFeatureEnabled }         from '../_shared/feature-flags.ts'
 import {
-import { isFeatureEnabled } from '../_shared/feature-flags.ts'
   buildPostGamePrompt, comboKey, DEPTHS, MODES, MAX_TOKENS,
   type PostGameDepth, type PostGameMode, type PlayerFacts, type MatchFacts,
 } from '../_shared/postgame-prompt.ts'
