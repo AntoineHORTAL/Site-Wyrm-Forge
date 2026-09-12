@@ -27,33 +27,22 @@
  * peut pas, par construction, être chargé avant l'hydratation.
  */
 
-import { useEffect, useState } from 'react'
 import Script from 'next/script'
-import { hasAdConsent } from '@/lib/ads'
+import { useAdConsent } from './use-ad-consent'
 import { ADSENSE_SCRIPT_SRC } from '@/lib/adsense'
 
 export default function AdSenseScript() {
-  // Même patron que `AdSlot` : le consentement est une notion purement CLIENT,
-  // l'évaluer pendant le rendu ferait diverger le HTML du serveur (« pas de
-  // script ») de celui du client (« script »), donc une erreur d'hydratation.
-  // On part toujours de l'état fermé, et c'est cet effet qui ouvre.
-  const [granted, setGranted] = useState(false)
+  // 🔴 `useAdConsent()` et non un `useState` posé au montage : le consentement
+  // arrive APRÈS, quand la personne a répondu à la bannière. Le couple
+  // useState/useEffect qui vivait ici lisait l'état UNE fois et n'en sortait
+  // plus — la régie n'aurait démarré qu'au rechargement suivant. Le hook
+  // s'abonne, donc accepter fait apparaître les publicités immédiatement.
+  //
+  // Son snapshot serveur vaut `false` en dur : le consentement est une notion
+  // purement client, et rendre le script côté serveur produirait à la fois une
+  // erreur d'hydratation et un appel à Google pour quelqu'un qui n'a rien accepté.
+  const granted = useAdConsent()
 
-  useEffect(() => {
-    // Le setState en effet est ICI la solution, pas le problème — même
-    // justification que `LanguageProvider` : c'est ce qui garantit que le
-    // premier rendu client est identique au rendu serveur. Lire le
-    // consentement pendant le rendu (ce que suggère la règle) provoquerait
-    // exactement le mismatch d'hydratation qu'on cherche à éviter.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- voir ci-dessus
-    if (hasAdConsent()) setGranted(true)
-  }, [])
-
-
-  // `hasAdConsent()` renvoie `false` en dur tant qu'aucune CMP n'existe : rien
-  // n'est donc chargé aujourd'hui, et c'est le comportement attendu. Le jour où
-  // la CMP arrive, elle branche `hasAdConsent()` et ce composant suit — aucun
-  // changement ici. Voir le commentaire de `hasAdConsent` dans `lib/ads.ts`.
   if (!granted) return null
 
   return (

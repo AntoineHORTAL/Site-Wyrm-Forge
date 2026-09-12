@@ -136,10 +136,12 @@ export const confidentialiteFr = {
       body: (
         <>
           <p>
-            Deux choses seulement peuvent être déposées ou lues sur ton appareil : un cookie de
-            session <strong>strictement nécessaire</strong> au fonctionnement du service, et le
-            script publicitaire de Google, qui n&apos;est chargé <strong>qu&apos;avec ton
-            consentement</strong>. Nous n&apos;utilisons aucun outil de mesure d&apos;audience.
+            Trois choses seulement peuvent être déposées ou lues sur ton appareil : un cookie de
+            session <strong>strictement nécessaire</strong> au fonctionnement du service, la
+            <strong> bannière de consentement</strong>, qui mémorise ta réponse pour ne pas te la
+            redemander à chaque visite, et le script publicitaire de Google, qui n&apos;est chargé
+            <strong> qu&apos;avec ton consentement</strong>. Nous n&apos;utilisons aucun outil de
+            mesure d&apos;audience.
           </p>
 
           <p style={{ marginTop: 16 }}><strong>Cookie strictement nécessaire</strong> — déposé
@@ -149,6 +151,26 @@ export const confidentialiteFr = {
               maintient connecté d&apos;une page à l&apos;autre. Attributs <code>SameSite=Lax</code>
               et <code>Secure</code> en production. Sans lui, la connexion est impossible.</li>
           </List>
+          <p style={{ marginTop: 16 }}><strong>Bannière de consentement</strong> — déposée dans
+            tous les cas, aucun consentement requis :</p>
+          <p>
+            À ta première visite, une bannière te demande si tu acceptes les cookies
+            publicitaires. Elle est fournie par la plateforme de gestion du consentement de
+            Google (« CMP », conforme au cadre TCF de l&apos;IAB Europe) et enregistre ta réponse
+            sur ton appareil, afin de ne pas te reposer la question à chaque page.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            Ce dépôt-là n&apos;est pas soumis à ton consentement, pour une raison simple : c&apos;est
+            lui qui le recueille, et c&apos;est lui qui garde la trace de ton refus. Sans lui, la
+            question te serait reposée indéfiniment.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            <strong>Refuser est aussi simple qu&apos;accepter</strong> : les deux choix sont
+            proposés au même endroit, dès la bannière, sans sous-menu à parcourir. Tu peux{' '}
+            <strong>changer d&apos;avis à tout moment</strong> en cliquant sur « Gérer les
+            cookies », en bas de n&apos;importe quelle page du site.
+          </p>
+
           <p style={{ marginTop: 16 }}><strong>Script publicitaire</strong> — soumis à ton
             consentement préalable :</p>
           <p>
@@ -158,11 +180,11 @@ export const confidentialiteFr = {
             consenti</strong>.
           </p>
           <p style={{ marginTop: 12 }}>
-            Le bandeau de recueil du consentement (CMP) est encore en cours de mise en place.
-            Tant qu&apos;il n&apos;est pas déployé, aucun consentement ne peut être recueilli, et le
-            verrou reste donc fermé par défaut : <strong>le script de Google n&apos;est pas chargé,
-            aucune requête n&apos;est envoyée à Google depuis ton navigateur et aucun cookie
-            publicitaire n&apos;est déposé.</strong> Aucune publicité n&apos;est diffusée à ce jour.
+            Tant que tu n&apos;as pas répondu, et si tu refuses : <strong>le script de Google
+            n&apos;est pas chargé, aucune requête publicitaire n&apos;est envoyée à Google depuis
+            ton navigateur et aucun cookie publicitaire n&apos;est déposé.</strong> Le verrou est
+            fermé par défaut — ton silence vaut refus, jamais acceptation. Les emplacements
+            réservés dans la page restent alors vides.
           </p>
           <p style={{ marginTop: 16 }}><strong>Stockage local</strong> — ces données restent
             <strong> uniquement sur ton appareil</strong> et ne nous sont jamais transmises :</p>
@@ -491,10 +513,11 @@ export const confidentialiteEn: ConfidentialiteDict = {
       body: (
         <>
           <p>
-            Only two things may be stored on or read from your device: a session cookie that is
-            <strong> strictly necessary</strong> for the service to work, and Google&apos;s
-            advertising script, which is loaded <strong>only with your consent</strong>. We use no
-            audience measurement tool.
+            Only three things may be stored on or read from your device: a session cookie that is
+            <strong> strictly necessary</strong> for the service to work, the
+            <strong> consent banner</strong>, which remembers your answer so as not to ask you
+            again on every visit, and Google&apos;s advertising script, which is loaded
+            <strong> only with your consent</strong>. We use no audience measurement tool.
           </p>
 
           <p style={{ marginTop: 16 }}><strong>Strictly necessary cookie</strong> — stored in every
@@ -504,6 +527,26 @@ export const confidentialiteEn: ConfidentialiteDict = {
               signed in from one page to the next. Attributes <code>SameSite=Lax</code> and{' '}
               <code>Secure</code> in production. Without it, signing in is impossible.</li>
           </List>
+          <p style={{ marginTop: 16 }}><strong>Consent banner</strong> — stored in every case, no
+            consent required:</p>
+          <p>
+            On your first visit, a banner asks whether you accept advertising cookies. It is
+            provided by Google&apos;s consent management platform (“CMP”, compliant with the IAB
+            Europe TCF framework) and records your answer on your device, so that you are not asked
+            again on every page.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            That particular storage is not subject to your consent, for a simple reason: it is what
+            collects that consent, and what keeps the record of your refusal. Without it, the
+            question would be put to you again indefinitely.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            <strong>Refusing is as simple as accepting</strong>: both choices are offered in the
+            same place, on the banner itself, with no submenu to go through. You may{' '}
+            <strong>change your mind at any time</strong> by clicking “Manage cookies”, at the
+            bottom of any page of the site.
+          </p>
+
           <p style={{ marginTop: 16 }}><strong>Advertising script</strong> — subject to your prior
             consent:</p>
           <p>
@@ -512,10 +555,10 @@ export const confidentialiteEn: ConfidentialiteDict = {
             It is loaded <strong>only if you have consented to it</strong>.
           </p>
           <p style={{ marginTop: 12 }}>
-            The consent banner (CMP) is still being put in place. Until it is deployed, no consent
-            can be collected, and the lock therefore stays closed by default: <strong>Google&apos;s
-            script is not loaded, no request is sent to Google from your browser and no advertising
-            cookie is stored.</strong> No advertising is served at this time.
+            For as long as you have not answered, and if you refuse: <strong>Google&apos;s script is
+            not loaded, no advertising request is sent to Google from your browser and no
+            advertising cookie is stored.</strong> The lock is closed by default — your silence
+            counts as a refusal, never as acceptance. The slots reserved in the page then stay empty.
           </p>
           <p style={{ marginTop: 16 }}><strong>Local storage</strong> — this data stays
             <strong> on your device only</strong> and is never transmitted to us:</p>

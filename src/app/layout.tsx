@@ -9,6 +9,7 @@ import SiteHeader from '@/components/nav/SiteHeader'
 import Footer from '@/components/landing/Footer'
 import TestDbBanner from '@/components/dev/TestDbBanner'
 import AdSenseScript from '@/components/ads/AdSenseScript'
+import ConsentManager from '@/components/ads/ConsentManager'
 import { ADSENSE_CLIENT_ID } from '@/lib/adsense'
 
 export const metadata: Metadata = {
@@ -43,12 +44,44 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // client sur la langue réellement choisie.
     <html lang="fr">
       <body>
+        {/* ── Consent Mode v2 : TOUT est refusé par défaut ──────────────────
+            Posé en <script> BRUT et en tête du <body>, donc exécuté avant tout
+            script Google, CMP comprise. C'est la défense de fond : même si un
+            tag Google se chargeait par un chemin qu'on n'a pas prévu, il
+            démarrerait sans droit d'écrire de cookie ni de lire un identifiant.
+
+            ⚠️ Pas de `next/script` ici : `beforeInteractive` ne garantit l'ordre
+            que depuis le layout racine, et une balise brute est le seul moyen
+            d'être certain que ces quatre `denied` précèdent le reste. L'inline
+            est minuscule et ne dépend de rien.
+
+            ⚠️ `wait_for_update` laisse 500 ms à la CMP pour transmettre un
+            consentement déjà enregistré lors d'une visite précédente, avant que
+            les tags ne concluent au refus. Sans ce délai, un visiteur qui a
+            accepté hier repartirait en mode refusé le temps du chargement. */}
+        <script
+          id="consent-mode-default"
+          dangerouslySetInnerHTML={{ __html:
+            'window.dataLayer=window.dataLayer||[];'
+            + 'function gtag(){dataLayer.push(arguments);}'
+            + "gtag('consent','default',{"
+            + "'ad_storage':'denied','ad_user_data':'denied',"
+            + "'ad_personalization':'denied','analytics_storage':'denied',"
+            + "'wait_for_update':500});",
+          }}
+        />
+        {/* La bannière de consentement (Google CMP). Chargée pour TOUS —
+            c'est elle qui recueille le choix, elle ne peut pas être derrière le
+            choix. Tout le raisonnement est en tête de `ConsentManager`. */}
+        <ConsentManager />
         {/* Script de régie AdSense — chargé UNIQUEMENT avec le consentement.
             Il vivait ici en `beforeInteractive`, donc sur toutes les pages, pour
             tous les visiteurs, avant toute interaction et sans consentement : un
             dépôt d'identifiants non strictement nécessaire, que l'article 82 de
             la loi Informatique et Libertés soumet à un consentement préalable.
-            Tout le raisonnement est dans <AdSenseScript />. */}
+            ⚠️ ORDRE VOULU : il vient APRÈS les défauts Consent Mode et après la
+            CMP — il ne monte de toute façon rien tant que `hasAdConsent()` est
+            faux. Tout le raisonnement est dans <AdSenseScript />. */}
         <AdSenseScript />
         {/* Avant le ThemeProvider et dans le flux : le bandeau doit coiffer la page,
             pas se superposer à un en-tête. Il ne rend rien quand le site parle à la

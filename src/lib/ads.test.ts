@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { shouldShowAds, shouldShowPublicAds, hasAdConsent, AD_FORMATS, AD_BREAKPOINTS } from './ads'
+import {
+  shouldShowAds, shouldShowPublicAds, hasAdConsent, adConsentState, setAdConsent,
+  onAdConsentChange, consentFromTcf, TCF_PURPOSE_STORAGE, TCF_VENDOR_GOOGLE,
+  AD_FORMATS, AD_BREAKPOINTS,
+} from './ads'
 
 describe('verrou commercial — qui voit des publicités', () => {
   it('le palier gratuit voit les pubs', () => {
@@ -91,7 +95,7 @@ describe('🔴 verrou commercial sur une page PUBLIQUE', () => {
 })
 
 describe('verrou légal — consentement RGPD', () => {
-  it('refuse le chargement tant qu’aucune CMP n’existe', () => {
+  it('reste fermé tant que personne n’a accepté', () => {
     // Ce test est un GARDE-FOU, pas une description : il doit être mis à jour
     // en même temps que la CMP, et sa présence force ce changement à être
     // conscient plutôt que subi.
@@ -202,5 +206,209 @@ describe('formats et seuils', () => {
     // hérite gratuitement — à condition de rester un enfant DIRECT.
     const css = readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
     expect(css).toContain('.dash-layout > :not(.dash-main)')
+  })
+})
+
+/* ════════════════════════════════════════════════════════════════════════════
+   🔴 VERROU LÉGAL — le consentement, dans les deux sens
+   ════════════════════════════════════════════════════════════════════════════
+   `hasAdConsent()` renvoyait `false` en dur jusqu'à l'arrivée de la CMP. Elle
+   lit désormais un état alimenté par la Google CMP via le signal TCF. Deux
+   choses doivent être vraies, et une seule des deux suffirait à faire un site
+   non conforme :
+
+     • REFUSÉ (ou pas encore répondu) ⇒ `false`, donc aucune requête tierce :
+       ni `AdSlot` ni `AdSenseScript` ne chargent quoi que ce soit ;
+     • ACCEPTÉ ⇒ `true`, et les abonnés en sont PRÉVENUS — sans quoi il faudrait
+       recharger la page pour voir la moindre publicité. */
+
+describe('🔴 état du consentement — fermé par défaut', () => {
+  beforeEach(() => { setAdConsent('unknown') })
+
+  it('démarre à « unknown », et « unknown » n’est pas un consentement', () => {
+    expect(adConsentState()).toBe('unknown')
+    expect(hasAdConsent()).toBe(false)
+  })
+
+  it('distingue « pas encore répondu » de « a refusé »', () => {
+    // La différence compte : l'interface ne doit pas traiter un silence comme
+    // un refus enregistré, et le test doit pouvoir vérifier que le défaut est
+    // fermé SANS être un refus.
+    setAdConsent('denied')
+    expect(adConsentState()).toBe('denied')
+    expect(hasAdConsent()).toBe(false)
+  })
+
+  it('n’ouvre que sur « granted »', () => {
+    setAdConsent('granted')
+    expect(hasAdConsent()).toBe(true)
+    setAdConsent('denied')
+    expect(hasAdConsent()).toBe(false)
+  })
+})
+
+describe('🔴 les abonnés sont prévenus — pas de rechargement nécessaire', () => {
+  beforeEach(() => { setAdConsent('unknown') })
+
+  it('prévient à chaque changement effectif', () => {
+    const vu: boolean[] = []
+    const stop = onAdConsentChange(() => vu.push(hasAdConsent()))
+
+    setAdConsent('granted')
+    setAdConsent('denied')
+    stop()
+
+    // C'est CE mécanisme qui fait apparaître les publicités au clic sur
+    // « Accepter » : `useAdConsent()` s'y abonne, donc `AdSlot` et
+    // `AdSenseScript` se re-rendent au lieu d'attendre un rechargement.
+    expect(vu).toEqual([true, false])
+  })
+
+  it('ne prévient pas pour un état identique', () => {
+    // La CMP rappelle son écouteur à chaque événement TCF, y compris quand
+    // rien n'a bougé. Sans ce garde, chaque rappel re-rendrait tous les
+    // emplacements de la page.
+    setAdConsent('granted')
+    let appels = 0
+    const stop = onAdConsentChange(() => { appels++ })
+    setAdConsent('granted')
+    setAdConsent('granted')
+    stop()
+    expect(appels).toBe(0)
+  })
+
+  it('le désabonnement est effectif', () => {
+    let appels = 0
+    const stop = onAdConsentChange(() => { appels++ })
+    stop()
+    setAdConsent('granted')
+    expect(appels).toBe(0)
+  })
+})
+
+describe('🔴 lecture du signal TCF de la CMP', () => {
+  const accepteTout = {
+    eventStatus: 'useractioncomplete',
+    gdprApplies: true,
+    purpose: { consents: { [TCF_PURPOSE_STORAGE]: true, 3: true, 4: true } },
+    vendor: { consents: { [TCF_VENDOR_GOOGLE]: true } },
+  }
+
+  it('accepté (finalité 1 + Google) ⇒ granted', () => {
+    expect(consentFromTcf(accepteTout)).toBe('granted')
+  })
+
+  it('refusé ⇒ denied, jamais granted', () => {
+    expect(consentFromTcf({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: {} }, vendor: { consents: {} },
+    })).toBe('denied')
+  })
+
+  it('la finalité 1 SEULE ne suffit pas : il faut aussi le vendeur Google', () => {
+    // Sans consentement vendeur, Google n'a pas le droit de déposer : charger
+    // son script reviendrait à faire une requête pour rien, en ayant l'air
+    // d'avoir un accord.
+    expect(consentFromTcf({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: { [TCF_PURPOSE_STORAGE]: true } },
+      vendor: { consents: { [TCF_VENDOR_GOOGLE]: false } },
+    })).toBe('denied')
+  })
+
+  it('la personnalisation n’est PAS exigée — la finalité 1 suffit avec Google', () => {
+    // Sans les finalités 3 et 4, Google sert des publicités non personnalisées :
+    // c'est un affichage valable, et l'exiger priverait de revenus les visiteurs
+    // qui refusent le ciblage sans refuser la publicité.
+    expect(consentFromTcf({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: { [TCF_PURPOSE_STORAGE]: true, 3: false, 4: false } },
+      vendor: { consents: { [TCF_VENDOR_GOOGLE]: true } },
+    })).toBe('granted')
+  })
+
+  it('bannière à l’écran, pas encore de réponse ⇒ unknown, pas denied', () => {
+    expect(consentFromTcf({
+      eventStatus: 'cmpuishown', gdprApplies: true,
+      purpose: { consents: {} }, vendor: { consents: {} },
+    })).toBe('unknown')
+  })
+
+  it('un choix relu au chargement suivant est honoré (`tcloaded`)', () => {
+    expect(consentFromTcf({ ...accepteTout, eventStatus: 'tcloaded' })).toBe('granted')
+    expect(consentFromTcf({
+      eventStatus: 'tcloaded', gdprApplies: true,
+      purpose: { consents: {} }, vendor: { consents: {} },
+    })).toBe('denied')
+  })
+
+  it('hors champ du RGPD ⇒ granted, faute de bannière à attendre', () => {
+    // La CMP n'affiche RIEN hors EEE : sans cette règle, ces visiteurs
+    // resteraient bloqués en `unknown` et ne verraient jamais de publicité,
+    // sans que rien ne le signale.
+    expect(consentFromTcf({ gdprApplies: false })).toBe('granted')
+  })
+
+  it('signal absent ou illisible ⇒ unknown, jamais granted', () => {
+    expect(consentFromTcf(null)).toBe('unknown')
+    expect(consentFromTcf(undefined)).toBe('unknown')
+    expect(consentFromTcf({})).toBe('unknown')
+  })
+})
+
+describe('🔴 de la bannière au verrou — le trajet complet', () => {
+  beforeEach(() => { setAdConsent('unknown') })
+
+  /** Ce que fait `ConsentManager` quand la CMP rappelle son écouteur. */
+  const cmpDit = (signal: Parameters<typeof consentFromTcf>[0]) =>
+    setAdConsent(consentFromTcf(signal))
+
+  it('ACCEPTÉ → hasAdConsent() passe à true et les abonnés sont prévenus', () => {
+    let prevenu = false
+    const stop = onAdConsentChange(() => { prevenu = true })
+
+    cmpDit({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: { [TCF_PURPOSE_STORAGE]: true } },
+      vendor: { consents: { [TCF_VENDOR_GOOGLE]: true } },
+    })
+    stop()
+
+    expect(hasAdConsent()).toBe(true)
+    expect(prevenu).toBe(true)
+  })
+
+  it('REFUSÉ → hasAdConsent() reste false : aucune requête tierce', () => {
+    cmpDit({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: {} }, vendor: { consents: {} },
+    })
+    expect(hasAdConsent()).toBe(false)
+    expect(adConsentState()).toBe('denied')
+  })
+
+  it('CHANGEMENT D’AVIS → le verrou se referme sans rechargement', () => {
+    // Le parcours « Gérer les cookies » : la CMP rappelle le même écouteur avec
+    // un nouveau signal, et tout ce qui est abonné suit.
+    cmpDit({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: { [TCF_PURPOSE_STORAGE]: true } },
+      vendor: { consents: { [TCF_VENDOR_GOOGLE]: true } },
+    })
+    expect(hasAdConsent()).toBe(true)
+
+    cmpDit({
+      eventStatus: 'useractioncomplete', gdprApplies: true,
+      purpose: { consents: {} }, vendor: { consents: {} },
+    })
+    expect(hasAdConsent()).toBe(false)
+  })
+
+  it('le verrou COMMERCIAL ne contourne pas le verrou légal', () => {
+    // Un visiteur anonyme a DROIT à un emplacement, mais l'emplacement reste
+    // vide tant que le consentement n'est pas acquis. Les deux verrous sont
+    // indépendants et doivent tous deux être ouverts.
+    expect(shouldShowPublicAds({ loading: false, signedIn: false, tier: null })).toBe(true)
+    expect(hasAdConsent()).toBe(false)
   })
 })

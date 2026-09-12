@@ -100,7 +100,7 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 - **Point d'intégration UNIQUE côté dashboard** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. **La vitrine (`/`) n'est toujours PAS concernée** : décision du chantier AdSense, pas de publicité sur la page qui doit convaincre.
 - **Deux verrous indépendants**, tous deux dans `src/lib/ads.ts` :
   - `shouldShowAds(tier, isAdmin)` — **seul `apprenti` voit des pubs**. C'est une LISTE BLANCHE d'un élément, jamais une liste noire des paliers payants : un palier ajouté demain n'affiche rien par défaut. Palier inconnu ou profil non chargé ⇒ pas de pub.
-  - `hasAdConsent()` — renvoie `false` **en dur** tant qu'aucune CMP n'existe. Aucun script tiers n'est chargé, donc aucun cookie publicitaire. C'est le seul endroit à modifier le jour où la CMP arrive.
+  - `hasAdConsent()` — **alimenté par la Google CMP depuis le 2026-09-12** (§ CMP). Reste le point d'entrée UNIQUE du consentement : rien ne charge de script tiers sans passer par lui. ⚠️ Les COMPOSANTS ne l'appellent plus directement — ils passent par `useAdConsent()`, seul chemin qui les re-rend quand le visiteur change d'avis.
 - **Régie agnostique** : `AdSlot` ne connaît aucun fournisseur. Le point d'insertion du script est balisé dans son `useEffect`.
 - **Anti-CLS** : la largeur de la piste est réservée par le CSS (`.dash-layout--ads` dans `globals.css`), pas par du JS — donc connue avant le premier rendu React. Le tier est résolu avant que `<Dashboard>` monte (`page.tsx` garde `loading` jusque-là), la colonne ne peut donc pas apparaître après coup.
 - **Seuils responsive** — dérivés des largeurs réelles, calcul complet en commentaire au-dessus de `.dash-adrail` dans `globals.css` (source qui fait foi) :
@@ -113,7 +113,7 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 
   Plancher visé : 768 px de contenu, imposé par `.dash-grid-jungle` (448 px figés). Sous 1280 px la colonne disparaît **entièrement** plutôt que de rogner le contenu ou la sidebar.
 - ⚠️ **`ConsentBanner.tsx` n'est PAS une CMP** — malgré son nom, il annonce une demande de suivi « prac ». Ne pas y brancher le consentement publicitaire.
-- ⚠️ **Avant activation réelle** : la page `/confidentialite` affirme aujourd'hui « ni cookie publicitaire, ni traceur tiers […] c'est pourquoi aucun bandeau de consentement ne t'est présenté ». Cette phrase devient fausse dès qu'une régie est branchée — à réécrire en même temps que la CMP.
+- ~~⚠️ **Avant activation réelle** : la page `/confidentialite` affirme « aucun bandeau de consentement ne t'est présenté »~~ ✅ **RÉÉCRITE le 2026-09-12** (§ 3, FR et EN) en même temps que la CMP. ⚠️ Elle décrit désormais la bannière comme PRÉSENTÉE : voir les prérequis de déploiement du § CMP, l'ordre compte.
 
 ### Navigation mobile
 - Pas de bottom tab bar — la navigation dashboard est intégrée dans le **hamburger drawer** (Nav.tsx)
@@ -2568,6 +2568,117 @@ factures ». Règle d'affichage partagée interface ↔ route :
 
 ---
 
+## 🍪 CMP — bannière de consentement Google (chantier du 2026-09-12)
+
+Décision HORTAL : la **Google CMP** (compte AdSense → Confidentialité et messages),
+pour s'appuyer sur Consent Mode et le cadre TCF plutôt que de réinventer un
+consentement spécifique à Google.
+
+### 🔴 L'œuf et la poule — la seule exception au verrou
+
+**La bannière de consentement de Google EST un script Google.** La garder derrière
+`hasAdConsent()` produirait un blocage parfait : pas de script ⇒ pas de bannière ⇒
+pas de choix ⇒ `hasAdConsent()` faux pour toujours. Le chargeur
+(`CMP_SCRIPT_SRC`, `fundingchoicesmessages.google.com`) est donc chargé pour tout le
+monde. C'est **la seule exception**, et elle est admise : le mécanisme qui recueille
+le consentement est strictement nécessaire à ce recueil (la CNIL l'exempte au même
+titre que le cookie de session).
+
+Ce qui reste bloqué avant tout choix, et l'est **effectivement** :
+`adsbygoogle.js` (`ADSENSE_SCRIPT_SRC`). Vérifié sur le HTML prérendu — `adsbygoogle`
+apparaît **0 fois** sur `/`, `/champions` et `/cgv`.
+
+> ⚠️ C'est plus strict que ce que recommande Google, qui charge `adsbygoogle.js`
+> d'emblée et s'en remet au Consent Mode. Nous faisons **les deux** : Consent Mode en
+> défense de fond, ET le script pas chargé du tout tant que personne n'a dit oui.
+
+### Chaîne complète
+
+| Étage | Où | Rôle |
+|---|---|---|
+| Défauts Consent Mode v2 | `app/layout.tsx`, `<script>` BRUT en tête de `<body>` | les 4 signaux (`ad_storage`, `ad_user_data`, `ad_personalization`, `analytics_storage`) à `denied`, + `wait_for_update: 500` |
+| Chargeur CMP | `components/ads/ConsentManager.tsx` | charge la bannière, écoute `__tcfapi('addEventListener', 2, …)` |
+| Décision | `consentFromTcf()` (`lib/ads.ts`, **pure**) | signal TCF → `unknown` / `granted` / `denied` |
+| Verrou | `hasAdConsent()` (`lib/ads.ts`) | inchangé comme POINT D'ENTRÉE — il lit désormais un état au lieu de renvoyer `false` |
+| Réactivité | `useAdConsent()` (`components/ads/use-ad-consent.ts`) | `useSyncExternalStore`, snapshot serveur figé à `false` |
+| Consommateurs | `AdSenseScript`, `AdSlot` | s'ABONNENT — plus de `useState` posé au montage |
+| Retrait | `ManageCookiesButton` dans le `Footer` | rouvre la bannière, sur toutes les routes |
+
+### 🔴 Trois états, pas deux
+
+`unknown` ≠ `denied`. `unknown` = la personne n'a pas encore répondu (ou la CMP n'a
+pas fini de charger) ; `denied` = refus enregistré. Les deux ferment le verrou, mais
+les distinguer permet de ne pas afficher un refus à quelqu'un qui n'a rien dit, et
+aux tests de vérifier que le **défaut est fermé sans être un refus**.
+
+> ⚠️ **`gdprApplies === false` vaut `granted`**, et ce n'est pas un raccourci : hors
+> du champ du RGPD la CMP n'affiche AUCUNE bannière, il n'y a donc jamais de réponse
+> à attendre. Sans cette règle, ces visiteurs resteraient bloqués en `unknown` et ne
+> verraient jamais de publicité — sans que rien ne le signale.
+
+> ⚠️ **La finalité TCF n° 1 + le vendeur Google (755) suffisent.** Les finalités de
+> personnalisation (3, 4) ne sont PAS exigées : sans elles Google sert des publicités
+> non personnalisées, ce qui reste un affichage valable. Les exiger priverait de
+> revenus les visiteurs qui refusent le ciblage sans refuser la publicité.
+
+### 🔴 Sans rechargement — et pourquoi c'était le piège
+
+Le couple `useState` + `useEffect` qui gardait `AdSenseScript` lisait le consentement
+**une fois, au montage**. Or le consentement arrive plus tard, au clic. La régie
+n'aurait donc démarré qu'au rechargement suivant — un défaut qui compile, passe tous
+les autres tests, et ne se voit qu'à l'usage. D'où `useSyncExternalStore` et,
+côté `AdSlot`, **`granted` en dépendance de l'effet**. Les deux points sont
+verrouillés par `consent-wiring.test.tsx`.
+
+### ⚠️ Ce que ce dépôt NE PEUT PAS garantir
+
+**L'exigence « refuser aussi simple qu'accepter » se tient dans la console Google, pas
+ici.** Les textes de la bannière, la présence et la place du bouton « Refuser » sont
+configurés dans AdSense → Confidentialité et messages. Aucun test de ce dépôt ne peut
+les vérifier. À la création du message RGPD, retenir :
+
+- un bouton **« Ne pas consentir » / « Refuser »** au MÊME niveau que « Consentir »,
+  sur l'écran principal — jamais relégué derrière « Gérer les options » ;
+- **pas de pré-cochage** des finalités ;
+- la bannière doit s'afficher **sur tout le site** (elle est montée par le layout
+  racine, donc c'est acquis côté code).
+
+### ⛔️ Prérequis de déploiement — dans CET ordre
+
+1. **Créer et PUBLIER le message RGPD** dans AdSense (Confidentialité et messages).
+   Sans cette étape, le chargeur se charge et **ne montre rien** : aucun consentement
+   n'est recueilli, aucune publicité ne s'affiche, et **en silence**.
+2. Seulement ensuite, déployer ce code.
+
+> ⚠️ La politique de confidentialité § 3 a été réécrite et **décrit la bannière comme
+> présentée au visiteur** (opt-in, refus aussi simple, « Gérer les cookies » en pied de
+> page). Déployer le code AVANT d'avoir publié le message rendrait ce paragraphe
+> inexact — c'est la seule raison pour laquelle l'ordre ci-dessus compte.
+
+### À vérifier en production, une fois le message publié
+
+Rien de tout cela n'est testable depuis le dépôt (il faut un domaine servi, un message
+publié et une IP européenne) :
+
+- la bannière apparaît à la première visite, et le bouton « Refuser » est au même
+  niveau que « Accepter » ;
+- **refus** → onglet Réseau : aucune requête vers `googlesyndication.com`, aucun
+  cookie publicitaire ; les emplacements restent vides ;
+- **acceptation** → les publicités apparaissent **sans rechargement** (c'est ce que
+  `useAdConsent()` existe pour garantir) ;
+- « Gérer les cookies » (pied de page) rouvre bien la bannière, et un passage de
+  accepté → refusé vide les emplacements sans rechargement.
+
+### Dette levée par ce chantier
+
+- ~~`hasAdConsent()` renvoie `false` en dur~~ → lit l'état de la CMP.
+- ~~La page `/confidentialite` affirme « aucun bandeau n'est présenté »~~ → § 3
+  réécrit, FR et EN en lockstep.
+- ⚠️ Reste vrai : **`ConsentBanner.tsx` n'est PAS cette CMP.** Malgré son nom, il
+  annonce une demande de suivi « prac ». Ne pas y brancher le consentement publicitaire.
+
+---
+
 ## 📄 Pages publiques et examen AdSense (chantier du 2026-09-12)
 
 Motif de refus reçu : **« Contenu à faible valeur informative »**. Diagnostic fait à
@@ -2666,10 +2777,10 @@ reste `false` tant qu'aucune CMP n'existe.
 
 ### Ce qui reste à faire
 
-- **La CMP est toujours absente** : `hasAdConsent()` renvoie `false`, donc les
-  emplacements réservent leur espace mais **ne chargent rien**. Tant que c'est le cas,
-  aucune impression n'est servie — la demande d'examen peut partir, la monétisation
-  non. Voir § Emplacements publicitaires (dashboard) pour la dette associée.
+- ~~**La CMP est toujours absente**~~ ✅ **LIVRÉE le 2026-09-12** — Google CMP, voir
+  § CMP. ⚠️ Il reste UNE étape hors dépôt : créer et **publier** le message RGPD dans
+  la console AdSense. Sans elle, la bannière ne s'affiche pas et aucune publicité
+  n'est servie — **en silence**.
 - ~~**`ADSENSE_CLIENT_ID`** porte toujours son `<Todo>`~~ ✅ **CONFIRMÉ PAR HORTAL le
   2026-09-12** sur le Dashboard Google AdSense : `ca-pub-2383615103865834`, la valeur
   que le dépôt portait déjà — rien n'a changé, seul le doute est levé. Le second

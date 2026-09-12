@@ -9,8 +9,8 @@
  *                           pubs. L'absence de publicité fait partie de la
  *                           valeur de l'abonnement.
  *   2. `hasAdConsent()`   — verrou LÉGAL (RGPD) : rien ne se charge sans
- *                           consentement explicite. Aujourd'hui câblé sur
- *                           `false` — voir le commentaire de la fonction.
+ *                           consentement explicite. Alimenté par la Google CMP
+ *                           depuis le 2026-09-12 — voir la section dédiée.
  *
  * Volontairement agnostique de la régie (AdSense / The Moneytizer / autre) :
  * aucun identifiant, aucune URL de script, aucun nom de fournisseur ici.
@@ -69,9 +69,9 @@ export function shouldShowAds(tier: string | null | undefined, isAdmin = false):
  *   2. visiteur anonyme     → OUI. Il est, par définition, sur l'offre gratuite ;
  *   3. visiteur connecté    → on retombe sur le verrou commercial habituel.
  *
- * ⚠️ Le verrou LÉGAL n'est pas ici : `AdSlot` garde `hasAdConsent()` en interne,
- * et il reste `false` tant qu'aucune CMP n'existe. Cette fonction ne décide que
- * du DROIT COMMERCIAL à un emplacement, jamais du chargement d'un script.
+ * ⚠️ Le verrou LÉGAL n'est pas ici : `AdSlot` garde `hasAdConsent()` en interne.
+ * Cette fonction ne décide que du DROIT COMMERCIAL à un emplacement — un
+ * emplacement autorisé ici reste vide tant que le consentement n'est pas acquis.
  */
 export function shouldShowPublicAds(viewer: {
   /** `true` tant que `SessionProvider` n'a pas résolu l'utilisateur. */
@@ -86,22 +86,130 @@ export function shouldShowPublicAds(viewer: {
   return shouldShowAds(viewer.tier, viewer.isAdmin ?? false)
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   VERROU LÉGAL — le consentement publicitaire (RGPD / art. 82 LIL)
+   ════════════════════════════════════════════════════════════════════════════
+   Jusqu'au 2026-09-12, `hasAdConsent()` renvoyait `false` EN DUR faute de CMP.
+   Elle lit désormais un état alimenté par la **Google CMP** (TCF v2.2), branchée
+   par `components/ads/ConsentManager.tsx`. Le contrat n'a pas changé : c'est
+   toujours le SEUL point d'entrée du consentement, et tout ce qui charge un
+   script tiers passe par lui.
+
+   ⚠️ Trois états, pas deux. `unknown` n'est pas `denied` :
+     • `unknown` — le visiteur n'a pas encore répondu (ou la CMP n'a pas fini de
+       se charger). On ne charge rien, et on ne conclut rien non plus : c'est
+       l'état de DÉPART, y compris au rendu serveur ;
+     • `granted` — choix explicite en faveur du dépôt ;
+     • `denied`  — refus explicite, ou consentement insuffisant.
+   Distinguer les deux permet à l'interface de ne pas traiter « pas encore
+   répondu » comme « a refusé » — et aux tests de vérifier que le défaut est bien
+   fermé sans être un refus enregistré.
+
+   ⚠️ Cet état N'EST PAS persisté ici. La persistance appartient à la CMP, qui
+   stocke la chaîne TCF et la ressert au chargement suivant. Écrire notre propre
+   copie créerait deux sources de vérité qui divergeraient au premier changement
+   d'avis. */
+
+export type AdConsentState = 'unknown' | 'granted' | 'denied'
+
+let consentState: AdConsentState = 'unknown'
+const consentListeners = new Set<() => void>()
+
+/** État courant du consentement publicitaire. */
+export function adConsentState(): AdConsentState {
+  return consentState
+}
+
 /**
  * Le consentement publicitaire est-il acquis pour ce visiteur ?
  *
- * ⛔️ RENVOIE `false` EN DUR — c'est délibéré, pas un oubli.
+ * Point d'entrée HISTORIQUE et unique : `AdSlot` (emplacements) et
+ * `AdSenseScript` (script de régie) ne consultent que lui. Tant qu'il renvoie
+ * `false`, il ne part STRICTEMENT AUCUNE requête vers une régie — donc aucun
+ * cookie publicitaire, aucun traceur.
  *
- * Aucune CMP (bandeau de consentement RGPD) n'existe encore sur le site : la
- * mettre en place est un chantier séparé, préalable à toute activation réelle.
- * Tant que cette fonction renvoie `false`, `AdSlot` réserve son espace dans la
- * mise en page mais ne charge STRICTEMENT AUCUN script tiers — donc aucun
- * cookie publicitaire, aucun traceur, aucune requête vers une régie.
- *
- * Le jour où la CMP arrive, c'est le SEUL endroit à modifier — brancher ici la
- * lecture de l'état de consentement, et tous les emplacements suivent.
+ * ⚠️ Fonction SYNCHRONE volontairement : appelée pendant un rendu React, elle
+ * doit renvoyer l'état connu à l'instant T. Pour RÉAGIR à un changement (le
+ * visiteur accepte, sans recharger la page), il faut s'abonner —
+ * `onAdConsentChange`, ou le hook `useAdConsent()` qui l'enveloppe.
  */
 export function hasAdConsent(): boolean {
-  return false
+  return consentState === 'granted'
+}
+
+/**
+ * Pose l'état du consentement et prévient les abonnés.
+ *
+ * ⚠️ Appelée UNIQUEMENT par `ConsentManager`, à partir de ce que dit la CMP.
+ * Aucun composant d'interface ne doit l'appeler pour « forcer » un état : ce
+ * serait accorder un consentement que personne n'a donné.
+ */
+export function setAdConsent(next: AdConsentState): void {
+  if (next === consentState) return
+  consentState = next
+  for (const listener of consentListeners) listener()
+}
+
+/**
+ * S'abonne aux changements de consentement. Renvoie la fonction de
+ * désabonnement — signature attendue par `useSyncExternalStore`.
+ */
+export function onAdConsentChange(listener: () => void): () => void {
+  consentListeners.add(listener)
+  return () => { consentListeners.delete(listener) }
+}
+
+/* ── Lecture du signal TCF v2.2 ────────────────────────────────────────────
+   La CMP expose `window.__tcfapi`. On n'en garde ici que la DÉCISION, sous
+   forme de fonction pure : c'est la seule partie qui mérite d'être testée, et
+   c'est aussi celle qui se trompe en silence. */
+
+/** Sous-ensemble de `TCData` (TCF v2.2) dont dépend la décision. */
+export interface TcfSignal {
+  /** Le RGPD s'applique-t-il à ce visiteur, d'après la CMP ? */
+  gdprApplies?: boolean
+  /** `useractioncomplete`, `tcloaded`, `cmpuishown`… */
+  eventStatus?: string
+  purpose?: { consents?: Record<string | number, boolean | undefined> }
+  vendor?: { consents?: Record<string | number, boolean | undefined> }
+}
+
+/**
+ * Finalité TCF n° 1 — « stocker et/ou accéder à des informations sur un
+ * terminal ». C'est ELLE qui autorise le dépôt d'un cookie publicitaire, et
+ * donc la seule qui conditionne le chargement du script de régie. Les finalités
+ * de PERSONNALISATION (3, 4) ne sont pas exigées ici : sans elles Google sert
+ * des publicités non personnalisées, ce qui reste un affichage valable.
+ */
+export const TCF_PURPOSE_STORAGE = 1
+
+/** Identifiant TCF de Google Advertising Products dans la GVL. */
+export const TCF_VENDOR_GOOGLE = 755
+
+/**
+ * Décision de consentement à partir du signal de la CMP.
+ *
+ * ⚠️ `gdprApplies === false` vaut `granted`, et ce n'est pas un raccourci : hors
+ * du champ du RGPD, la CMP n'affiche AUCUNE bannière — il n'y a donc jamais de
+ * réponse à attendre. Sans cette règle, ces visiteurs resteraient bloqués en
+ * `unknown` et ne verraient jamais de publicité, sans que rien ne le signale.
+ *
+ * ⚠️ Tant que la personne n'a pas répondu (`cmpuishown`, aucune finalité
+ * remontée), on renvoie `unknown` et NON `denied` : la bannière est à l'écran,
+ * l'état n'est pas encore un refus. Rien n'est chargé dans les deux cas.
+ */
+export function consentFromTcf(signal: TcfSignal | null | undefined): AdConsentState {
+  if (!signal) return 'unknown'
+  if (signal.gdprApplies === false) return 'granted'
+
+  const storage = signal.purpose?.consents?.[TCF_PURPOSE_STORAGE] === true
+  const google = signal.vendor?.consents?.[TCF_VENDOR_GOOGLE] === true
+  if (storage && google) return 'granted'
+
+  // Un choix a été fait (ou la chaîne existante a été relue) sans accorder le
+  // nécessaire : c'est un refus, pas une attente.
+  const answered = signal.eventStatus === 'useractioncomplete' || signal.eventStatus === 'tcloaded'
+  return answered ? 'denied' : 'unknown'
 }
 
 /**

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import ManageCookiesButton from '@/components/ads/ManageCookiesButton'
 
 /* Destinations seules — les libellés vivent dans src/locales/landing.ts
    (`footer.legalLinks` et `footer.columns`, même ordre). */
@@ -127,6 +128,15 @@ export default function Footer() {
               {label}
             </Link>
           ))}
+          {/* Au MÊME niveau que les liens légaux, et pas relégué dans une page :
+              retirer son consentement doit être aussi simple que de l'avoir
+              donné (RGPD art. 7-3). Le footer est monté par le layout racine,
+              donc ce point d'entrée existe sur toutes les routes. */}
+          <ManageCookiesButton
+            label={f.manageCookies}
+            unavailableLabel={f.manageCookiesUnavailable}
+            color={c ? '#888780' : '#71717A'}
+          />
         </div>
       </div>
 

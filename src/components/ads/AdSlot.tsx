@@ -25,7 +25,8 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { AD_FORMATS, hasAdConsent, type AdFormat } from '@/lib/ads'
+import { AD_FORMATS, type AdFormat } from '@/lib/ads'
+import { useAdConsent } from './use-ad-consent'
 
 interface AdSlotProps {
   /** Format IAB à réserver. Détermine la taille du bloc. */
@@ -42,17 +43,24 @@ interface AdSlotProps {
 
 export default function AdSlot({ format, name, debug = false }: AdSlotProps) {
   const { width, height } = AD_FORMATS[format]
+  // Abonné, pas lu une fois : voir la note de dépendance de l'effet ci-dessous.
+  const granted = useAdConsent()
   const boxRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const placeholderRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     // Le consentement est une notion purement CLIENT : il ne peut pas être
-    // évalué pendant le rendu. Le faire produirait, le jour où une CMP existe,
-    // un serveur qui rend « pas de pub » et un client qui rend « pub » — donc
-    // une erreur d'hydratation. On part donc toujours de l'état réservé, et
-    // c'est cet effet qui bascule.
-    if (!hasAdConsent()) return
+    // évalué pendant le rendu. Le faire produirait un serveur qui rend « pas de
+    // pub » et un client qui rend « pub » — donc une erreur d'hydratation. On
+    // part donc toujours de l'état réservé, et c'est cet effet qui bascule.
+    //
+    // 🔴 `granted` est une DÉPENDANCE de l'effet, et c'est ce qui fait que la
+    // publicité apparaît sans rechargement : quand la personne accepte,
+    // `useAdConsent()` re-rend, l'effet rejoue, et l'emplacement s'initialise.
+    // Lire `hasAdConsent()` ici (comme avant) figerait l'emplacement sur l'état
+    // qu'avait le consentement à l'instant du montage.
+    if (!granted) return
 
     const box = boxRef.current
     const host = hostRef.current
@@ -104,7 +112,7 @@ export default function AdSlot({ format, name, debug = false }: AdSlotProps) {
       box.dataset.adState = 'reserved'
       if (placeholder) placeholder.style.display = ''
     }
-  }, [format, name])
+  }, [format, name, granted])
 
   return (
     <div

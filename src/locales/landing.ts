@@ -383,6 +383,12 @@ export const landingFr = {
       { title: 'Ressources', links: ['Rechercher un joueur', 'Champions', 'Patch notes', 'Communauté'] },
     ],
     legalLinks: ['Conditions', 'Conditions de vente', 'Confidentialité', 'Mentions légales'],
+    /* Rouvre la bannière de consentement (Google CMP) — voir
+       `components/ads/ManageCookiesButton.tsx`. Dans le footer, donc sur
+       toutes les routes : retirer son consentement doit être aussi simple
+       que de l'avoir donné. */
+    manageCookies: 'Gérer les cookies',
+    manageCookiesUnavailable: 'Bannière indisponible (bloqueur ?)',
     copyright: '© 2026 Wyrm Forge. Non affilié à Riot Games.',
     riotDisclaimer:
       "Wyrm Forge n'est pas affilié, sponsorisé ni endossé par Riot Games, Inc. ou l'une de ses filiales. League of Legends et Riot Games sont des marques ou marques déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.",
@@ -688,6 +694,8 @@ export const landingEn: LandingDict = {
       { title: 'Resources', links: ['Player search', 'Champions', 'Patch notes', 'Community'] },
     ],
     legalLinks: ['Terms', 'Terms of sale', 'Privacy', 'Legal notice'],
+    manageCookies: 'Manage cookies',
+    manageCookiesUnavailable: 'Banner unavailable (blocker?)',
     copyright: '© 2026 Wyrm Forge. Not affiliated with Riot Games.',
     riotDisclaimer:
       'Wyrm Forge is not affiliated with, sponsored or endorsed by Riot Games, Inc. or any of its affiliates. League of Legends and Riot Games are trademarks or registered trademarks of Riot Games, Inc. League of Legends © Riot Games, Inc.',
