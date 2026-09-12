@@ -136,20 +136,37 @@ export const confidentialiteFr = {
       body: (
         <>
           <p>
-            Trois choses seulement peuvent être déposées ou lues sur ton appareil : un cookie de
-            session <strong>strictement nécessaire</strong> au fonctionnement du service, la
+            Quatre choses seulement peuvent être déposées ou lues sur ton appareil : un cookie
+            de session et un cookie de protection contre les robots, tous deux
+            <strong> strictement nécessaires</strong> au fonctionnement du service, la
             <strong> bannière de consentement</strong>, qui mémorise ta réponse pour ne pas te la
             redemander à chaque visite, et le script publicitaire de Google, qui n&apos;est chargé
             <strong> qu&apos;avec ton consentement</strong>. Nous n&apos;utilisons aucun outil de
             mesure d&apos;audience.
           </p>
 
-          <p style={{ marginTop: 16 }}><strong>Cookie strictement nécessaire</strong> — déposé
-            dans tous les cas, aucun consentement requis :</p>
+          <p style={{ marginTop: 16 }}><strong>Cookies strictement nécessaires</strong> —
+            déposés sans consentement, parce que le service ne peut pas fonctionner sans eux.
+            Aucun des deux ne sert à la publicité ni à te suivre d&apos;un site à l&apos;autre :</p>
           <List>
             <li><code>sb-…-auth-token</code> — cookie de session émis par Supabase Auth. Il te
               maintient connecté d&apos;une page à l&apos;autre. Attributs <code>SameSite=Lax</code>
               et <code>Secure</code> en production. Sans lui, la connexion est impossible.</li>
+            {/* Qualification « strictement nécessaire » reprise de la documentation de
+                Cloudflare elle-même, qui classe __cf_bm parmi ses cookies strictement
+                nécessaires et précise qu'il n'est posé que sur les sites protégés par Bot
+                Management ou Bot Fight Mode.
+                ⚠️ MESURÉ le 2026-09-12 : aucun cookie Cloudflare n'est posé sur wyrm-forge.com
+                en l'état (3 chemins testés avec des en-têtes de navigateur). D'où « lorsque
+                cette protection est active » — la phrase reste vraie aujourd'hui ET le jour où
+                HORTAL activera la protection anti-robots. Ne pas la transformer en affirmation
+                sans avoir re-mesuré. */}
+            <li><code>__cf_bm</code> — cookie de Cloudflare, qui filtre le trafic automatisé
+              (robots, attaques par déni de service) avant qu&apos;il n&apos;atteigne le site. Il
+              porte un score de détection de robot et expire après 30 minutes d&apos;inactivité.
+              Il ne contient aucun identifiant publicitaire et n&apos;est jamais utilisé pour du
+              ciblage. Il n&apos;est déposé que lorsque cette protection est active sur le
+              domaine.</li>
           </List>
           <p style={{ marginTop: 16 }}><strong>Bannière de consentement</strong> — déposée dans
             tous les cas, aucun consentement requis :</p>
@@ -237,6 +254,11 @@ export const confidentialiteFr = {
               que résident ton compte et tes contenus. <strong>Le projet est hébergé en Irlande,
               dans l&apos;Union européenne</strong> : tes données y sont stockées et traitées.</li>
             <li><strong>Vercel</strong> — hébergement et diffusion du site web.</li>
+            <li><strong>Cloudflare</strong> — diffusion du site et protection contre les attaques
+              par déni de service et le trafic automatisé. L&apos;ensemble des requêtes vers
+              wyrm-forge.com transite par son réseau avant d&apos;atteindre l&apos;hébergement : il
+              voit donc ton adresse IP et les en-têtes techniques de ta requête. Il ne reçoit
+              aucune donnée de ton compte ni aucun contenu que tu as créé.</li>
             <li><strong>Riot Games</strong> — l&apos;API officielle de League of Legends. Nos serveurs
               lui transmettent ton Riot ID ou ton PUUID pour récupérer tes données de jeu.
               Ces échanges sont régis par la politique de confidentialité de Riot Games.</li>
@@ -265,6 +287,11 @@ export const confidentialiteFr = {
               possible, notamment pour l&apos;administration technique et le support. Cet accès est
               encadré par les clauses contractuelles types de la Commission européenne, intégrées à
               l&apos;accord de traitement des données (DPA) de Supabase.</li>
+            <li><strong>Cloudflare</strong> — même distinction que pour Supabase, dans
+              l&apos;autre sens : la société est établie <strong>aux États-Unis</strong>, mais le
+              trafic européen est traité par ses <strong>serveurs périphériques situés dans
+              l&apos;UE</strong>, au plus près du visiteur. Les transferts qui en sortent
+              s&apos;appuient sur les mêmes garanties que ci-dessous.</li>
             <li><strong>Les autres prestataires</strong> — Vercel, Stripe, Anthropic et Resend sont
               établis aux États-Unis. Les transferts correspondants s&apos;appuient sur les clauses
               contractuelles types de la Commission européenne et, pour ceux qui y sont certifiés,
@@ -272,7 +299,7 @@ export const confidentialiteFr = {
           </List>
           {/* À COMPLÉTER PAR HORTAL — vérifier et consigner, prestataire par prestataire :
               (1) que le DPA de Supabase est bien signé et quelle version des CCT il intègre ;
-              (2) lesquels de Vercel / Stripe / Anthropic / Resend sont effectivement certifiés
+              (2) lesquels de Vercel / Stripe / Anthropic / Resend / Cloudflare sont effectivement certifiés
               au Data Privacy Framework (la liste officielle est publique et évolue) — et, pour
               Resend, la région d'envoi du domaine (le MX de send.wyrm-forge.com pointe
               eu-west-1, ce qui ne dit rien du lieu de stockage des journaux Resend) ;
@@ -513,19 +540,25 @@ export const confidentialiteEn: ConfidentialiteDict = {
       body: (
         <>
           <p>
-            Only three things may be stored on or read from your device: a session cookie that is
-            <strong> strictly necessary</strong> for the service to work, the
-            <strong> consent banner</strong>, which remembers your answer so as not to ask you
-            again on every visit, and Google&apos;s advertising script, which is loaded
+            Only four things may be stored on or read from your device: a session cookie and a
+            bot-protection cookie, both <strong>strictly necessary</strong> for the service to
+            work, the <strong>consent banner</strong>, which remembers your answer so as not to
+            ask you again on every visit, and Google&apos;s advertising script, which is loaded
             <strong> only with your consent</strong>. We use no audience measurement tool.
           </p>
 
-          <p style={{ marginTop: 16 }}><strong>Strictly necessary cookie</strong> — stored in every
-            case, no consent required:</p>
+          <p style={{ marginTop: 16 }}><strong>Strictly necessary cookies</strong> — stored
+            without consent, because the service cannot work without them. Neither is used for
+            advertising, nor to follow you from one site to another:</p>
           <List>
             <li><code>sb-…-auth-token</code> — session cookie issued by Supabase Auth. It keeps you
               signed in from one page to the next. Attributes <code>SameSite=Lax</code> and{' '}
               <code>Secure</code> in production. Without it, signing in is impossible.</li>
+            <li><code>__cf_bm</code> — Cloudflare cookie, which filters automated traffic (bots,
+              denial-of-service attacks) before it reaches the site. It carries a bot detection
+              score and expires after 30 minutes of inactivity. It contains no advertising
+              identifier and is never used for targeting. It is stored only when that protection
+              is active on the domain.</li>
           </List>
           <p style={{ marginTop: 16 }}><strong>Consent banner</strong> — stored in every case, no
             consent required:</p>
@@ -610,6 +643,11 @@ export const confidentialiteEn: ConfidentialiteDict = {
               hosted in Ireland, in the European Union</strong>: your data is stored and processed
               there.</li>
             <li><strong>Vercel</strong> — hosting and delivery of the website.</li>
+            <li><strong>Cloudflare</strong> — delivery of the site and protection against
+              denial-of-service attacks and automated traffic. Every request to wyrm-forge.com
+              passes through its network before reaching the hosting provider: it therefore sees
+              your IP address and the technical headers of your request. It receives no data from
+              your account, and none of the content you have created.</li>
             <li><strong>Riot Games</strong> — the official League of Legends API. Our servers send it
               your Riot ID or your PUUID to retrieve your game data. These exchanges are governed by
               the Riot Games privacy policy.</li>
@@ -636,6 +674,11 @@ export const confidentialiteEn: ConfidentialiteDict = {
               technical administration and support. That access is framed by the European
               Commission&apos;s standard contractual clauses, incorporated into Supabase&apos;s data
               processing agreement (DPA).</li>
+            <li><strong>Cloudflare</strong> — the same distinction as for Supabase, the other
+              way round: the company is established <strong>in the United States</strong>, but
+              European traffic is handled by its <strong>edge servers located in the EU</strong>,
+              as close as possible to the visitor. Transfers that leave the EU rely on the same
+              safeguards as below.</li>
             <li><strong>The other providers</strong> — Vercel, Stripe, Anthropic and Resend are
               established in the United States. The corresponding transfers rely on the European
               Commission&apos;s standard contractual clauses and, for those certified under it, on

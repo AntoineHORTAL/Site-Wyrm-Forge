@@ -116,10 +116,22 @@ export const mentionsFr = {
             <li><a href="https://supabase.com" target="_blank" rel="noopener noreferrer"
               style={{ color: 'var(--gold-pale)' }}>supabase.com</a></li>
           </List>
-          {/* À COMPLÉTER PAR HORTAL — si Cloudflare proxifie réellement le trafic (et ne sert
-              pas seulement de registrar / DNS), l'ajouter ici comme hébergeur, et l'ajouter
-              aussi à la liste des sous-traitants de la politique de confidentialité § 5
-              (avec le cookie __cf_bm au § 3). Ne rien écrire tant que ce n'est pas confirmé. */}
+
+          <p style={{ marginTop: 16 }}><strong>Diffusion et protection du trafic</strong></p>
+          <List>
+            <li>Cloudflare, Inc.</li>
+            <li>101 Townsend St, San Francisco, CA 94107, États-Unis</li>
+            <li>L&apos;ensemble du trafic du site transite par le réseau de Cloudflare avant
+              d&apos;atteindre l&apos;hébergement : il assure la diffusion des contenus (réseau de
+              serveurs périphériques, dont plusieurs dans l&apos;Union européenne) et la protection
+              contre les attaques par déni de service et les robots</li>
+            <li><a href="https://www.cloudflare.com" target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--gold-pale)' }}>cloudflare.com</a></li>
+          </List>
+          {/* ✅ CONFIRMÉ le 2026-09-12 : Cloudflare est en mode PROXY (nuage orange), pas
+              seulement registrar/DNS — vérifié sur les en-têtes de réponse de la prod
+              (`Server: cloudflare`, `CF-RAY`). Il est donc déclaré ici comme intermédiaire
+              technique, et au § 5 de la politique de confidentialité comme sous-traitant. */}
           <p style={{ marginTop: 12 }}>
             Le détail des données hébergées, des sous-traitants et des durées de conservation
             figure dans notre politique de confidentialité.
@@ -302,6 +314,19 @@ export const mentionsEn: MentionsDict = {
             <li><a href="https://supabase.com" target="_blank" rel="noopener noreferrer"
               style={{ color: 'var(--gold-pale)' }}>supabase.com</a></li>
           </List>
+
+          <p style={{ marginTop: 16 }}><strong>Traffic delivery and protection</strong></p>
+          <List>
+            <li>Cloudflare, Inc.</li>
+            <li>101 Townsend St, San Francisco, CA 94107, United States</li>
+            <li>All traffic to the site passes through Cloudflare&apos;s network before reaching
+              the hosting provider: it handles content delivery (a network of edge servers,
+              several of them in the European Union) and protection against denial-of-service
+              attacks and bots</li>
+            <li><a href="https://www.cloudflare.com" target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--gold-pale)' }}>cloudflare.com</a></li>
+          </List>
+
           <p style={{ marginTop: 12 }}>
             The detail of the data hosted, of the processors and of the retention periods is set
             out in our privacy policy.

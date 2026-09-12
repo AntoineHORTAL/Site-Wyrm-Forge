@@ -216,3 +216,70 @@ describe('lien reçu par e-mail — ?lang=en ouvre bien la page en anglais', () 
     }
   })
 })
+
+describe('Cloudflare — déclaré comme intermédiaire technique, dans les deux langues', () => {
+  // Le proxy a été confirmé le 2026-09-12 (`Server: cloudflare` sur la prod) :
+  // tout le trafic visiteur passe par lui avant d'atteindre l'hébergement. Il
+  // doit donc figurer aux mentions légales ET parmi les sous-traitants.
+
+  it.each(['fr', 'en'] as const)('%s — les mentions légales le citent comme intermédiaire', (l) => {
+    const html = render(MentionsLegalesContent, l)
+    expect(html).toContain('Cloudflare, Inc.')
+    expect(html).toContain('cloudflare.com')
+  })
+
+  it.each(['fr', 'en'] as const)('%s — la politique de confidentialité le liste en sous-traitant', (l) => {
+    expect(render(ConfidentialiteContent, l)).toContain('Cloudflare')
+  })
+
+  it.each(['fr', 'en'] as const)('%s — elle distingue le siège (US) des serveurs de l’UE', (l) => {
+    // Même distinction que pour Supabase, dans l'autre sens : lieu de traitement
+    // et nationalité du prestataire sont deux questions différentes, et les
+    // confondre donnerait une réponse fausse dans les deux cas.
+    const html = render(ConfidentialiteContent, l)
+    expect(html).toMatch(l === 'fr' ? /États-Unis/ : /United States/)
+    expect(html).toMatch(l === 'fr' ? /serveurs périphériques/ : /edge servers/)
+  })
+})
+
+describe('🔴 __cf_bm est un cookie NÉCESSAIRE, pas un cookie publicitaire', () => {
+  // La confusion serait grave dans les deux sens : le présenter comme soumis au
+  // consentement laisserait croire qu'on peut le refuser (le site ne
+  // fonctionnerait pas), et le ranger avec les cookies publicitaires ferait
+  // croire à du ciblage là où il n'y en a pas. Cloudflare le classe lui-même
+  // parmi ses cookies strictement nécessaires.
+
+  it.each(['fr', 'en'] as const)('%s — il est déclaré', (l) => {
+    expect(render(ConfidentialiteContent, l)).toContain('__cf_bm')
+  })
+
+  it.each(['fr', 'en'] as const)('%s — il est AVANT la section du script publicitaire', (l) => {
+    // La position dans le document EST la qualification : le bloc « strictement
+    // nécessaires » précède celui soumis au consentement. Un `__cf_bm` qui
+    // passerait après aurait changé de régime juridique sans que personne ne le
+    // remarque.
+    const html = render(ConfidentialiteContent, l)
+    const pub = html.indexOf(l === 'fr' ? 'Script publicitaire' : 'Advertising script')
+    expect(pub).toBeGreaterThan(-1)
+    expect(html.indexOf('__cf_bm')).toBeLessThan(pub)
+  })
+
+  it.each(['fr', 'en'] as const)('%s — il est dans le même bloc que le cookie de session', (l) => {
+    // Les deux cookies strictement nécessaires sont listés ensemble : c'est ce
+    // qui rend leur régime commun lisible sans avoir à l'énoncer deux fois.
+    const html = render(ConfidentialiteContent, l)
+    const session = html.indexOf('sb-')
+    const pub = html.indexOf(l === 'fr' ? 'Script publicitaire' : 'Advertising script')
+    expect(session).toBeGreaterThan(-1)
+    expect(html.indexOf('__cf_bm')).toBeGreaterThan(session)
+    expect(html.indexOf('__cf_bm')).toBeLessThan(pub)
+  })
+
+  it('la formulation reste conditionnelle — le cookie n’est pas posé aujourd’hui', () => {
+    // MESURÉ le 2026-09-12 : aucun cookie Cloudflare sur wyrm-forge.com (la
+    // protection anti-robots n'est pas activée). Affirmer un dépôt qui n'a pas
+    // lieu serait aussi faux que d'omettre celui qui aurait lieu.
+    expect(render(ConfidentialiteContent, 'fr')).toContain('que lorsque cette protection est active')
+    expect(render(ConfidentialiteContent, 'en')).toContain('only when that protection is active')
+  })
+})
