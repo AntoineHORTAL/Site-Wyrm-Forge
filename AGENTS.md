@@ -98,7 +98,9 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 > visiteur anonyme (`shouldShowPublicAds`).
 
 - **Point d'intégration UNIQUE côté dashboard** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. **La vitrine (`/`) n'est toujours PAS concernée** : décision du chantier AdSense, pas de publicité sur la page qui doit convaincre.
-- **Deux verrous indépendants**, tous deux dans `src/lib/ads.ts` :
+- **Trois verrous indépendants**, qui doivent TOUS être ouverts. Les deux premiers vivent dans `src/lib/ads.ts` (module pur), le kill switch reste en dehors — y injecter un état React lui ferait perdre la propriété qui le rend testable :
+  - `ads_enabled` (`useFlag`, catégorie `site`) — kill switch d'exploitation. ⚠️ **Appliqué des DEUX côtés depuis le 2026-09-12** : `Dashboard.tsx` ET `PublicAdSlot.tsx`. Il ne l'était que sur le dashboard, ce qui laissait les 5 emplacements des pages publiques allumés quand on coupait le flag — un kill switch à moitié efficace, et le seul moyen d'éteindre la publicité en urgence depuis que la CMP peut ouvrir le consentement. Repli d'un kill switch = `true`, donc aucune disparition le temps du premier chargement.
+  - les deux suivants :
   - `shouldShowAds(tier, isAdmin)` — **seul `apprenti` voit des pubs**. C'est une LISTE BLANCHE d'un élément, jamais une liste noire des paliers payants : un palier ajouté demain n'affiche rien par défaut. Palier inconnu ou profil non chargé ⇒ pas de pub.
   - `hasAdConsent()` — **alimenté par la Google CMP depuis le 2026-09-12** (§ CMP). Reste le point d'entrée UNIQUE du consentement : rien ne charge de script tiers sans passer par lui. ⚠️ Les COMPOSANTS ne l'appellent plus directement — ils passent par `useAdConsent()`, seul chemin qui les re-rend quand le visiteur change d'avis.
 - **Régie agnostique** : `AdSlot` ne connaît aucun fournisseur. Le point d'insertion du script est balisé dans son `useEffect`.
@@ -2768,6 +2770,10 @@ reste `false` tant qu'aucune CMP n'existe.
   moindre emplacement là où le site en a besoin.
 - **Placement** — format `rectangle-300` (300×250), qui ne touche ni `AD_FORMATS` ni
   `--ad-slot-w` (la variable CSS n'est posée que dans `.dash-adrail`) :
+
+> ⚠️ **Les cinq emplacements du site s'éteignent d'un seul coup** avec `ads_enabled` :
+> la colonne du dashboard et les emplacements de `/patch-notes`, `/champions`,
+> `/matches` et `/matches/[region]/[riotId]`. Vérifié par test, des deux côtés.
 
 | Page | Emplacements | Où |
 |---|---|---|
