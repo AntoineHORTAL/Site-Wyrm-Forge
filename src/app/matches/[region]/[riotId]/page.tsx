@@ -17,9 +17,10 @@
  * (« Développer » scoreboard inline + « Voir tous les détails » avec quota)
  * arrivent en Lot 2.
  */
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
+import PublicAdSlot from '@/components/ads/PublicAdSlot'
 import { createClient } from '@/lib/supabase/client'
 import type { MatchInfo, RankEntry, RankResponse } from '@/lib/riot-types'
 // Libellés + couleurs des rangs LoL — table partagée (Lot D4). Ne pas
@@ -44,6 +45,20 @@ const supabase = createClient()
 // (Edge Function detail-quota). Sert de valeur d'affichage tant que le peek n'a pas
 // répondu ; l'autorité reste le serveur (le commit fait foi).
 const DETAIL_LIMIT_FALLBACK = 10
+
+/**
+ * Index (base 0) du match APRÈS lequel s'intercale le premier emplacement
+ * publicitaire — donc après le 3ᵉ.
+ *
+ * Assez bas pour être vu, assez haut pour que le visiteur ait déjà obtenu ce
+ * qu'il venait chercher : ses dernières parties. Une publicité placée avant la
+ * première ligne ferait de l'historique une contrepartie, et non un service.
+ *
+ * ⚠️ Stable malgré le défilement infini : les trois premiers matchs ne bougent
+ * pas quand `loadMore` en ajoute. Un emplacement calé sur la FIN de la liste
+ * sauterait, lui, à chaque chargement — d'où le second, placé hors de la liste.
+ */
+const AD_AFTER_MATCH_INDEX = 2
 
 const QUEUES: Record<number, string> = {
   420: 'Classée Solo/Duo', 440: 'Classée Flex',
@@ -545,7 +560,7 @@ export default function MatchesPage() {
           {/* Liste des matchs — lignes statiques en Lot 1 (actions détail → Lot 2) */}
           {matches.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {matches.map(m => {
+              {matches.map((m, idx) => {
                 const champ    = champMap[m.championId]
                 const summ1    = spellMap[m.summoner1Id]
                 const summ2    = spellMap[m.summoner2Id]
@@ -558,118 +573,122 @@ export default function MatchesPage() {
                 const items    = [...(m.items ?? []), m.trinket ?? 0]
 
                 return (
-                  <div
-                    key={m.matchId}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-                      padding: '10px 14px', borderRadius: 8,
-                      background: '#18181B',
-                      borderTop: '1px solid #27272A', borderRight: '1px solid #27272A',
-                      borderBottom: '1px solid #27272A', borderLeft: `3px solid ${winColor}`,
-                    }}
-                  >
-                    {/* Champion + sorts + runes */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                      {champ && version ? (
-                        <img src={champImg(version, champ.image)} alt={champ.name}
-                          style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{
-                          width: 48, height: 48, borderRadius: 6,
-                          background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 13, fontWeight: 600, color: 'white',
-                        }}>{m.championName?.slice(0, 2) ?? '?'}</div>
-                      )}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {summ1 && version && <img src={spellImg(version, summ1.image)} alt="" title={summ1.name}
-                          style={{ width: 22, height: 22, borderRadius: 4 }} />}
-                        {summ2 && version && <img src={spellImg(version, summ2.image)} alt="" title={summ2.name}
-                          style={{ width: 22, height: 22, borderRadius: 4 }} />}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {keystone && <img src={runeImg(keystone.icon)} alt="" title={keystone.name}
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612' }} />}
-                        {seconday && <img src={runeImg(seconday.icon)} alt="" title={seconday.name}
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612', padding: 2 }} />}
-                      </div>
-                    </div>
-
-                    {/* Champion + file + position */}
-                    <div style={{ flex: '0 1 130px', minWidth: 110 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {champ?.name ?? m.championName}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 5 }}>
-                        <span>{QUEUES[m.queueId] ?? m.queueName ?? 'Partie'}</span>
-                        {POS[m.position] && <><span>·</span><span style={{ color: '#7F77DD', fontWeight: 600 }}>{POS[m.position]}</span></>}
-                      </div>
-                    </div>
-
-                    {/* KDA */}
-                    <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 90 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>
-                        {m.kills} / <span style={{ color: '#E24B4A' }}>{m.deaths}</span> / {m.assists}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                        {(m.deaths === 0 ? (m.kills + m.assists) : ((m.kills + m.assists) / m.deaths)).toFixed(2)} KDA
-                        {kp !== null && <> · <span style={{ color: '#EF9F27' }}>{kp}% KP</span></>}
-                      </div>
-                    </div>
-
-                    {/* CS */}
-                    <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 80 }}>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {m.cs} CS <span style={{ color: 'var(--text-dim)' }}>({csPerMin}/min)</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Vision {m.visionScore}</div>
-                    </div>
-
-                    {/* Items */}
-                    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                      {items.map((id, i) => (
-                        <div key={i} style={{
-                          width: 24, height: 24, borderRadius: 4,
-                          background: id ? 'transparent' : 'rgba(255,255,255,0.05)',
-                          border: id ? 'none' : '1px dashed #27272A',
-                        }}>
-                          {id > 0 && version && (
-                            <img src={itemImg(version, id)} alt=""
-                              style={{ width: 24, height: 24, borderRadius: 4, display: 'block' }}
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                          )}
+                  <Fragment key={m.matchId}>
+                    <div
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+                        padding: '10px 14px', borderRadius: 8,
+                        background: '#18181B',
+                        borderTop: '1px solid #27272A', borderRight: '1px solid #27272A',
+                        borderBottom: '1px solid #27272A', borderLeft: `3px solid ${winColor}`,
+                      }}
+                    >
+                      {/* Champion + sorts + runes */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {champ && version ? (
+                          <img src={champImg(version, champ.image)} alt={champ.name}
+                            style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{
+                            width: 48, height: 48, borderRadius: 6,
+                            background: 'linear-gradient(135deg,#7F77DD,#534AB7)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 13, fontWeight: 600, color: 'white',
+                          }}>{m.championName?.slice(0, 2) ?? '?'}</div>
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {summ1 && version && <img src={spellImg(version, summ1.image)} alt="" title={summ1.name}
+                            style={{ width: 22, height: 22, borderRadius: 4 }} />}
+                          {summ2 && version && <img src={spellImg(version, summ2.image)} alt="" title={summ2.name}
+                            style={{ width: 22, height: 22, borderRadius: 4 }} />}
                         </div>
-                      ))}
-                    </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {keystone && <img src={runeImg(keystone.icon)} alt="" title={keystone.name}
+                            style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612' }} />}
+                          {seconday && <img src={runeImg(seconday.icon)} alt="" title={seconday.name}
+                            style={{ width: 22, height: 22, borderRadius: '50%', background: '#0a0612', padding: 2 }} />}
+                        </div>
+                      </div>
 
-                    {/* Résultat + durée + bouton détail */}
-                    <div style={{
-                      marginLeft: 'auto', flexShrink: 0,
-                      display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
-                    }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: winColor }}>
-                          {m.win ? 'Victoire' : 'Défaite'}
-                          {multiKill && (
-                            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9, background: '#EF9F27', color: '#1a0d2e' }}>
-                              {multiKill}
-                            </span>
-                          )}
+                      {/* Champion + file + position */}
+                      <div style={{ flex: '0 1 130px', minWidth: 110 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F2FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {champ?.name ?? m.championName}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', gap: 5 }}>
+                          <span>{QUEUES[m.queueId] ?? m.queueName ?? 'Partie'}</span>
+                          {POS[m.position] && <><span>·</span><span style={{ color: '#7F77DD', fontWeight: 600 }}>{POS[m.position]}</span></>}
+                        </div>
+                      </div>
+
+                      {/* KDA */}
+                      <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 90 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                          {m.kills} / <span style={{ color: '#E24B4A' }}>{m.deaths}</span> / {m.assists}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                          {fmt(m.duration)} · {timeAgo(m.gameCreation)}
+                          {(m.deaths === 0 ? (m.kills + m.assists) : ((m.kills + m.assists) / m.deaths)).toFixed(2)} KDA
+                          {kp !== null && <> · <span style={{ color: '#EF9F27' }}>{kp}% KP</span></>}
                         </div>
                       </div>
-                      <DetailButton
-                        matchId={m.matchId}
-                        isConnected={isConnected}
-                        alreadyViewed={viewedIds.has(m.matchId)}
-                        remaining={detailRemaining}
-                        limit={detailLimit}
-                        onOpen={openDetail}
-                      />
+
+                      {/* CS */}
+                      <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 80 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          {m.cs} CS <span style={{ color: 'var(--text-dim)' }}>({csPerMin}/min)</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Vision {m.visionScore}</div>
+                      </div>
+
+                      {/* Items */}
+                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                        {items.map((id, i) => (
+                          <div key={i} style={{
+                            width: 24, height: 24, borderRadius: 4,
+                            background: id ? 'transparent' : 'rgba(255,255,255,0.05)',
+                            border: id ? 'none' : '1px dashed #27272A',
+                          }}>
+                            {id > 0 && version && (
+                              <img src={itemImg(version, id)} alt=""
+                                style={{ width: 24, height: 24, borderRadius: 4, display: 'block' }}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Résultat + durée + bouton détail */}
+                      <div style={{
+                        marginLeft: 'auto', flexShrink: 0,
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+                      }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: winColor }}>
+                            {m.win ? 'Victoire' : 'Défaite'}
+                            {multiKill && (
+                              <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 3, fontSize: 9, background: '#EF9F27', color: '#1a0d2e' }}>
+                                {multiKill}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                            {fmt(m.duration)} · {timeAgo(m.gameCreation)}
+                          </div>
+                        </div>
+                        <DetailButton
+                          matchId={m.matchId}
+                          isConnected={isConnected}
+                          alreadyViewed={viewedIds.has(m.matchId)}
+                          remaining={detailRemaining}
+                          limit={detailLimit}
+                          onOpen={openDetail}
+                        />
+                      </div>
                     </div>
-                  </div>
+                    {/* Premier emplacement — ENTRE deux lignes, jamais à
+                        l'intérieur de l'une d'elles. */}
+                    {idx === AD_AFTER_MATCH_INDEX && <PublicAdSlot name="matches-inline" />}
+                  </Fragment>
                 )
               })}
             </div>
@@ -704,6 +723,17 @@ export default function MatchesPage() {
                   Fin de l&apos;historique — {matches.length} parties affichées
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Second emplacement — APRÈS la sentinelle, donc au vrai bas de page.
+              Placé hors de la liste à dessein : le défilement infini déplace la
+              « fin de liste » à chaque chargement, un emplacement calé dessus
+              sauterait sous le curseur. Ici, il ne bouge jamais, et il ne
+              s'intercale pas entre l'historique et le bouton « Charger plus ». */}
+          {matches.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <PublicAdSlot name="matches-end" />
             </div>
           )}
         </>

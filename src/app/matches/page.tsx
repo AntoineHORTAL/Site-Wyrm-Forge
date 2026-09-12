@@ -7,6 +7,7 @@
  */
 import type { Metadata } from 'next'
 import PlayerSearchBar from '@/components/player/PlayerSearchBar'
+import PublicAdSlot from '@/components/ads/PublicAdSlot'
 
 export const metadata: Metadata = {
   title: 'Historique de parties — Wyrm Forge',
@@ -61,6 +62,23 @@ export default function MatchesSearchPage() {
       <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 18 }}>
         Exemple : <code>Faker#KR1</code> sur le serveur KR.
       </p>
+
+      {/* ── UN emplacement, SOUS le champ de recherche et son exemple ──
+          Décision HORTAL du 2026-09-12 : /matches reçoit de la publicité en
+          état vide comme en état résultats.
+
+          🔴 L'ORDRE EST LA DÉCISION. Au-dessus du champ, la publicité serait le
+          premier élément d'une page dont l'unique raison d'être est de chercher
+          un joueur — on ferait payer l'attention avant même de rendre le
+          service. En dessous de l'exemple, elle n'a rien coupé : le visiteur a
+          le champ, la consigne et l'exemple sous les yeux avant de la voir.
+
+          ⚠️ La page reste `noindex` (voir `metadata` ci-dessus) : la publicité
+          ne change rien à l'indexation, et inversement. Les deux décisions sont
+          indépendantes. */}
+      <div style={{ marginTop: 36 }}>
+        <PublicAdSlot name="matches-search" />
+      </div>
     </main>
   )
 }

@@ -2689,7 +2689,7 @@ robot d'examen :
 |---|---|---|
 | `/` | **« Chargement... » et rien d'autre** — `page.tsx` court-circuitait sur `loading`, qui vaut `true` au rendu serveur | vitrine complète + section éditoriale · **62 Ko** |
 | `/champions` | barre de filtres vide, liste chargée dans un `useEffect` | **173 champions, 173 liens, 175 `alt`** · **232 Ko** |
-| `/matches` | outil de recherche, vide par nature | inchangé, mais **`noindex, follow`** |
+| `/matches` | outil de recherche, vide par nature | inchangé, mais **`noindex, follow`** (+ 1 emplacement pub depuis la révision du 2026-09-12) |
 | `/patch-notes` | déjà solide (SSR, contenu statique riche) | inchangé, + 2 emplacements pub |
 
 ### 🔴 La règle générale que ce chantier installe
@@ -2773,7 +2773,29 @@ reste `false` tant qu'aucune CMP n'existe.
 |---|---|---|
 | `/patch-notes` | 2 | **entre** les patchs, après le 2ᵉ et le 5ᵉ (`AD_AFTER_INDEX`) — jamais à l'intérieur d'un `<article>`, jamais avant le premier |
 | `/champions` | 1 | **en fin** de grille (prop `footer`) — la grille n'est jamais coupée en deux |
-| `/` et `/matches` | **0** | pas de pub sur la page qui doit convaincre, ni sur une page désindexée |
+| `/matches` (état vide) | 1 | **sous** le champ de recherche ET son exemple (`matches-search`) |
+| `/matches/[region]/[riotId]` | 2 | après le **3ᵉ** match (`AD_AFTER_MATCH_INDEX`, `matches-inline`) et **après la sentinelle** de défilement infini (`matches-end`) |
+| `/` | **0** | pas de publicité sur la page qui doit convaincre |
+
+> ⚠️ **Sur `/matches`, l'ORDRE est la décision** (révision HORTAL du 2026-09-12 — la
+> page portait 0 emplacement à l'origine). Au-dessus du champ, la publicité serait le
+> premier élément d'une page dont l'unique raison d'être est de chercher un joueur :
+> on ferait payer l'attention avant de rendre le service. Sous l'exemple, elle n'a
+> rien coupé.
+>
+> ⚠️ **Publicité et indexation sont deux décisions INDÉPENDANTES.** `/matches` reste
+> `noindex, follow` : recevoir de la publicité ne la rend pas indexable, et la
+> désindexer ne lui interdit pas la publicité. La confusion serait facile — un test
+> vérifie les deux séparément.
+>
+> ⚠️ **Sur les pages de résultats, le second emplacement est HORS de la liste**, après
+> la sentinelle. Le défilement infini déplace la « fin de liste » à chaque
+> chargement : un emplacement calé dessus sauterait sous le curseur du lecteur. Le
+> premier, lui, est stable — les trois premiers matchs ne bougent jamais.
+>
+> ⚠️ Chaque `name` est UNIQUE sur tout le site (`matches-search`, `matches-inline`,
+> `matches-end`, `champions-end`, `patch-notes-…`) : c'est l'identifiant de
+> l'emplacement pour la régie et au débogage. Vérifié par test.
 
 ### Ce qui reste à faire
 

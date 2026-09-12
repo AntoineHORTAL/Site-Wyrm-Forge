@@ -36,6 +36,7 @@ const CHAMPIONS = read('champions/page.tsx')
 const MATCHES   = read('matches/page.tsx')
 const HOME      = read('page.tsx')
 const PATCHES   = read('patch-notes/page.tsx')
+const RESULTS   = read('matches/[region]/[riotId]/page.tsx')
 
 describe('🔴 /champions est rendue par le SERVEUR', () => {
   it('la page n’est plus un composant client', () => {
@@ -94,7 +95,7 @@ describe('🔴 /matches n’est plus proposée à l’indexation', () => {
   })
 })
 
-describe('🔴 emplacements publicitaires — seulement là où il y a du contenu', () => {
+describe('🔴 emplacements publicitaires — où, et dans quel ordre', () => {
   const uses = (src: string) => src.includes('<PublicAdSlot')
 
   it('/patch-notes et /champions en portent', () => {
@@ -102,11 +103,53 @@ describe('🔴 emplacements publicitaires — seulement là où il y a du conten
     expect(uses(CHAMPIONS), '/champions').toBe(true)
   })
 
-  it('la vitrine et /matches n’en portent AUCUN', () => {
-    // Décision du chantier : pas de publicité sur la page qui doit convaincre,
-    // ni sur une page volontairement désindexée.
+  it('la vitrine n’en porte AUCUN', () => {
+    // Décision inchangée : pas de publicité sur la page qui doit convaincre.
     expect(uses(HOME), '/').toBe(false)
-    expect(uses(MATCHES), '/matches').toBe(false)
+  })
+
+  it('/matches en porte UN, et SOUS le champ de recherche', () => {
+    // Décision HORTAL révisée le 2026-09-12 : /matches reçoit de la publicité,
+    // en état vide comme en état résultats. Ce qui reste interdit, c'est de la
+    // placer AVANT le champ — la page n'a pas d'autre raison d'être que de
+    // chercher un joueur, et on ne fait pas payer l'attention avant le service.
+    const code = withoutComments(MATCHES)
+    expect(code.match(/<PublicAdSlot/g) ?? []).toHaveLength(1)
+    expect(code.indexOf('<PublicAdSlot'))
+      .toBeGreaterThan(code.indexOf('<PlayerSearchBar'))
+    expect(code.indexOf('<PublicAdSlot')).toBeGreaterThan(code.indexOf('Faker#KR1'))
+  })
+
+  it('/matches reste désindexée : la pub ne change rien à l’indexation', () => {
+    // Les deux décisions sont indépendantes, et leur confusion serait facile.
+    expect(MATCHES).toMatch(/robots:\s*\{[^}]*index:\s*false/)
+  })
+
+  it('les pages de RÉSULTATS en portent deux, jamais avant le premier match', () => {
+    const code = withoutComments(RESULTS)
+    expect(code.match(/<PublicAdSlot/g) ?? []).toHaveLength(2)
+
+    // Le premier s'intercale après le 3ᵉ match ; « 0 » le mettrait après le
+    // premier, une valeur négative avant toute ligne.
+    const after = code.match(/const AD_AFTER_MATCH_INDEX = (\d+)/)
+    expect(after, 'AD_AFTER_MATCH_INDEX introuvable').toBeTruthy()
+    expect(Number(after![1])).toBeGreaterThanOrEqual(1)
+
+    // Et le second vient bien APRÈS le premier dans le flux de la page.
+    const [premier, second] = [...code.matchAll(/<PublicAdSlot[^>]*name="([^"]+)"/g)]
+      .map(m => m[1])
+    expect(premier).toBe('matches-inline')
+    expect(second).toBe('matches-end')
+  })
+
+  it('chaque emplacement porte un nom distinct', () => {
+    // `name` identifie l'emplacement pour la régie et au débogage : deux
+    // emplacements homonymes seraient indiscernables dans les rapports.
+    const noms = [MATCHES, RESULTS, PATCHES, CHAMPIONS]
+      .flatMap(src => [...withoutComments(src).matchAll(/<PublicAdSlot[^>]*name=[{"]([^"}`]+)/g)]
+        .map(m => m[1]))
+      .filter(n => !n.includes('$'))   // `patch-notes-${…}` est construit, pas littéral
+    expect(new Set(noms).size).toBe(noms.length)
   })
 
   it('/patch-notes en place deux au maximum, et jamais avant le premier patch', () => {
