@@ -138,8 +138,9 @@ export const cgvFr = {
               essentielles et le texte exact de la demande expresse, mais renvoie aux CGV
               par un LIEN — or un lien n'est pas un support durable (CJUE, Content
               Services, C-49/11). Joindre les CGV en PDF serait la forme la plus sûre.
-              ⚠️ Cet e-mail est envoyé EN FRANÇAIS UNIQUEMENT à ce jour — voir AGENTS.md
-              § Traduction EN des pages légales › Ce qui reste à faire. */}
+              Cet e-mail est bilingue depuis le 2026-09-12 : sa langue est celle de la
+              preuve de consentement de la commande (`checkout_consent_log.locale`) —
+              voir AGENTS.md § E-mails transactionnels › Langue des e-mails. */}
           <p style={{ marginTop: 10 }}>
             Une confirmation de ta commande t&apos;est adressée par e-mail dans les minutes qui
             suivent le paiement : elle reprend le palier, le prix, la périodicité, la date du

@@ -83,12 +83,27 @@ Deno.serve(async (req) => {
       },
 
       // Texte EXACT de la demande expresse acceptée (L221-13 : sa confirmation
-      // fait partie de la confirmation du contrat).
+      // fait partie de la confirmation du contrat) — et la LANGUE dans laquelle
+      // la case a été lue, qui est celle de la confirmation de commande.
       consentOf: async (consentId) => {
         const { data, error } = await db.from('checkout_consent_log')
-          .select('consent_text, terms_version').eq('id', consentId).maybeSingle()
+          .select('consent_text, terms_version, locale').eq('id', consentId).maybeSingle()
         if (error) throw new Error(`checkout_consent_log: ${error.message}`)
-        return data ? { text: data.consent_text, terms_version: data.terms_version } : null
+        return data
+          ? { text: data.consent_text, terms_version: data.terms_version, locale: data.locale ?? null }
+          : null
+      },
+
+      // Dernière langue connue du compte, pour les e-mails qui ne sont rattachés
+      // à AUCUNE preuve précise (résiliation, rappel annuel). Sert l'index
+      // `idx_checkout_consent_log_user (user_id, accepted_at DESC)` déjà posé par
+      // la migration 20260911000003 — aucune colonne ni table à ajouter.
+      localeOf: async (userId) => {
+        const { data, error } = await db.from('checkout_consent_log')
+          .select('locale').eq('user_id', userId)
+          .order('accepted_at', { ascending: false }).limit(1).maybeSingle()
+        if (error) throw new Error(`checkout_consent_log locale: ${error.message}`)
+        return data?.locale ?? null
       },
 
       send: (m) => sendEmail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text, replyTo, idempotencyKey: m.idempotencyKey }),

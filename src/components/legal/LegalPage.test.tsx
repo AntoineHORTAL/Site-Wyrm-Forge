@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { resolveInitialLang } from '@/lib/lang-param'
 import type { Lang } from '@/locales/landing'
 
 /**
@@ -176,5 +177,42 @@ describe('clauses d’abonnement partagées — prix et paliers suivent la langu
     expect(fr).toContain('Maître')
     expect(en).toContain('Blacksmith')
     expect(en).toContain('Master')
+  })
+})
+
+describe('lien reçu par e-mail — ?lang=en ouvre bien la page en anglais', () => {
+  // Chaîne complète du correctif : le paramètre de l'URL décide de la langue
+  // (`resolveInitialLang`), le provider la pose dans le contexte, la page la
+  // rend. Le maillon vérifié ici est le dernier — les deux premiers sont dans
+  // `src/lib/lang-param.test.ts`, ce test relie les deux bouts.
+  const langFor = (search: string, stored: string | null): Lang =>
+    resolveInitialLang(search, stored)?.lang ?? 'fr'
+
+  it.each(PAGES)('$route s’affiche en anglais SANS préférence locale préexistante', ({ Content }) => {
+    // Le cas réel : application mail d'un téléphone, navigateur qui n'a jamais
+    // visité le site, donc aucun `wf-lang`.
+    const html = render(Content, langFor('?lang=en', null))
+    expect(html).toContain('Last updated')
+    expect(html).toContain('← Back')
+  })
+
+  it.each(PAGES)('$route reste en français sans paramètre ni préférence', ({ Content }) => {
+    const html = render(Content, langFor('', null))
+    expect(html).toContain('Dernière mise à jour')
+    expect(html).toContain('← Retour')
+  })
+
+  it('la navigation normale du site n’est pas touchée : préférence stockée seule', () => {
+    expect(render(CgvContent, langFor('', 'en'))).toContain('Last updated')
+    expect(render(CgvContent, langFor('', 'fr'))).toContain('Dernière mise à jour')
+  })
+
+  it.each(PAGES)('$route ne pose le paramètre sur AUCUN de ses propres liens', ({ Content }) => {
+    // Le paramètre est réservé aux liens SORTANTS (e-mails). Une URL du site qui
+    // le porterait figerait la langue d'un visiteur qui n'a rien demandé, et
+    // finirait partagée telle quelle.
+    for (const l of ['fr', 'en'] as const) {
+      expect(render(Content, l), l).not.toMatch(/href="[^"]*[?&]lang=/)
+    }
   })
 })
