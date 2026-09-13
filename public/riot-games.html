@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Wyrm Forge — Product status</title>
-<meta name="description" content="A plain overview of what's live, built, in progress, and under consideration on Wyrm Forge." />
+<meta name="description" content="A detailed, feature-by-feature overview of what's live, built, in progress, thought through, and under consideration on Wyrm Forge." />
 <meta name="robots" content="noindex" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,109 +20,63 @@
     --wf-gold-pale: #FAC775;
     --wf-purple: #7F77DD;
     --wf-purple-dk: #534AB7;
+    --wf-success: #5DCAA5;
     --wf-font-display: 'Cinzel', serif;
     --wf-font-body: 'Inter', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--wf-bg);
-    color: var(--wf-text);
-    font-family: var(--wf-font-body);
+  body { margin: 0; background: var(--wf-bg); color: var(--wf-text); font-family: var(--wf-font-body); }
+  main { padding: 0 1.5rem 6rem; max-width: 900px; margin: 0 auto; }
+  h1, h2, h3 { font-family: var(--wf-font-display); font-weight: 600; letter-spacing: 0.01em; }
+  .wf-hero { padding: 5rem 0 2.5rem; border-bottom: 1px solid rgba(239, 159, 39, 0.15); }
+  .wf-eyebrow { color: var(--wf-gold-light); font-size: 0.875rem; margin: 0 0 1rem; }
+  .wf-hero h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.15; margin: 0 0 1.25rem; max-width: 20ch; }
+  .wf-lede { font-size: 1.05rem; line-height: 1.6; color: var(--wf-text-dim); max-width: 64ch; }
+  .wf-toc { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 2rem; padding: 0; list-style: none; }
+  .wf-toc a { color: var(--wf-purple); text-decoration: none; font-size: 0.85rem; border-bottom: 1px solid rgba(127,119,221,0.35); }
+  .wf-toc a:hover { color: var(--wf-gold-light); border-color: var(--wf-gold-light); }
+
+  .wf-killswitch {
+    margin: 2.5rem 0 0;
+    padding: 1.5rem 1.6rem;
+    background: linear-gradient(160deg, rgba(93,202,165,0.09), rgba(21,8,40,0.4));
+    border: 1px solid rgba(93,202,165,0.35);
+    border-radius: 8px;
   }
-  main {
-    padding: 0 1.5rem 6rem;
-    max-width: 880px;
-    margin: 0 auto;
-  }
-  h1, h2 {
-    font-family: var(--wf-font-display);
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-  .wf-hero {
-    padding: 5rem 0 3rem;
-    border-bottom: 1px solid rgba(239, 159, 39, 0.15);
-  }
-  .wf-eyebrow {
-    color: var(--wf-gold-light);
-    font-size: 0.875rem;
-    margin: 0 0 1rem;
-  }
-  .wf-hero h1 {
-    font-size: clamp(1.8rem, 4vw, 2.6rem);
-    line-height: 1.15;
-    margin: 0 0 1.25rem;
-    max-width: 18ch;
-  }
-  .wf-lede {
-    font-size: 1.05rem;
-    line-height: 1.6;
-    color: var(--wf-text-dim);
-    max-width: 62ch;
-  }
-  .wf-seam {
-    height: 3px;
-    margin: 0 auto;
-    background: linear-gradient(90deg, transparent, var(--wf-gold) 20%, var(--wf-gold-light) 50%, var(--wf-gold) 80%, transparent);
-    opacity: 0.6;
-  }
-  .wf-stage {
-    position: relative;
-    padding: 3rem 0;
-    border-bottom: 1px solid rgba(239, 159, 39, 0.12);
-  }
+  .wf-killswitch-eyebrow { color: var(--wf-success); font-size: 0.75rem; font-weight: 600; margin: 0 0 0.6rem; letter-spacing: 0.03em; text-transform: uppercase; }
+  .wf-killswitch h2 { font-size: 1.35rem; margin: 0 0 0.75rem; color: var(--wf-text); background: none; -webkit-background-clip: initial; }
+  .wf-killswitch p { color: var(--wf-text-dim); line-height: 1.65; margin: 0 0 0.9rem; max-width: 66ch; }
+  .wf-killswitch p:last-child { margin-bottom: 0; }
+  .wf-killswitch ul { margin: 0.9rem 0 0; padding-left: 1.1rem; color: var(--wf-text-dim); line-height: 1.65; }
+  .wf-killswitch li { margin-bottom: 0.4rem; }
+  .wf-killswitch strong { color: var(--wf-text); }
+
+  .wf-seam { height: 3px; margin: 2.5rem auto 0; background: linear-gradient(90deg, transparent, var(--wf-gold) 20%, var(--wf-gold-light) 50%, var(--wf-gold) 80%, transparent); opacity: 0.6; }
+  .wf-stage { position: relative; padding: 3rem 0; border-bottom: 1px solid rgba(239, 159, 39, 0.12); scroll-margin-top: 1.5rem; }
   .wf-stage:last-child { border-bottom: none; }
   .wf-stage-head { margin-bottom: 1.75rem; }
-  .wf-kicker {
-    display: inline-block;
-    font-size: 0.75rem;
-    color: var(--wf-purple);
-    margin-bottom: 0.6rem;
-  }
+  .wf-kicker { display: inline-block; font-size: 0.75rem; color: var(--wf-purple); margin-bottom: 0.6rem; }
   .wf-stage h2 {
-    font-size: 1.6rem;
-    margin: 0 0 0.5rem;
+    font-size: 1.5rem; margin: 0 0 0.5rem;
     background: linear-gradient(90deg, var(--wf-gold-pale), var(--wf-gold-light));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .wf-stage-blurb {
-    color: var(--wf-text-dim);
-    max-width: 58ch;
-    line-height: 1.55;
-    margin: 0;
+  .wf-stage-blurb { color: var(--wf-text-dim); max-width: 62ch; line-height: 1.55; margin: 0; }
+  .wf-stage-body { display: grid; gap: 2rem; }
+  .wf-subgroup-label {
+    font-family: var(--wf-font-body); font-size: 0.78rem; font-weight: 600;
+    color: var(--wf-gold-light); margin: 0 0 0.9rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid rgba(239,159,39,0.2);
   }
-  .wf-stage-body { display: grid; gap: 1.75rem; }
-  .wf-group-label {
-    font-family: var(--wf-font-body);
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--wf-text-dim);
-    margin: 0 0 0.75rem;
-  }
-  .wf-item-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.9rem;
-  }
+  .wf-item-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; }
   .wf-item {
-    display: grid;
-    grid-template-columns: minmax(160px, 220px) 1fr;
-    gap: 0.5rem 1.25rem;
-    padding: 0.9rem 1rem;
-    background: var(--wf-bg-alt);
-    border: 1px solid rgba(127, 119, 221, 0.15);
-    border-radius: 6px;
+    display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: 0.4rem 1.25rem;
+    padding: 1rem 1.1rem; background: var(--wf-bg-alt);
+    border: 1px solid rgba(127, 119, 221, 0.15); border-radius: 6px;
   }
   .wf-item-name { font-weight: 600; color: var(--wf-gold-pale); }
-  .wf-item-detail { color: var(--wf-text-dim); line-height: 1.5; }
-  @media (max-width: 620px) {
-    .wf-item { grid-template-columns: 1fr; }
-  }
+  .wf-item-detail { color: var(--wf-text-dim); line-height: 1.6; }
+  @media (max-width: 620px) { .wf-item { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -132,93 +86,185 @@
     <h1>What's actually in Wyrm Forge, right now</h1>
     <p class="wf-lede">
       Wyrm Forge is a companion site and desktop overlay for League of Legends. This page is a
-      plain, current snapshot of the product for anyone reviewing our production API key request:
-      what's live, what's built but not yet switched on, what we're actively working on, and what's
-      still just an idea.
+      detailed, feature-by-feature snapshot of the product for anyone reviewing our production API
+      key request: what's exclusive to the site, what's exclusive to the app, what's shared, what's
+      built but not live yet, what we're actively working on, what's designed but not started, and
+      what's still just an idea.
     </p>
+    <ul class="wf-toc">
+      <li><a href="#killswitch">Kill switches</a></li>
+      <li><a href="#site">Exclusive to the site</a></li>
+      <li><a href="#app">Exclusive to the app</a></li>
+      <li><a href="#shared">Shared</a></li>
+      <li><a href="#built">Built, not live</a></li>
+      <li><a href="#progress">In progress</a></li>
+      <li><a href="#planned">Thought through, not started</a></li>
+      <li><a href="#ideas">Just an idea</a></li>
+    </ul>
+
+    <div class="wf-killswitch" id="killswitch">
+      <p class="wf-killswitch-eyebrow">Compliance capability</p>
+      <h2>Every feature can be switched off centrally, immediately</h2>
+      <p>
+        We built a single rollout system that controls both the site and the app from one internal
+        dashboard. It was originally built to launch new features safely, but it doubles as a kill
+        switch: almost every feature on this page — including every individual block of the overlay
+        listed under "Exclusive to the app" (the live game panel, the comeback tracker, the build
+        assistant, the damage overlay, the live matchup panel, jungle pathing, item set export, rune
+        page apply, the community workshop, and so on) — has its own separate switch, added
+        specifically so any one of them can be disabled without touching the others or shipping a
+        new build.
+      </p>
+      <ul>
+        <li><strong>No deploy needed</strong> — toggled from an admin dashboard, not a code change.</li>
+        <li><strong>Fast to apply</strong> — the site checks for changes every 60 seconds; the app keeps a local cache and re-checks on its own schedule.</li>
+        <li><strong>Accountable</strong> — disabling a feature requires typing a reason first; there's no silent toggle.</li>
+        <li><strong>Granular, block by block</strong> — every overlay panel is its own independent switch, so we can turn off one specific block (say, just the build assistant, or just item set export) while every other panel keeps working normally.</li>
+      </ul>
+    </div>
   </header>
 
   <div class="wf-seam" aria-hidden="true"></div>
 
-  <section class="wf-stage" aria-labelledby="forged-title">
+  <section class="wf-stage" id="site" aria-labelledby="site-title">
     <div class="wf-stage-head">
-      <span class="wf-kicker">Stage 1 of 4 — shipped</span>
-      <h2 id="forged-title">Forged</h2>
-      <p class="wf-stage-blurb">Live in production today, on the website and inside the desktop app.</p>
+      <span class="wf-kicker">Website only — wyrm-forge.com</span>
+      <h2 id="site-title">Exclusive to the site</h2>
+      <p class="wf-stage-blurb">Runs in the browser. Nothing here touches the game client directly.</p>
+    </div>
+    <div class="wf-stage-body">
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Public site &amp; dashboard</span><span class="wf-item-detail">Marketing pages plus a signed-in player dashboard, both fully translated into French and English.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Player &amp; match search</span><span class="wf-item-detail">Look up any summoner by name and browse their recent match history, no app install required.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Match detail pages</span><span class="wf-item-detail">A dedicated deep-dive page per match, with a full stat and matchup breakdown for that game (part of the wider MatchUp system — see "Shared" below).</span></li>
+        <li class="wf-item"><span class="wf-item-name">Patch notes page</span><span class="wf-item-detail">A page summarizing official Riot patch notes, generated with AI assistance and kept French-only by choice.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Free champion rotation</span><span class="wf-item-detail">Shows this week's free-to-play champion rotation on the dashboard, refreshed automatically from Riot's data.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Subscription &amp; billing</span><span class="wf-item-detail">Pricing page, checkout, and card payments through Stripe. Upgrades and downgrades happen here; the app only reads the result.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Ads on the free tier</span><span class="wf-item-detail">Banner ads shown only to free-tier ("Apprentice") players inside their dashboard, served through Google AdSense. Never on the public marketing pages, never for paying players.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Admin dashboard</span><span class="wf-item-detail">Internal-only tool, not visible to players: managing user accounts, editing patch notes content, and switching features on or off through the rollout system, organized into three tabs.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="wf-stage" id="app" aria-labelledby="app-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Desktop app only — Windows overlay</span>
+      <h2 id="app-title">Exclusive to the app</h2>
+      <p class="wf-stage-blurb">Runs alongside the League client while a game is live. Every overlay feature we currently have is listed below.</p>
     </div>
     <div class="wf-stage-body">
       <div>
-        <h3 class="wf-group-label">Website — wyrm-forge.com</h3>
+        <h3 class="wf-subgroup-label">Live overlay panels</h3>
         <ul class="wf-item-list">
-          <li class="wf-item"><span class="wf-item-name">Bilingual site &amp; dashboard</span><span class="wf-item-detail">Marketing pages and player dashboard, in French and English.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Player &amp; match search</span><span class="wf-item-detail">Look up a summoner and browse recent match history.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Subscription tiers</span><span class="wf-item-detail">A free tier plus two paid tiers, with card payments handled through Stripe.</span></li>
+          <li class="wf-item"><span class="wf-item-name">In-game overlay</span><span class="wf-item-detail">The base transparent window drawn over the League client, reading live stats, gold, items and cooldowns from Riot's Live Client Data API.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Live game panel</span><span class="wf-item-detail">An overview of all 10 players in the current game (ranks, recent form), in the spirit of tools like Porofessor.gg.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Comeback tracker</span><span class="wf-item-detail">Reads gold, objective and kill differentials as the game evolves and shows whether a team is pulling ahead, falling behind, or the game is close.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Build assistant</span><span class="wf-item-detail">An AI-assisted suggestion for the next item purchase, based on the current game state and gold available. Internally nicknamed "Chaleur de la Forge."</span></li>
+          <li class="wf-item"><span class="wf-item-name">Damage overlay</span><span class="wf-item-detail">A panel showing damage dealt and taken during the game.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Live matchup panel</span><span class="wf-item-detail">The in-game half of the MatchUp system: tips about your lane opponent shown while you're actually playing (see "Shared" below for the site half).</span></li>
+          <li class="wf-item"><span class="wf-item-name">Sidebar navigation</span><span class="wf-item-detail">Lets a player switch between all of the panels above without leaving the overlay.</span></li>
         </ul>
       </div>
       <div>
-        <h3 class="wf-group-label">Desktop companion app</h3>
+        <h3 class="wf-subgroup-label">Jungle &amp; minimap</h3>
         <ul class="wf-item-list">
-          <li class="wf-item"><span class="wf-item-name">In-game overlay</span><span class="wf-item-detail">Live stats and item timings, read from Riot's Live Client Data API while a game is running.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Comeback tracker</span><span class="wf-item-detail">Reads how a game is trending and flags momentum swings.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Build assistant</span><span class="wf-item-detail">Suggests the next item purchase based on the current game state.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Post-game summary</span><span class="wf-item-detail">A recap screen shown once the game ends.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Jungle pathing on the minimap</span><span class="wf-item-detail">Shows a suggested route directly on the in-game minimap.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Automatic updates</span><span class="wf-item-detail">The app updates itself; no manual download for new versions.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Jungle pathing on the minimap</span><span class="wf-item-detail">A suggested jungle route drawn directly on the in-game minimap.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Automatic minimap calibration</span><span class="wf-item-detail">Detects the player's resolution and minimap scale automatically, so the pathing overlay lines up correctly without manual setup.</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="wf-subgroup-label">Builds, items &amp; runes</h3>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Item set export</span><span class="wf-item-detail">Exports a build directly into League's own item-set format, so it shows up as a quick-buy option in the in-game shop.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Rune page apply</span><span class="wf-item-detail">Applies a chosen rune page straight into the League client with one click, instead of setting it up manually.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Community workshop</span><span class="wf-item-detail">Browse builds and jungle paths shared publicly by other players, from inside the app.</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="wf-subgroup-label">After the game &amp; app upkeep</h3>
+        <ul class="wf-item-list">
+          <li class="wf-item"><span class="wf-item-name">Post-game summary</span><span class="wf-item-detail">A recap screen shown right after the game ends, before returning to the client lobby.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Automatic updates</span><span class="wf-item-detail">The app checks for and installs new versions itself on launch. Old installer files are cleaned up automatically in the background to avoid piling up disk space.</span></li>
         </ul>
       </div>
     </div>
   </section>
 
-  <section class="wf-stage" aria-labelledby="tempered-title">
+  <section class="wf-stage" id="shared" aria-labelledby="shared-title">
     <div class="wf-stage-head">
-      <span class="wf-kicker">Stage 2 of 4 — built, switched off</span>
-      <h2 id="tempered-title">Tempered</h2>
-      <p class="wf-stage-blurb">Finished and tested internally, kept behind a switch so nothing new appears until it's ready for everyone at once.</p>
+      <span class="wf-kicker">Both surfaces</span>
+      <h2 id="shared-title">Shared between site and app</h2>
+      <p class="wf-stage-blurb">Systems that exist once but are read, shown, or applied on both surfaces.</p>
     </div>
     <div class="wf-stage-body">
-      <div>
-        <ul class="wf-item-list">
-          <li class="wf-item"><span class="wf-item-name">Staged rollout system</span><span class="wf-item-detail">Lets us turn a feature on for every player at the same time on the site and in the app, rather than a partial or silent release.</span></li>
-          <li class="wf-item"><span class="wf-item-name">A handful of launch features</span><span class="wf-item-detail">Including an in-app currency, seasonal challenges, and daily quests — built, tested, and waiting for the switch.</span></li>
-        </ul>
-      </div>
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Staged rollout &amp; kill switches</span><span class="wf-item-detail">See the callout at the top of this page — this is the system behind it.</span></li>
+        <li class="wf-item"><span class="wf-item-name">MatchUp</span><span class="wf-item-detail">One matchup system with two faces: a detailed breakdown on the site's match pages, and a live version shown in the app's overlay during the game itself.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Subscription tiers</span><span class="wf-item-detail">What a player pays for on the site determines what they get in the app — one account, one entitlement, checked by both surfaces automatically.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Bilingual interface</span><span class="wf-item-detail">Both the site and the app ship in French and English from the same hand-maintained translation files. A few things are deliberately left French-only, like League rank names.</span></li>
+      </ul>
     </div>
   </section>
 
-  <section class="wf-stage" aria-labelledby="furnace-title">
+  <section class="wf-stage" id="built" aria-labelledby="built-title">
     <div class="wf-stage-head">
-      <span class="wf-kicker">Stage 3 of 4 — in progress</span>
-      <h2 id="furnace-title">In the furnace</h2>
-      <p class="wf-stage-blurb">Actively being designed or built right now.</p>
+      <span class="wf-kicker">Coded and tested, switched off</span>
+      <h2 id="built-title">Built, not live yet</h2>
+      <p class="wf-stage-blurb">Finished, but kept behind the rollout system above so nothing new appears until it's ready for everyone at once.</p>
     </div>
     <div class="wf-stage-body">
-      <div>
-        <ul class="wf-item-list">
-          <li class="wf-item"><span class="wf-item-name">Personal coaching packs</span><span class="wf-item-detail">A paid service built around a custom champion kit and a live 1:1 review with a coach.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Clans &amp; guilds</span><span class="wf-item-detail">Letting players group together, with a shared ranking.</span></li>
-          <li class="wf-item"><span class="wf-item-name">"Legion" plan</span><span class="wf-item-detail">A shared subscription for a group of five friends.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Match outcome prediction</span><span class="wf-item-detail">An estimate of a game's odds while it's in progress.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Wider automated testing</span><span class="wf-item-detail">Extending our test coverage as the app grows.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Self-service billing</span><span class="wf-item-detail">Letting players cancel or change their card without contacting us directly.</span></li>
-        </ul>
-      </div>
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Launch features</span><span class="wf-item-detail">An in-app currency, seasonal challenges, and daily quests are coded and tested, waiting for the switch. Meant to go live together as one launch moment.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Minimap click-through refinement</span><span class="wf-item-detail">A fix improving exactly which parts of the minimap overlay let mouse clicks pass through to the game underneath, rather than being intercepted. Built and unit-tested; still needs one validation pass in a real match before it ships.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Feature suggestion box &amp; monthly vote</span><span class="wf-item-detail">Logged-in players will be able to submit a detailed feature request (title, description, category) from a new dashboard tab. Submissions stay private, visible only to their author, until a monthly voting round opens — at which point a shortlisted set becomes visible for players to vote on, with the author's identity never revealed even during voting. Fully built and tested, including an admin tool to open and close voting rounds, but held behind its own launch switch: it introduces a new kind of personal data (submitted ideas and votes tied to an account), so it's waiting on a privacy-policy update covering that before it opens.</span></li>
+      </ul>
     </div>
   </section>
 
-  <section class="wf-stage" aria-labelledby="ore-title">
+  <section class="wf-stage" id="progress" aria-labelledby="progress-title">
     <div class="wf-stage-head">
-      <span class="wf-kicker">Stage 4 of 4 — under consideration</span>
-      <h2 id="ore-title">Raw ore</h2>
-      <p class="wf-stage-blurb">Ideas we've discussed, with nothing built and no date attached.</p>
+      <span class="wf-kicker">Being worked on right now</span>
+      <h2 id="progress-title">In progress</h2>
+      <p class="wf-stage-blurb">Active work this month, mostly compliance-driven groundwork ahead of the features below.</p>
     </div>
     <div class="wf-stage-body">
-      <div>
-        <ul class="wf-item-list">
-          <li class="wf-item"><span class="wf-item-name">Tournaments</span><span class="wf-item-detail">Cosmetic rewards only — no entry fee and no cash prize, to stay within French gambling law.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Video / replay analysis</span><span class="wf-item-detail">Reviewing a recorded game rather than a live one.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Beyond League of Legends</span><span class="wf-item-detail">A long-term idea to support other Riot titles, starting with TFT.</span></li>
-        </ul>
-      </div>
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">English translation of legal pages</span><span class="wf-item-detail">Terms of service, terms of sale, legal notices and privacy policy are being translated to English, currently the immediate priority ahead of any new paid feature.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Required billing emails</span><span class="wf-item-detail">Transactional emails are being wired back in to cover three obligations under French consumer law: order confirmation, cancellation confirmation, and a reminder before an annual subscription renews.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="wf-stage" id="planned" aria-labelledby="planned-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Designed, no code yet</span>
+      <h2 id="planned-title">Thought through, not started</h2>
+      <p class="wf-stage-blurb">The mechanics, pricing, and edge cases are worked out; nothing has been built.</p>
+    </div>
+    <div class="wf-stage-body">
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Personal coaching packs</span><span class="wf-item-detail">A paid service: a player books a slot and pays a deposit, has a discovery call about their playstyle, receives a tailored champion/role kit (build, runes, macro, matchups) a few days later, then plays 1-2 games with a coach watching live. Full flow and pricing are set; next in line once the work above is done.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Clans &amp; guilds</span><span class="wf-item-detail">A free tier open to everyone and larger paid tiers for bigger groups, each with a ranking based on members' win rate, a search page, join requests reviewed by the group's leader, and a moderation process for reported groups. Fully specified, not coded.</span></li>
+        <li class="wf-item"><span class="wf-item-name">"Legion" plan</span><span class="wf-item-detail">A subscription shared by a group of five accounts, with one paying account inviting the other four. The structure is designed; today it exists only as a placeholder value in the database, with no real functionality behind it yet.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Tournaments</span><span class="wf-item-detail">A daily-to-monthly-to-annual structure was designed, but after legal review we confirmed that paid entry with cash prizes isn't viable under French law. Any version we eventually build would use cosmetic-only rewards (badges, profile borders) instead — not scheduled.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Self-service billing</span><span class="wf-item-detail">Letting a player cancel their subscription or update their card without contacting us directly, through Stripe's customer portal. Understood as needed, not started.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="wf-stage" id="ideas" aria-labelledby="ideas-title">
+    <div class="wf-stage-head">
+      <span class="wf-kicker">Discussed, not fleshed out</span>
+      <h2 id="ideas-title">Just an idea</h2>
+      <p class="wf-stage-blurb">Come up in conversation, with no design work done and no timeline.</p>
+    </div>
+    <div class="wf-stage-body">
+      <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Match outcome prediction</span><span class="wf-item-detail">An estimate of a game's odds while it's in progress. Mentioned as a possible future feature, no design done.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Video / replay analysis</span><span class="wf-item-detail">Reviewing a recorded game rather than a live one. Mentioned as a "someday" feature; not designed or scheduled.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Windowed-mode support in the app</span><span class="wf-item-detail">The overlay currently assumes the game always fills the whole primary screen. Supporting a windowed game client would need real design work; identified as a gap, not yet planned.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Beyond League of Legends</span><span class="wf-item-detail">A long-term idea to support other Riot titles, starting with Teamfight Tactics, then possibly other games entirely. No timeline attached.</span></li>
+      </ul>
     </div>
   </section>
 </main>
