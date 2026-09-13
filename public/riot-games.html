@@ -76,6 +76,10 @@
   }
   .wf-item-name { font-weight: 600; color: var(--wf-gold-pale); }
   .wf-item-detail { color: var(--wf-text-dim); line-height: 1.6; }
+  .wf-proof { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.9rem; }
+  .wf-proof figure { margin: 0; flex: 1 1 220px; max-width: 320px; }
+  .wf-proof img { width: 100%; height: auto; border-radius: 6px; border: 1px solid rgba(239,159,39,0.25); display: block; }
+  .wf-proof figcaption { font-size: 0.78rem; color: var(--wf-text-dim); margin-top: 0.4rem; line-height: 1.4; }
   @media (max-width: 620px) { .wf-item { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -215,7 +219,7 @@
     </div>
     <div class="wf-stage-body">
       <ul class="wf-item-list">
-        <li class="wf-item"><span class="wf-item-name">Launch features</span><span class="wf-item-detail">An in-app currency, seasonal challenges, and daily quests are coded and tested, waiting for the switch. Meant to go live together as one launch moment.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Launch features</span><span class="wf-item-detail">Seasonal challenges and daily quests are coded and tested, waiting for the switch. An in-app currency ("Écailles") is also built, but we're still refining what it can be meaningfully spent on to make sure it adds real cosmetic value rather than filler — it isn't exchangeable for real money and isn't tied to any tournament or wagering mechanic.</span></li>
         <li class="wf-item"><span class="wf-item-name">Minimap click-through refinement</span><span class="wf-item-detail">A fix improving exactly which parts of the minimap overlay let mouse clicks pass through to the game underneath, rather than being intercepted. Built and unit-tested; still needs one validation pass in a real match before it ships.</span></li>
         <li class="wf-item"><span class="wf-item-name">Feature suggestion box &amp; monthly vote</span><span class="wf-item-detail">Logged-in players will be able to submit a detailed feature request (title, description, category) from a new dashboard tab. Submissions stay private, visible only to their author, until a monthly voting round opens — at which point a shortlisted set becomes visible for players to vote on, with the author's identity never revealed even during voting. Fully built and tested, including an admin tool to open and close voting rounds, but held behind its own launch switch: it introduces a new kind of personal data (submitted ideas and votes tied to an account), so it's waiting on a privacy-policy update covering that before it opens.</span></li>
         <li class="wf-item"><span class="wf-item-name">Personal coaching packs (first phase)</span><span class="wf-item-detail">A player can submit a request for a tailored champion/role kit, which we then track internally as a case file. Booking is currently just an external link, and the kit itself is still put together and delivered by hand — the request submission and internal tracking are what's actually coded and held behind a launch switch. The live in-game coaching session is a separate, later step, still in the "thought through, not started" stage below.</span></li>
@@ -232,6 +236,18 @@
     <div class="wf-stage-body">
       <ul class="wf-item-list">
         <li class="wf-item"><span class="wf-item-name">Required billing emails</span><span class="wf-item-detail">Transactional emails are being wired back in to cover three obligations under French consumer law: order confirmation, cancellation confirmation, and a reminder before an annual subscription renews.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Code signing certificate</span><span class="wf-item-detail">The app's installer isn't code-signed yet, so Windows currently shows an "unknown publisher" SmartScreen warning on first install. An OV code-signing certificate has been ordered and is pending identity validation with the certificate authority; once issued, it will be wired into the release pipeline so every future build is signed automatically. Proof of this order is included directly below, since this application doesn't support file attachments.
+            <div class="wf-proof">
+              <figure>
+                <img src="cert-receipt.png" alt="SSL.com payment receipt for a code signing certificate order, dated September 8, 2026" loading="lazy" />
+                <figcaption>Payment receipt — SSL.com Certificate Order, $129.00, September 8, 2026.</figcaption>
+              </figure>
+              <figure>
+                <img src="cert-status.png" alt="SSL.com order status showing the Wyrm Forge code signing certificate as pending validation" loading="lazy" />
+                <figcaption>Live order status — "pending validation," Code Signing, organization validation level.</figcaption>
+              </figure>
+            </div>
+          </span></li>
       </ul>
     </div>
   </section>
@@ -247,7 +263,7 @@
         <li class="wf-item"><span class="wf-item-name">Personal coaching packs (live session)</span><span class="wf-item-detail">The final step of the coaching flow: 1-2 games played with a coach watching live to put the kit into practice. The request-submission and internal tracking steps are already built (see "Built, not live yet" above); booking and kit delivery are still manual, and this live-session step is designed but not coded.</span></li>
         <li class="wf-item"><span class="wf-item-name">Clans &amp; guilds</span><span class="wf-item-detail">A free tier open to everyone and larger paid tiers for bigger groups, each with a ranking based on members' win rate, a search page, join requests reviewed by the group's leader, and a moderation process for reported groups. Fully specified, not coded.</span></li>
         <li class="wf-item"><span class="wf-item-name">"Legion" plan</span><span class="wf-item-detail">A subscription shared by a group of five accounts, with one paying account inviting the other four. The structure is designed; today it exists only as a placeholder value in the database, with no real functionality behind it yet.</span></li>
-        <li class="wf-item"><span class="wf-item-name">Tournaments</span><span class="wf-item-detail">A daily-to-monthly-to-annual structure was designed, but after legal review we confirmed that paid entry with cash prizes isn't viable under French law. Any version we eventually build would use cosmetic-only rewards (badges, profile borders) instead — not scheduled.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Self-service billing</span><span class="wf-item-detail">Letting a player cancel their subscription or update their card without contacting us directly, through Stripe's customer portal. Understood as needed, not started.</span></li>
       </ul>
     </div>
   </section>
@@ -260,6 +276,7 @@
     </div>
     <div class="wf-stage-body">
       <ul class="wf-item-list">
+        <li class="wf-item"><span class="wf-item-name">Tournaments</span><span class="wf-item-detail">An earlier design (daily-to-monthly-to-annual, cash prizes) was scrapped after legal review found it wasn't viable under French law. We're starting completely over, much further down the line — nothing designed yet, and any future version would need to be rethought from scratch.</span></li>
         <li class="wf-item"><span class="wf-item-name">Match outcome prediction</span><span class="wf-item-detail">An estimate of a game's odds while it's in progress. Mentioned as a possible future feature, no design done.</span></li>
         <li class="wf-item"><span class="wf-item-name">Video / replay analysis</span><span class="wf-item-detail">Reviewing a recorded game rather than a live one. Mentioned as a "someday" feature; not designed or scheduled.</span></li>
         <li class="wf-item"><span class="wf-item-name">Windowed-mode support in the app</span><span class="wf-item-detail">The overlay currently assumes the game always fills the whole primary screen. Supporting a windowed game client would need real design work; identified as a gap, not yet planned.</span></li>
