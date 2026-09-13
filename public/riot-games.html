@@ -143,7 +143,7 @@
         <li class="wf-item"><span class="wf-item-name">Match detail pages</span><span class="wf-item-detail">A dedicated deep-dive page per match, with a full stat and matchup breakdown for that game (part of the wider MatchUp system — see "Shared" below).</span></li>
         <li class="wf-item"><span class="wf-item-name">Patch notes page</span><span class="wf-item-detail">A page summarizing official Riot patch notes, generated with AI assistance and kept French-only by choice.</span></li>
         <li class="wf-item"><span class="wf-item-name">Free champion rotation</span><span class="wf-item-detail">Shows this week's free-to-play champion rotation on the dashboard, refreshed automatically from Riot's data.</span></li>
-        <li class="wf-item"><span class="wf-item-name">Subscription &amp; billing</span><span class="wf-item-detail">Pricing page, checkout, and card payments through Stripe. Upgrades and downgrades happen here; the app only reads the result.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Subscription &amp; billing</span><span class="wf-item-detail">Pricing page, checkout, and card payments through Stripe. Upgrades and downgrades happen here; the app only reads the result. As a precaution, new subscriptions can be temporarily paused during external reviews like this one — existing subscribers are never affected, and this is itself controlled by the kill-switch system described above.</span></li>
         <li class="wf-item"><span class="wf-item-name">Ads on the free tier</span><span class="wf-item-detail">Banner ads shown only to free-tier ("Apprentice") players inside their dashboard, served through Google AdSense. Never on the public marketing pages, never for paying players.</span></li>
         <li class="wf-item"><span class="wf-item-name">Admin dashboard</span><span class="wf-item-detail">Internal-only tool, not visible to players: managing user accounts, editing patch notes content, and switching features on or off through the rollout system, organized into several tabs.</span></li>
         <li class="wf-item"><span class="wf-item-name">Subscription self-service</span><span class="wf-item-detail">A player can cancel their subscription or update their payment card directly from their dashboard, through Stripe's customer portal, without contacting us.</span></li>
@@ -236,7 +236,7 @@
     <div class="wf-stage-body">
       <ul class="wf-item-list">
         <li class="wf-item"><span class="wf-item-name">Required billing emails</span><span class="wf-item-detail">Transactional emails are being wired back in to cover three obligations under French consumer law: order confirmation, cancellation confirmation, and a reminder before an annual subscription renews.</span></li>
-        <li class="wf-item"><span class="wf-item-name">Code signing certificate</span><span class="wf-item-detail">The app's installer isn't code-signed yet, so Windows currently shows an "unknown publisher" SmartScreen warning on first install. An OV code-signing certificate has been ordered and is pending identity validation with the certificate authority; once issued, it will be wired into the release pipeline so every future build is signed automatically. Proof of this order is included directly below, since this application doesn't support file attachments.
+        <li class="wf-item"><span class="wf-item-name">Code signing certificate</span><div class="wf-item-detail">The app's installer isn't code-signed yet, so Windows currently shows an "unknown publisher" SmartScreen warning on first install. An OV code-signing certificate has been ordered and is pending identity validation with the certificate authority; once issued, it will be wired into the release pipeline so every future build is signed automatically. Proof of this order is included directly below, since this application doesn't support file attachments.
             <div class="wf-proof">
               <figure>
                 <img src="cert-receipt.png" alt="SSL.com payment receipt for a code signing certificate order, dated September 8, 2026" loading="lazy" />
@@ -247,7 +247,7 @@
                 <figcaption>Live order status — "pending validation," Code Signing, organization validation level.</figcaption>
               </figure>
             </div>
-          </span></li>
+          </div></li>
       </ul>
     </div>
   </section>
@@ -263,7 +263,6 @@
         <li class="wf-item"><span class="wf-item-name">Personal coaching packs (live session)</span><span class="wf-item-detail">The final step of the coaching flow: 1-2 games played with a coach watching live to put the kit into practice. The request-submission and internal tracking steps are already built (see "Built, not live yet" above); booking and kit delivery are still manual, and this live-session step is designed but not coded.</span></li>
         <li class="wf-item"><span class="wf-item-name">Clans &amp; guilds</span><span class="wf-item-detail">A free tier open to everyone and larger paid tiers for bigger groups, each with a ranking based on members' win rate, a search page, join requests reviewed by the group's leader, and a moderation process for reported groups. Fully specified, not coded.</span></li>
         <li class="wf-item"><span class="wf-item-name">"Legion" plan</span><span class="wf-item-detail">A subscription shared by a group of five accounts, with one paying account inviting the other four. The structure is designed; today it exists only as a placeholder value in the database, with no real functionality behind it yet.</span></li>
-        <li class="wf-item"><span class="wf-item-name">Self-service billing</span><span class="wf-item-detail">Letting a player cancel their subscription or update their card without contacting us directly, through Stripe's customer portal. Understood as needed, not started.</span></li>
       </ul>
     </div>
   </section>
