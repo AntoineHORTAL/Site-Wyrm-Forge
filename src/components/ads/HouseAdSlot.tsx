@@ -24,6 +24,8 @@ import { useEffect, useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { AD_FORMATS } from '@/lib/ads'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
+import SubscriptionSoonBadge from '@/components/landing/SubscriptionSoonBadge'
 
 /**
  * Les créas disponibles — UNE PAR PALIER PAYANT.
@@ -193,26 +195,37 @@ export default function HouseAdSlot({ onSeePricing }: HouseAdSlotProps) {
             </ul>
           </div>
 
-          <button
-            onClick={onSeePricing}
-            style={{
-              width: '100%',
-              padding: '9px 12px',
-              borderRadius: 6,
-              background: `linear-gradient(135deg,${accent},${accentD})`,
-              border: 'none',
-              color: 'white',
-              fontSize: 12.5,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {copy.cta.replace('{tier}', tierCopy.name)}
-          </button>
+          {/* Souscription suspendue : le CTA mène à la grille pour y acheter un
+              palier, il devient donc « Bientôt » lui aussi (`availability.ts`). */}
+          {SUBSCRIPTIONS_ENABLED ? (
+            <button
+              onClick={onSeePricing}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: 6,
+                background: `linear-gradient(135deg,${accent},${accentD})`,
+                border: 'none',
+                color: 'white',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {copy.cta.replace('{tier}', tierCopy.name)}
+            </button>
+          ) : (
+            <SubscriptionSoonBadge
+              label={t.pricing.soon}
+              title={t.pricing.ctaSoonTitle}
+              variant={c ? 'gold' : 'primary'}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 6, fontSize: 12.5 }}
+            />
+          )}
         </>
       )}
     </div>

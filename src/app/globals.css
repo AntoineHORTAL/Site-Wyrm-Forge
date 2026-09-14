@@ -795,6 +795,19 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   .wf-btn-gold:not(:disabled):hover::before { transform: translateX(-190%) skewX(-18deg); transition: none; }
 }
 
+/* Version désactivée d'un CTA de souscription (`SubscriptionSoonBadge`), tant que
+   `SUBSCRIPTIONS_ENABLED` est à false. À combiner avec `.wf-btn-gold` ou
+   `.wf-btn-primary` : les couleurs viennent d'eux, seul l'état change ici.
+   Le survol est neutralisé explicitement — `.wf-btn-gold:hover` et
+   `.wf-btn-primary:hover` soulèvent le bouton sans tester `:disabled`. */
+.wf-btn-soon,
+.wf-btn-soon:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Eyebrow commun aux sections de la home */
 .land-eyebrow {
   display: inline-block;

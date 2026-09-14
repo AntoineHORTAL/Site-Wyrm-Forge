@@ -14,6 +14,7 @@ import { useSession } from '@/components/providers/SessionProvider'
 import { useDashboardNav } from '@/components/providers/DashboardNavProvider'
 import type { DashTab } from '@/lib/session-types'
 import { peekCheckoutIntent, sessionIntentStorage } from '@/lib/stripe/checkout-intent'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
 
 // `DashTab` et `UserProfile` ont déménagé dans `src/lib/session-types.ts` : le
 // header vit désormais dans le layout racine, et les providers qui le nourrissent
@@ -67,7 +68,8 @@ export default function Home() {
    * monté et seul `user` change.
    */
   useEffect(() => {
-    if (!user) return
+    // Souscription suspendue : aucune reprise à relayer (`Pricing` efface l'intention).
+    if (!user || !SUBSCRIPTIONS_ENABLED) return
     if (peekCheckoutIntent(sessionIntentStorage())) setActiveTab('tarifs')
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 

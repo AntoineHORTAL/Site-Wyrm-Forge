@@ -249,6 +249,10 @@ export const landingFr = {
     ctaCurrent: 'Ton palier actuel',
     ctaSoon: 'Bientôt disponible',
     ctaSoonTitle: 'Le paiement sera disponible prochainement',
+    // Badge qui remplace TOUS les CTA de souscription (grille, écran verrouillé,
+    // encart pub, rappel de renouvellement, /profil) tant que
+    // `SUBSCRIPTIONS_ENABLED` est à false — voir `src/lib/stripe/availability.ts`.
+    soon: 'Bientôt',
     checkoutError: "Impossible d'ouvrir le paiement. Réessaie dans un instant.",
     // Retour de Stripe — le palier n'est pas encore écrit à cet instant, c'est
     // le webhook qui l'écrira. D'où une attente explicite plutôt qu'un silence.
@@ -589,6 +593,7 @@ export const landingEn: LandingDict = {
     ctaCurrent: 'Your current tier',
     ctaSoon: 'Coming soon',
     ctaSoonTitle: 'Payments will be available soon',
+    soon: 'Soon',
     checkoutError: 'Could not open checkout. Please try again in a moment.',
     checkoutPending: 'Payment confirmed — activating your tier…',
     checkoutDone: 'Your {tier} tier is active. Welcome to the forge!',

@@ -23,6 +23,9 @@ import DashboardAdRail from '@/components/ads/DashboardAdRail'
 import { shouldShowAds } from '@/lib/ads'
 import { isPaidTier } from '@/lib/subscription'
 import Pricing from '@/components/landing/Pricing'
+import SubscriptionSoonBadge from '@/components/landing/SubscriptionSoonBadge'
+import { useLanguage } from '@/components/providers/LanguageProvider'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
 import type { DashTab, UserProfile } from '@/lib/session-types'
@@ -452,6 +455,9 @@ function LockedScreen({ title, subtitle, labels, c, badge }: {
   c: boolean
   badge?: string
 }) {
+  // Libellé « Bientôt » lu dans le dico vitrine : une seule clé pour tous les
+  // CTA de souscription suspendus (voir `src/lib/stripe/availability.ts`).
+  const { t } = useLanguage()
   return (
     <div style={{
       textAlign: 'center', padding: '60px 32px', borderRadius: 12,
@@ -471,7 +477,14 @@ function LockedScreen({ title, subtitle, labels, c, badge }: {
       <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '0 auto 24px', maxWidth: 400 }}>
         {subtitle}{labels.upgrade}
       </p>
-      <button className="wf-btn-primary" style={{ margin: '0 auto' }}>{labels.cta}</button>
+      {SUBSCRIPTIONS_ENABLED
+        ? <button className="wf-btn-primary" style={{ margin: '0 auto' }}>{labels.cta}</button>
+        : <SubscriptionSoonBadge
+            label={t.pricing.soon}
+            title={t.pricing.ctaSoonTitle}
+            variant="primary"
+            style={{ margin: '0 auto' }}
+          />}
     </div>
   )
 }

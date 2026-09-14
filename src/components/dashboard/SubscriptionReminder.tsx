@@ -18,6 +18,9 @@
  */
 import { useEffect, useState } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import { useLanguage } from '@/components/providers/LanguageProvider'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
+import SubscriptionSoonBadge from '@/components/landing/SubscriptionSoonBadge'
 
 interface Props {
   tier: string
@@ -42,6 +45,7 @@ function localYmd(d: Date): string {
 export default function SubscriptionReminder({ tier, tierExpiresAt, isAdmin, onRenew }: Props) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
+  const { t } = useLanguage()
   const [phase, setPhase] = useState<Phase | null>(null)
 
   useEffect(() => {
@@ -112,14 +116,25 @@ export default function SubscriptionReminder({ tier, tierExpiresAt, isAdmin, onR
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => { onRenew(); close() }}
-            style={{
-              padding: '10px 22px', borderRadius: 8, fontSize: 14, fontWeight: 600,
-              whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
-              background: c ? '#BA7517' : '#7F77DD', color: '#fff',
-            }}
-          >Renouveler</button>
+          {/* Souscription suspendue (`availability.ts`) : renouveler = repasser par
+              le checkout, le bouton devient donc « Bientôt ». */}
+          {SUBSCRIPTIONS_ENABLED ? (
+            <button
+              onClick={() => { onRenew(); close() }}
+              style={{
+                padding: '10px 22px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
+                background: c ? '#BA7517' : '#7F77DD', color: '#fff',
+              }}
+            >Renouveler</button>
+          ) : (
+            <SubscriptionSoonBadge
+              label={t.pricing.soon}
+              title={t.pricing.ctaSoonTitle}
+              variant={c ? 'gold' : 'primary'}
+              style={{ padding: '10px 22px', fontSize: 14 }}
+            />
+          )}
           <button
             onClick={close}
             style={{

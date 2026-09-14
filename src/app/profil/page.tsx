@@ -23,6 +23,9 @@ import {
   resolveSubscriptionView,
   type SubscriptionRow,
 } from '@/lib/stripe/subscription-view'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
+import { useLanguage } from '@/components/providers/LanguageProvider'
+import SubscriptionSoonBadge from '@/components/landing/SubscriptionSoonBadge'
 
 const supabase = createClient()
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -449,6 +452,7 @@ function SubscriptionSection({ profile, subscription }: {
 }) {
   const dico = useDashboard()
   const lang = useLang()
+  const { t } = useLanguage()
   const P = dico.profil
   const G = P.page
   const S = P.subscription
@@ -568,9 +572,20 @@ function SubscriptionSection({ profile, subscription }: {
         <div style={{ marginBottom: view.canManageBilling ? 12 : 0 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>{S.freeTitle}</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>{S.freeBody}</div>
-          <Link href="/?tab=tarifs" style={{ color: '#EF9F27', fontWeight: 600, textDecoration: 'none', fontSize: 13 }}>
-            {G.pricing}
-          </Link>
+          {/* Souscription suspendue (`availability.ts`) : l'incitation à passer à
+              un palier payant devient « Bientôt ». Le lien de l'en-tête reste. */}
+          {SUBSCRIPTIONS_ENABLED ? (
+            <Link href="/?tab=tarifs" style={{ color: '#EF9F27', fontWeight: 600, textDecoration: 'none', fontSize: 13 }}>
+              {G.pricing}
+            </Link>
+          ) : (
+            <SubscriptionSoonBadge
+              label={t.pricing.soon}
+              title={t.pricing.ctaSoonTitle}
+              variant="gold"
+              style={{ padding: '7px 16px', fontSize: 13 }}
+            />
+          )}
         </div>
       )}
 

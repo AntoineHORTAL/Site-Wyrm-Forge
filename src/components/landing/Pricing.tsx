@@ -12,10 +12,13 @@ import type { BillingPeriod, PlanKey } from '@/lib/stripe/plans'
 import {
   rememberCheckoutIntent,
   takeCheckoutIntent,
+  clearCheckoutIntent,
   sessionIntentStorage,
 } from '@/lib/stripe/checkout-intent'
 import { CONSENT_TEXTS, CURRENT_CONSENT_VERSION } from '@/lib/stripe/checkout-consent'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
 import CheckoutConsentModal from './CheckoutConsentModal'
+import SubscriptionSoonBadge from './SubscriptionSoonBadge'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -197,6 +200,13 @@ export default function Pricing() {
   const resumed = useRef(false)
 
   useEffect(() => {
+    // Souscription suspendue (`SUBSCRIPTIONS_ENABLED`) : une intention mémorisée
+    // AVANT la coupure est effacée, jamais rejouée — sinon elle rouvrirait la
+    // modale de consentement, seul chemin restant vers le checkout.
+    if (!SUBSCRIPTIONS_ENABLED) {
+      clearCheckoutIntent(sessionIntentStorage())
+      return
+    }
     if (!user || resumed.current) return
 
     const intent = takeCheckoutIntent(sessionIntentStorage())
@@ -372,6 +382,20 @@ export default function Pricing() {
                   // paiement à quelqu'un qui l'a déjà créerait un doublon
                   // d'abonnement chez Stripe, pas une mise à niveau.
                   const disabled = isCurrent || isPending
+
+                  // Souscription suspendue (`availability.ts`) : tout bouton qui
+                  // mènerait au checkout devient « Bientôt ». Le libellé inerte
+                  // « Ton palier actuel » reste — il ne propose aucun paiement.
+                  if (!SUBSCRIPTIONS_ENABLED && !isCurrent) {
+                    return (
+                      <SubscriptionSoonBadge
+                        label={p.soon}
+                        title={p.ctaSoonTitle}
+                        variant={c ? 'gold' : 'primary'}
+                        style={{ width: '100%' }}
+                      />
+                    )
+                  }
 
                   return (
                     <button

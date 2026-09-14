@@ -2219,6 +2219,37 @@ ancien abonné redescendu au gratuit, la résiliation programmée, les cinq stat
   **les deux sont périmés**. La grille est visible et le paiement est branché ;
   l'**enforcement** des quotas par palier, lui, reste bien à faire.
 
+### ⏸️ Souscription SUSPENDUE — `SUBSCRIPTIONS_ENABLED = false` (2026-09-14)
+
+Décision HORTAL : tant que la clé Riot Games de **production** n'est pas approuvée,
+aucun abonnement ne se vend. Le code Stripe (checkout, webhook, portail, e-mails)
+est **intact** — seule l'interface est coupée, depuis un interrupteur unique :
+`src/lib/stripe/availability.ts`. **Réactiver = passer la constante à `true`**,
+rien d'autre.
+
+Coupés (remplacés par `SubscriptionSoonBadge`, « Bientôt » / « Soon »,
+`t.pricing.soon`, classes `.wf-btn-gold|primary` + `.wf-btn-soon`) :
+
+| Point d'entrée | Fichier |
+|---|---|
+| « S'abonner » / « Se connecter pour s'abonner » (Forgeron, Maître) | `components/landing/Pricing.tsx` |
+| Reprise après connexion (intention `sessionStorage`) — **effacée**, jamais rejouée | `Pricing.tsx` + `app/page.tsx` |
+| « Voir les plans » de l'écran verrouillé (Scénarios) | `components/dashboard/Dashboard.tsx` |
+| « Découvre le palier … » de l'encart d'auto-promotion | `components/ads/HouseAdSlot.tsx` |
+| « Renouveler » du rappel de fin d'abonnement | `components/dashboard/SubscriptionReminder.tsx` |
+| « Voir les tarifs → » du bloc palier gratuit | `app/profil/page.tsx` |
+
+**Volontairement NON coupés** : le téléchargement Apprenti ; le libellé inerte
+« Ton palier actuel » ; le lien « Voir les tarifs → » de l'en-tête de `/profil` et
+l'ancre `/#tarifs` du footer (navigation vers la grille, qui affiche elle-même
+« Bientôt ») ; **le portail Stripe de `/profil`** — un abonné existant doit pouvoir
+résilier (L215-1-1) et consulter ses factures.
+
+> ⚠️ **Coupure d'interface, pas barrière.** `/api/stripe/checkout` répond toujours
+> à un appel direct authentifié. Si la suspension doit devenir une garantie,
+> ajouter un `503` en tête de la route sur le même drapeau — non fait, à la demande
+> expresse de ne pas toucher aux routes.
+
 ---
 
 ## ⚖️ CGV, rétractation et consentement avant paiement (chantier du 2026-09-11)
