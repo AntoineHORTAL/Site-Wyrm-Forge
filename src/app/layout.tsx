@@ -11,8 +11,21 @@ import TestDbBanner from '@/components/dev/TestDbBanner'
 import AdSenseScript from '@/components/ads/AdSenseScript'
 import ConsentManager from '@/components/ads/ConsentManager'
 import { ADSENSE_CLIENT_ID } from '@/lib/adsense'
+import { CANONICAL_ORIGIN } from '@/lib/site-url'
 
 export const metadata: Metadata = {
+  // Base des URL de métadonnées (Open Graph, canoniques, images sociales).
+  //
+  // Sans elle, tout champ de `metadata` exprimé en chemin RELATIF est une erreur
+  // de build — et les rares champs absolus partent en ordre dispersé. Avec elle,
+  // ces chemins se composent tous sur la même origine que `/sitemap.xml` et
+  // `/robots.txt`, qui lisent la MÊME constante (`src/lib/site-url.ts`).
+  //
+  // ⚠️ Constante et non `process.env.NEXT_PUBLIC_SITE_URL` : une preview Vercel
+  // annoncerait alors ses propres URL `*.vercel.app` aux réseaux sociaux et aux
+  // moteurs. Le raisonnement complet est dans `site-url.ts`, avec le contraste
+  // avec le `SITE_URL` de Stripe — qui, lui, DOIT suivre le déploiement.
+  metadataBase: new URL(CANONICAL_ORIGIN),
   title: 'Wyrm Forge — L\'assistant LoL le plus customisable',
   description: 'Overlay 100% personnalisable, builds et jungle paths partagés par la communauté, analyses IA. Wyrm Forge s\'adapte à toi — pas l\'inverse.',
   // Vérification du compte AdSense — DÉSORMAIS LE SEUL CHEMIN, et il suffit.

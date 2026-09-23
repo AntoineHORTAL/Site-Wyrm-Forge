@@ -1367,6 +1367,65 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ## 📋 À faire plus tard
 
+### 🗺️ Sitemap & robots (livrés le 2026-09-23) — la règle à tenir
+
+`src/app/sitemap.ts` et `src/app/robots.ts` (conventions de fichier Next), plus
+`metadataBase` dans le layout racine. Les trois lisent **`CANONICAL_ORIGIN`**
+(`src/lib/site-url.ts`), constante en dur — **jamais** `NEXT_PUBLIC_SITE_URL`,
+qui ferait publier des URL `*.vercel.app` depuis une preview. ⚠️ Ne pas
+confondre avec le `SITE_URL` de `lib/stripe/server.ts`, qui doit au contraire
+suivre le déploiement courant (retour de Checkout).
+
+**Règle d'admission au sitemap** : publique **ET** stable **ET** proposée à
+l'indexation. Donc `/`, `/patch-notes`, `/champions`, `/about`, les 4 pages
+légales, et les ~170 `/champion/[id]`. Restent dehors : `/matches` (noindex
+assumé), tout l'espace d'URL piloté par la saisie (`/summoner`, `/live`,
+`/match`, `/matches/[region]/[riotId]`), les routes authentifiées et techniques.
+
+> ⚠️ **`disallow` ≠ noindex, et `/riot-games.html` est le cas d'école.** Le
+> fichier porte sa propre balise `noindex` ; l'interdire dans `robots.txt`
+> empêcherait Google de la LIRE, donc de la respecter. Pour désindexer on pose
+> un noindex et on laisse explorer ; `disallow` n'épargne que du budget de
+> crawl. Ne pas « compléter » `robots.ts` en y ajoutant ce fichier.
+
+**Toute nouvelle route publique doit être ajoutée à `STATIC_ROUTES`** — rien ne
+le vérifie automatiquement aujourd'hui.
+
+### `/champion/[id]` en Server Component — le plus gros gisement non servi
+
+~170 pages encore `'use client'` + `useEffect` : le HTML servi est **vide**,
+le contenu n'existe qu'après exécution du JavaScript. C'est la dernière page de
+volume dans ce cas depuis le chantier AdSense du 2026-09-12, qui a corrigé `/`
+et `/champions` par exactement ce chemin — le patron est donc déjà écrit :
+Server Component + `revalidate`, îlot client par-dessus une liste déjà rendue
+(cf. `ChampionsExplorer` et l'invariant en tête de `champions-catalog.ts`).
+
+⚠️ Ces pages **sont déjà inscrites au sitemap** depuis le 2026-09-23 (décision
+HORTAL, option a) : on les propose à l'indexation en sachant que Google devra
+les rendre en seconde passe. Si elles remontent mal, la correction est ICI, pas
+dans le sitemap. `fetchChampionCatalog()` fournit déjà la moitié du chemin.
+
+Mesure de contrôle, la même qu'au chantier AdSense — c'est le HTML prérendu qui
+fait foi, pas le rendu dans un navigateur :
+`npx next build && grep -c 'Chargement' .next/server/app/champion/*.html`
+
+### URL individuelles pour les patch notes (`/patch-notes/[version]`)
+
+Aujourd'hui `/patch-notes` est une page UNIQUE : les 20 derniers patchs publiés
+y sont rendus en `<article>` successifs, sans ancre ni route propre. Un patch
+n'est donc pas partageable, pas linkable, et le contenu le plus renouvelé du
+site tient en **une** URL — alors que `patch_notes.version` est déjà `UNIQUE` et
+ferait un segment d'URL naturel (`/patch-notes/26.11`).
+
+Points à traiter le jour où ce sera repris :
+- lecture par `version` avec le même filtre `status = 'published'` (la RLS le
+  garantit déjà côté `anon`, mais la requête doit rester explicite) ;
+- décider ce que devient `/patch-notes` : index paginé renvoyant vers les
+  fiches, ou liste complète conservée telle quelle ;
+- **c'est à ce moment que `sitemap.ts` aura une lecture Supabase à faire** —
+  lecture publique, sans cookies, `revalidate` aligné sur celui de la page. Le
+  fichier n'en fait aucune aujourd'hui, et son en-tête dit pourquoi.
+
 ### Comparaison rangs supérieurs (palier Maître) — retirée de la grille le 2026-09-11
 Fonctionnalité promise puis retirée de la grille le 11/09, faute d'implémentation.
 À développer si retenue pour le palier Maître, sinon laisser retirée définitivement.
