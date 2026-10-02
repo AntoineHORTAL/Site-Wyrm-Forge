@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import GuideContent from '@/components/guide/GuideContent'
 import { guideFlagKeys, visibleGuide } from '@/lib/guide'
 import { guideMetadata } from '@/lib/guide-seo'
@@ -21,6 +21,12 @@ import { LANG_PARAM, langFromParam } from '@/lib/lang-param'
       Lecture par `readPublicFlags` — fetch public avec `revalidate`, SANS
       `cookies()`, même approche que les gardes de /matches et /live : une
       requête toutes les 60 s, pas une par visiteur. */
+
+// `viewport-fit=cover` : sans lui, `env(safe-area-inset-bottom)` vaut toujours 0
+// et le bouton flottant « retour au sommaire » passerait sous la barre système
+// des téléphones à encoche. Limité à /guide : le reste du site n'a pas d'élément
+// fixé en bas d'écran.
+export const viewport: Viewport = { viewportFit: 'cover' }
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 

@@ -20,6 +20,7 @@ vi.mock('@/components/providers/ThemeProvider', () => ({
 }))
 
 const { default: GuideContent } = await import('./GuideContent')
+const { default: BackToToc, BackToTocButton } = await import('./BackToToc')
 
 const ALL_ON: Record<string, boolean> = Object.fromEntries(guideFlagKeys().map(k => [k, true]))
 
@@ -106,5 +107,27 @@ describe('🔴 masquage par feature flag', () => {
     expect(text).toContain(fr.purpose)
     expect(text).not.toContain(fr.aiSteps![0])
     expect(text.split(fr.aiTier!).length - 1).toBe(1) // ne reste que dans le Bilan IA
+  })
+})
+
+describe('bouton « retour au sommaire »', () => {
+  it('le sommaire porte l’ancre ciblée et reçoit le focus programmatique', () => {
+    const html = render('fr')
+    expect(html).toMatch(/<nav id="sommaire" tabindex="-1"/)
+  })
+
+  it('absent du HTML servi : au chargement, le sommaire est à l’écran', () => {
+    // Avant toute observation (rendu serveur), le sommaire est réputé visible.
+    expect(render('fr')).not.toContain('guide-back-to-toc')
+    expect(renderToStaticMarkup(<BackToToc label="x" />)).toBe('')
+  })
+
+  it.each(['fr', 'en'] as const)('%s — rendu du bouton : libellé accessible et icône décorative', (lang) => {
+    const label = guideDicts[lang].backToToc
+    const html = renderToStaticMarkup(<BackToTocButton label={label} />)
+    expect(html).toContain(`aria-label="${label}"`)
+    expect(html).toContain('class="guide-back-to-toc"')
+    expect(html).toContain('type="button"')
+    expect(html).toMatch(/<svg[^>]*aria-hidden="true"/)
   })
 })

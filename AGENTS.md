@@ -1402,6 +1402,15 @@ Chaque sous-section est rattachée à sa clé (`flags.all` / `flags.any`) ; flag
 `aiFlag` : `matchup_ai_enabled` coupé ne masque que la partie IA (`degraded`).
 `guide.test.ts` interdit tout flag de LANCEMENT dans le guide.
 
+### Bouton « retour au sommaire » (`components/guide/BackToToc.tsx`)
+Deux `IntersectionObserver` (sommaire `#sommaire` + `<footer>` global), décision
+dans `shouldShowBackToToc` (pure, testée) : visible seulement si le sommaire est
+hors écran ET le footer hors écran ; absent du HTML servi. Clic : défilement doux
+vers l'ancre (saut direct si `prefers-reduced-motion`), puis focus sur le `<nav>`
+(`tabIndex={-1}`) après `scrollend` (repli 1 s pour Safari). `/guide` exporte
+`viewport: { viewportFit: 'cover' }`, sans quoi `env(safe-area-inset-bottom)`
+vaut 0 — limité à cette page.
+
 ### Mettre à jour à chaque release de l'app
 1. relire `src/locales/guide.ts` contre la nouvelle version (libellés entre « ») ;
 2. `GUIDE_APP_VERSION` = version relue, `GUIDE_UPDATED` = date de mise en ligne ;

@@ -55,6 +55,8 @@ export interface GuideDict {
   /** `{version}` = `GUIDE_APP_VERSION`. */
   version: string
   tocTitle: string
+  /** Libellé accessible (aria-label) du bouton flottant « retour au sommaire ». */
+  backToToc: string
   sections: Record<GuideSectionId, { title: string; blurb: string }>
   groups: Record<GuideGroupId, string>
   /** Lien de téléchargement affiché en tête de la section app. */
@@ -95,6 +97,7 @@ const fr: GuideDict = {
   updated: 'Dernière mise à jour : {date}',
   version: "Correspond à l'app v{version}",
   tocTitle: 'Sommaire',
+  backToToc: 'Retour au sommaire',
   sections: {
     commun: {
       title: 'Sur le site et dans l’app',
@@ -554,6 +557,7 @@ const en: GuideDict = {
   updated: 'Last updated: {date}',
   version: 'Matches app v{version}',
   tocTitle: 'Contents',
+  backToToc: 'Back to contents',
   sections: {
     commun: {
       title: 'On the site and in the app',

@@ -5,7 +5,8 @@ import { useLanguage } from '@/components/providers/LanguageProvider'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { GUIDE_APP_VERSION, GUIDE_UPDATED } from '@/lib/guide-release'
-import type { VisibleGuideEntry, VisibleGuideSection } from '@/lib/guide'
+import { GUIDE_TOC_ID, type VisibleGuideEntry, type VisibleGuideSection } from '@/lib/guide'
+import BackToToc from './BackToToc'
 import { formatDate } from '@/lib/intl'
 import { guideDicts, type GuideDict } from '@/locales/guide'
 import type { Lang } from '@/locales/landing'
@@ -64,7 +65,9 @@ export default function GuideContent({ serverLang, sections }: {
         <span>{d.version.replace('{version}', GUIDE_APP_VERSION)}</span>
       </p>
 
-      <nav aria-labelledby="guide-toc-title" className="wf-card guide-toc">
+      {/* `tabIndex={-1}` : cible de focus du bouton « retour au sommaire »,
+          sans entrer dans l'ordre de tabulation. */}
+      <nav id={GUIDE_TOC_ID} tabIndex={-1} aria-labelledby="guide-toc-title" className="wf-card guide-toc">
         <h2 id="guide-toc-title" className="guide-toc-title">{d.tocTitle}</h2>
         <ol className="guide-toc-sections">
           {sections.map(s => (
@@ -112,6 +115,8 @@ export default function GuideContent({ serverLang, sections }: {
           {s.entries.map(e => <Entry key={e.id} entry={e} d={d} level={3} heading={heading} />)}
         </section>
       ))}
+
+      <BackToToc label={d.backToToc} />
     </main>
   )
 }

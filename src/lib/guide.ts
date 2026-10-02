@@ -162,6 +162,23 @@ export const GUIDE_STRUCTURE: readonly GuideSectionDef[] = [
   },
 ]
 
+/** Ancre du sommaire — cible du bouton « retour au sommaire ». */
+export const GUIDE_TOC_ID = 'sommaire'
+
+/**
+ * Le bouton flottant « retour au sommaire » doit-il être affiché ?
+ *
+ * - `tocVisible === null` : on ne sait pas encore (rendu serveur, ou observer pas
+ *   encore rappelé) → caché. Le premier écran montre le sommaire : afficher le
+ *   bouton par défaut le ferait clignoter à chaque chargement.
+ * - sommaire visible → caché : on y est déjà.
+ * - footer visible → caché : le bouton flotte au-dessus du contenu et ne doit
+ *   jamais recouvrir les liens légaux du pied de page.
+ */
+export function shouldShowBackToToc(tocVisible: boolean | null, footerVisible: boolean): boolean {
+  return tocVisible === false && !footerVisible
+}
+
 /** Toutes les clés de flag lues par le guide — ce que la page demande au serveur. */
 export function guideFlagKeys(structure: readonly GuideSectionDef[] = GUIDE_STRUCTURE): string[] {
   const keys = new Set<string>()

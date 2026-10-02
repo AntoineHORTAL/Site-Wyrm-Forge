@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   GUIDE_ENTRY_IDS, GUIDE_GROUP_IDS, GUIDE_SECTION_IDS, GUIDE_STRUCTURE,
-  guideFlagKeys, isEntryVisible, visibleGuide, type GuideEntryDef,
+  GUIDE_TOC_ID, guideFlagKeys, isEntryVisible, shouldShowBackToToc, visibleGuide, type GuideEntryDef,
 } from './guide'
 import { GUIDE_APP_VERSION, GUIDE_UPDATED } from './guide-release'
 import { guideLanguageAlternates, guideMetadata, guidePath } from './guide-seo'
@@ -41,7 +41,7 @@ describe('structure du guide', () => {
   })
 
   it('les ancres ne se marchent pas dessus (sections, groupes, sous-sections)', () => {
-    const anchors = [...GUIDE_SECTION_IDS, ...GUIDE_GROUP_IDS, ...GUIDE_ENTRY_IDS]
+    const anchors = [GUIDE_TOC_ID, ...GUIDE_SECTION_IDS, ...GUIDE_GROUP_IDS, ...GUIDE_ENTRY_IDS]
     expect(new Set(anchors).size).toBe(anchors.length)
     anchors.forEach(a => expect(a).toMatch(/^[a-z0-9-]+$/))
   })
@@ -238,5 +238,28 @@ describe('SEO — une URL par langue, rendue par le serveur', () => {
   it('les deux metadata sont réellement traduites', () => {
     expect(guideMetadata('en').title).not.toBe(guideMetadata('fr').title)
     expect(guideMetadata('en').description).not.toBe(guideMetadata('fr').description)
+  })
+})
+
+describe('bouton « retour au sommaire » — quand l’afficher', () => {
+  it('sommaire visible ⇒ absent', () => {
+    expect(shouldShowBackToToc(true, false)).toBe(false)
+  })
+
+  it('sommaire hors écran ⇒ présent', () => {
+    expect(shouldShowBackToToc(false, false)).toBe(true)
+  })
+
+  it('pas encore observé (rendu serveur) ⇒ absent, pas de clignotement au chargement', () => {
+    expect(shouldShowBackToToc(null, false)).toBe(false)
+  })
+
+  it('footer visible ⇒ absent, même sommaire hors écran : il ne masque jamais le footer', () => {
+    expect(shouldShowBackToToc(false, true)).toBe(false)
+  })
+
+  it('libellé accessible traduit dans les deux langues', () => {
+    expect(guideDicts.fr.backToToc).toBe('Retour au sommaire')
+    expect(guideDicts.en.backToToc).toBe('Back to contents')
   })
 })
