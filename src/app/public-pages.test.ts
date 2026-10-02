@@ -193,3 +193,28 @@ describe('🔴 /guide est rendue par le SERVEUR et indexable', () => {
     expect(code).not.toMatch(/cookies\(|isFlagEnabledServer|supabase\/server/)
   })
 })
+
+describe('/guide — zone sûre des écrans à encoche (viewport-fit=cover)', () => {
+  const css = read('globals.css')
+  const footer = read('../components/landing/Footer.tsx')
+
+  it('la page active viewport-fit=cover', () => {
+    expect(GUIDE).toMatch(/viewportFit:\s*'cover'/)
+  })
+
+  it('le conteneur garde sa marge et s’élargit à la zone sûre (max, gauche et droite)', () => {
+    expect(css).toContain('padding-left: max(clamp(16px, 5vw, 64px), env(safe-area-inset-left, 0px));')
+    expect(css).toContain('padding-right: max(clamp(16px, 5vw, 64px), env(safe-area-inset-right, 0px));')
+  })
+
+  it('header et footer élargis sur /guide SEULEMENT', () => {
+    expect(css).toMatch(
+      /body:has\(\.guide-main\) \.wf-nav,\s*body:has\(\.guide-main\) \.land-footer \{\s*padding-left: max\(32px, env\(safe-area-inset-left, 0px\)\);\s*padding-right: max\(32px, env\(safe-area-inset-right, 0px\)\);/,
+    )
+  })
+
+  it('le footer n’a plus de marge latérale inline, sinon le CSS ne pourrait pas l’élargir', () => {
+    expect(footer).toContain('className="land-footer"')
+    expect(footer).not.toMatch(/padding:\s*'56px 32px 32px'/)
+  })
+})

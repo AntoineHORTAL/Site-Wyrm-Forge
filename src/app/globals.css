@@ -894,6 +894,7 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 }
 /* Marque + 2 colonnes de liens (c'était 3 avant le retrait de la colonne
    « Communauté », dont les 4 liens n'avaient aucune destination réelle). */
+.land-footer { padding-left: 32px; padding-right: 32px; }
 .land-footer-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr;
@@ -989,7 +990,19 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   max-width: 860px;
   margin: 0 auto;
   padding: clamp(24px, 5vw, 64px) clamp(16px, 5vw, 64px) 96px;
+  /* Zone sûre (encoche, coins arrondis) — active grâce au `viewport-fit=cover`
+     de /guide. `max()` : jamais moins que la marge habituelle. */
+  padding-left: max(clamp(16px, 5vw, 64px), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(16px, 5vw, 64px), env(safe-area-inset-right, 0px));
   color: var(--text);
+}
+/* Header et footer sont GLOBAUX, mais `viewport-fit=cover` ne s'applique qu'à
+   /guide : on ne les élargit que sur cette page, repérée par son conteneur.
+   Valeurs de base = celles de `.wf-nav` et `.land-footer` (32px). */
+body:has(.guide-main) .wf-nav,
+body:has(.guide-main) .land-footer {
+  padding-left: max(32px, env(safe-area-inset-left, 0px));
+  padding-right: max(32px, env(safe-area-inset-right, 0px));
 }
 .guide-eyebrow { margin-bottom: 12px; }
 .guide-h1 { font-size: clamp(30px, 6vw, 52px); font-weight: 700; margin: 0 0 18px; line-height: 1.15; }

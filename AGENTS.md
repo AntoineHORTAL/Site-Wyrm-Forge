@@ -1410,6 +1410,11 @@ vers l'ancre (saut direct si `prefers-reduced-motion`), puis focus sur le `<nav>
 (`tabIndex={-1}`) après `scrollend` (repli 1 s pour Safari). `/guide` exporte
 `viewport: { viewportFit: 'cover' }`, sans quoi `env(safe-area-inset-bottom)`
 vaut 0 — limité à cette page.
+Zone sûre latérale : `.guide-main` prend `max(marge habituelle,
+env(safe-area-inset-left|right))`, et le header/footer GLOBAUX sont élargis sur
+cette page seulement via `body:has(.guide-main) .wf-nav / .land-footer`
+(`max(32px, …)`). Les marges latérales du footer sont donc passées de l'inline
+à la classe `.land-footer` (mêmes 32px) — un inline ne se surcharge pas en CSS.
 
 ### Mettre à jour à chaque release de l'app
 1. relire `src/locales/guide.ts` contre la nouvelle version (libellés entre « ») ;
