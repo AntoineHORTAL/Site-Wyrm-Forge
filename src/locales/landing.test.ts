@@ -59,10 +59,10 @@ describe('parité de structure FR / EN', () => {
     expect(landingFr.pricing.tiers).toHaveLength(3)
     // Hero.tsx — OverlayMock lit stats[0..5]
     expect(landingFr.hero.overlay.stats).toHaveLength(6)
-    // Footer.tsx — columnHrefs (2 colonnes de 4) / legalHrefs (4 routes : CGU, CGV,
-    // confidentialité, mentions légales)
+    // Footer.tsx — columnHrefs (Produit : 4 liens, Ressources : 5 depuis le guide)
+    // / legalHrefs (4 routes : CGU, CGV, confidentialité, mentions légales)
     expect(landingFr.footer.columns).toHaveLength(2)
-    landingFr.footer.columns.forEach(col => expect(col.links).toHaveLength(4))
+    expect(landingFr.footer.columns.map(col => col.links.length)).toEqual([4, 5])
     expect(landingFr.footer.legalLinks).toHaveLength(4)
   })
 

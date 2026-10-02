@@ -1365,6 +1365,66 @@ L'EF `matchup-analyze` + l'infra `usage_counters`/`consume_ai_quota`/`refund_ai_
 
 ---
 
+## 📖 Page `/guide` — guide utilisateur (chantier du 2026-10-02)
+
+Page publique et **indexable** qui explique au joueur chaque fonctionnalité LIVE,
+en trois sections : commun (site + app), exclusif site, exclusif app (overlay
+regroupé par thème). Point de vue joueur uniquement, aucune promesse.
+
+| Élément | Où |
+|---|---|
+| Structure (ordre, ancres, flags, filtrage) | `src/lib/guide.ts` — module PUR |
+| Texte FR (fait foi) / EN | `src/locales/guide.ts` — `Record<GuideEntryId, …>` : une sous-section sans texte ne compile pas |
+| **Date + version affichées** | `src/lib/guide-release.ts` — **posées à la main**, jamais lues du flux de release |
+| URL, metadata, hreflang | `src/lib/guide-seo.ts` |
+| Page (serveur) / contenu (client) | `src/app/guide/page.tsx` / `src/components/guide/GuideContent.tsx` |
+| Styles | bloc `.guide-*` en fin de `globals.css` |
+
+### 🔴 La seule page dont l'anglais est rendu par le SERVEUR
+Ailleurs la langue est un état client : un robot ne voit que le français. Ici
+`page.tsx` lit `?lang=` (`langFromParam`, même règle stricte que les e-mails) :
+`/guide` sert le FR, `/guide?lang=en` l'EN, metadata comprises, chacune canonique
+sur elle-même et déclarant l'autre en `hreflang` (+ `x-default` → FR). Le sitemap
+porte les mêmes alternatives (`guideLanguageAlternates`, source unique).
+Contrepartie : la route est **dynamique (ƒ)**. Limite connue : `<html lang>` reste
+`"fr"` au rendu serveur (fixé dans le layout racine) ; `<main lang>` porte la
+bonne langue.
+
+`GuideContent` affiche `serverLang` tant que la langue du `LanguageProvider` n'a
+pas CHANGÉ, puis la suit — lire le provider dès le premier rendu servirait du
+français sur `/guide?lang=en` (il démarre toujours à `'fr'`).
+
+### Feature flags
+Chaque sous-section est rattachée à sa clé (`flags.all` / `flags.any`) ; flag coupé
+⇒ sous-section ET entrée de sommaire masquées (une seule source :
+`visibleGuide`). Lecture serveur par `readPublicFlags` (fetch public +
+`revalidate`, sans `cookies()`). Sans flag = toujours visible. Le Match Up utilise
+`aiFlag` : `matchup_ai_enabled` coupé ne masque que la partie IA (`degraded`).
+`guide.test.ts` interdit tout flag de LANCEMENT dans le guide.
+
+### Bouton « retour au sommaire » (`components/guide/BackToToc.tsx`)
+Deux `IntersectionObserver` (sommaire `#sommaire` + `<footer>` global), décision
+dans `shouldShowBackToToc` (pure, testée) : visible seulement si le sommaire est
+hors écran ET le footer hors écran ; absent du HTML servi. Clic : défilement doux
+vers l'ancre (saut direct si `prefers-reduced-motion`), puis focus sur le `<nav>`
+(`tabIndex={-1}`) après `scrollend` (repli 1 s pour Safari). `/guide` exporte
+`viewport: { viewportFit: 'cover' }`, sans quoi `env(safe-area-inset-bottom)`
+vaut 0 — limité à cette page.
+Zone sûre latérale : `.guide-main` prend `max(marge habituelle,
+env(safe-area-inset-left|right))`, et le header/footer GLOBAUX sont élargis sur
+cette page seulement via `body:has(.guide-main) .wf-nav / .land-footer`
+(`max(32px, …)`). Les marges latérales du footer sont donc passées de l'inline
+à la classe `.land-footer` (mêmes 32px) — un inline ne se surcharge pas en CSS.
+
+### Mettre à jour à chaque release de l'app
+1. relire `src/locales/guide.ts` contre la nouvelle version (libellés entre « ») ;
+2. `GUIDE_APP_VERSION` = version relue, `GUIDE_UPDATED` = date de mise en ligne ;
+3. toute fonctionnalité qui sort de son flag de lancement : ajouter l'id dans
+   `GUIDE_ENTRY_IDS` + `GUIDE_STRUCTURE`, puis le texte FR/EN (le compilateur
+   force les deux).
+
+---
+
 ## 📋 À faire plus tard
 
 ### 🗺️ Sitemap & robots (livrés le 2026-09-23) — la règle à tenir

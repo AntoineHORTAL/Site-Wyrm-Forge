@@ -32,8 +32,9 @@ const columnHrefs: { href: string; download?: boolean }[][] = [
     { href: '/#tarifs' },
     { href: '/#faq' },
   ],
-  // Ressources : Rechercher un joueur · Champions · Patch notes · Communauté
+  // Ressources : Guide · Rechercher un joueur · Champions · Patch notes · Communauté
   [
+    { href: '/guide' },
     { href: '/matches' },
     { href: '/champions' },
     { href: '/patch-notes' },
@@ -67,10 +68,15 @@ export default function Footer() {
   const f = t.footer
 
   return (
+    // Marges latérales en CSS (`.land-footer`) et non en inline : /guide doit
+    // pouvoir les élargir à la zone sûre des écrans à encoche, ce qu'un style
+    // inline interdirait sans `!important`.
     <footer
+      className="land-footer"
       style={{
         background: c ? '#050309' : '#09090B',
-        padding: '56px 32px 32px',
+        paddingTop: 56,
+        paddingBottom: 32,
         borderTop: c ? '1px solid rgba(186,117,23,0.2)' : '1px solid #1F1F23',
       }}
     >
