@@ -32,8 +32,9 @@ const columnHrefs: { href: string; download?: boolean }[][] = [
     { href: '/#tarifs' },
     { href: '/#faq' },
   ],
-  // Ressources : Rechercher un joueur · Champions · Patch notes · Communauté
+  // Ressources : Guide · Rechercher un joueur · Champions · Patch notes · Communauté
   [
+    { href: '/guide' },
     { href: '/matches' },
     { href: '/champions' },
     { href: '/patch-notes' },

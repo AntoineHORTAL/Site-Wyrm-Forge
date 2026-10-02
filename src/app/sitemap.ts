@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { fetchChampionCatalog } from '@/lib/champions-catalog'
 import { canonical } from '@/lib/site-url'
+import { guideLanguageAlternates } from '@/lib/guide-seo'
 
 // ════════════════════════════════════════════════════════════════════════════
 //  /sitemap.xml — les pages PUBLIQUES du site, et elles seules
@@ -52,7 +53,7 @@ export const revalidate = 3600
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]['changeFrequency']>
 
 /**
- * Les 8 pages publiques stables.
+ * Les 9 pages publiques stables.
  *
  * ⚠️ `lastModified` est volontairement ABSENT de tout ce fichier. On n'a aucune
  * date de modification honnête à donner : un `new Date()` changerait à chaque
@@ -67,6 +68,8 @@ const STATIC_ROUTES: ReadonlyArray<{
   path: string
   changeFrequency: ChangeFrequency
   priority: number
+  /** Versions par langue (`hreflang`), pour la seule page qui en a : `/guide`. */
+  languages?: Record<string, string>
 }> = [
   // La vitrine : ce qu'on veut voir remonter en premier.
   { path: '/',                 changeFrequency: 'weekly',  priority: 1.0 },
@@ -74,6 +77,9 @@ const STATIC_ROUTES: ReadonlyArray<{
   { path: '/patch-notes',      changeFrequency: 'weekly',  priority: 0.9 },
   { path: '/champions',        changeFrequency: 'weekly',  priority: 0.8 },
   { path: '/about',            changeFrequency: 'monthly', priority: 0.5 },
+  // Guide utilisateur, FR (`/guide`) et EN (`/guide?lang=en`, rendu serveur) :
+  // l'anglais n'a pas d'entrée propre, il est déclaré en alternative de langue.
+  { path: '/guide',            changeFrequency: 'monthly', priority: 0.7, languages: guideLanguageAlternates() },
   // Pages légales : rarement modifiées, mais elles doivent être trouvables.
   { path: '/cgu',              changeFrequency: 'yearly',  priority: 0.3 },
   { path: '/cgv',              changeFrequency: 'yearly',  priority: 0.3 },
@@ -87,15 +93,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   //
   // ⚠️ `fetchChampionCatalog` ne lève jamais — DDragon injoignable rend un
   // catalogue VIDE. C'est la dégradation voulue : le sitemap perd ses fiches de
-  // champions pour une heure et garde ses 8 pages, là où une exception ferait
+  // champions pour une heure et garde ses 9 pages, là où une exception ferait
   // répondre 500 à `/sitemap.xml` et retirerait le site entier de l'index.
   const { champions } = await fetchChampionCatalog()
 
   return [
-    ...STATIC_ROUTES.map(({ path, changeFrequency, priority }) => ({
+    ...STATIC_ROUTES.map(({ path, changeFrequency, priority, languages }) => ({
       url: canonical(path),
       changeFrequency,
       priority,
+      ...(languages ? { alternates: { languages } } : {}),
     })),
 
     // ── Les ~170 fiches de champions ─────────────────────────────────────────

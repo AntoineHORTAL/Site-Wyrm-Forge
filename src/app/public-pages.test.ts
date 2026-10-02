@@ -37,6 +37,7 @@ const MATCHES   = read('matches/page.tsx')
 const HOME      = read('page.tsx')
 const PATCHES   = read('patch-notes/page.tsx')
 const RESULTS   = read('matches/[region]/[riotId]/page.tsx')
+const GUIDE     = read('guide/page.tsx')
 
 describe('🔴 /champions est rendue par le SERVEUR', () => {
   it('la page n’est plus un composant client', () => {
@@ -165,5 +166,30 @@ describe('🔴 emplacements publicitaires — où, et dans quel ordre', () => {
   it('/champions n’en place qu’un, en fin de liste', () => {
     expect(CHAMPIONS.match(/<PublicAdSlot/g) ?? []).toHaveLength(1)
     expect(CHAMPIONS).toContain('footer={')
+  })
+})
+
+describe('🔴 /guide est rendue par le SERVEUR et indexable', () => {
+  it('la page n’est pas un composant client', () => {
+    expect(GUIDE.trimStart().startsWith("'use client'")).toBe(false)
+  })
+
+  it('aucune directive noindex — contrairement à /riot-games.html', () => {
+    expect(withoutComments(GUIDE)).not.toMatch(/noindex|index:\s*false/)
+  })
+
+  it('metadata produites par la langue lue côté serveur', () => {
+    expect(GUIDE).toContain('export async function generateMetadata')
+    expect(GUIDE).toContain('guideMetadata(')
+    expect(GUIDE).toContain('langFromParam(')
+  })
+
+  it('flags lus par le fetch public, jamais par cookies()', () => {
+    // Même correctif SEO que les gardes de /matches et /live : la lecture serveur
+    // des flags passe par `readPublicFlags` (fetch + revalidate), pas par le
+    // client Supabase serveur qui appelle `cookies()`.
+    const code = withoutComments(GUIDE)
+    expect(code).toContain('readPublicFlags(')
+    expect(code).not.toMatch(/cookies\(|isFlagEnabledServer|supabase\/server/)
   })
 })

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { flagFallback, resolveFlags, type FlagRow } from '@/lib/feature-flags'
+import { flagFallback, readFlag, resolveFlags, type FlagRow } from '@/lib/feature-flags'
 
 /**
  * Fraîcheur du cache serveur des flags, en secondes.
@@ -32,10 +32,34 @@ export const FLAGS_REVALIDATE_SECONDS = 60
  * Fail-open / fail-closed selon {@link flagFallback}, comme partout ailleurs.
  */
 export async function isPublicFlagEnabled(key: string): Promise<boolean> {
+  const resolved = await fetchPublicResolvedFlags()
+  return resolved ? readFlag(resolved, key) : flagFallback(key)
+}
+
+/**
+ * Plusieurs flags d'un coup, pour une page PUBLIQUE qui en lit beaucoup (`/guide`
+ * en lit une trentaine). Même requête, même cache et même repli que
+ * {@link isPublicFlagEnabled} — c'est la même fonction appelée une seule fois.
+ *
+ * Renvoie une map `clé → valeur EFFECTIVE` pour EXACTEMENT les clés demandées :
+ * une clé absente du catalogue prend son repli (`flagFallback`), comme partout.
+ */
+export async function readPublicFlags(keys: readonly string[]): Promise<Record<string, boolean>> {
+  const resolved = await fetchPublicResolvedFlags()
+  return Object.fromEntries(
+    keys.map(k => [k, resolved ? readFlag(resolved, k) : flagFallback(k)]),
+  )
+}
+
+/**
+ * Le catalogue public résolu (parents appliqués), ou `null` si on ne sait rien —
+ * auquel cas chaque appelant retombe sur `flagFallback`.
+ */
+async function fetchPublicResolvedFlags(): Promise<Record<string, boolean> | null> {
   try {
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!base || !anon) return flagFallback(key)
+    if (!base || !anon) return null
 
     const res = await fetch(
       `${base.replace(/\/$/, '')}/rest/v1/app_settings?select=key,value,kind,parent_key`,
@@ -44,21 +68,20 @@ export async function isPublicFlagEnabled(key: string): Promise<boolean> {
         next: { revalidate: FLAGS_REVALIDATE_SECONDS, tags: ['feature-flags'] },
       },
     )
-    if (!res.ok) return flagFallback(key)
+    if (!res.ok) return null
 
     const rows: unknown = await res.json()
-    if (!Array.isArray(rows) || rows.length === 0) return flagFallback(key)
+    if (!Array.isArray(rows) || rows.length === 0) return null
 
     // Filtré ICI plutôt que dans l'URL : en `anon` la RLS ne renvoie de toute
     // façon que les lignes publiques (les 39 flags), et un filtre PostgREST en
     // dur dans l'URL serait une syntaxe de plus à maintenir pour rien.
     const flags = (rows as FlagRow[]).filter(r => r.kind === 'launch' || r.kind === 'kill')
-    if (flags.length === 0) return flagFallback(key)
+    if (flags.length === 0) return null
 
-    const value = resolveFlags(flags)[key]
-    return value === undefined ? flagFallback(key) : value
+    return resolveFlags(flags)
   } catch {
-    return flagFallback(key)
+    return null
   }
 }
 

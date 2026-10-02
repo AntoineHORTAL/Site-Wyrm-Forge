@@ -59,6 +59,16 @@ export function langFromSearch(search: string): Lang | null {
   }
 }
 
+/**
+ * Même lecture, depuis l'objet `searchParams` d'une page Next rendue CÔTÉ SERVEUR
+ * (`/guide?lang=en`), où la query string arrive déjà découpée. Une valeur répétée
+ * (`?lang=en&lang=fr`) arrive en tableau : la première l'emporte, comme le ferait
+ * `URLSearchParams.get`.
+ */
+export function langFromParam(value: string | string[] | undefined): Lang | null {
+  return asLang(Array.isArray(value) ? value[0] : value)
+}
+
 export interface InitialLang {
   lang: Lang
   /** `'url'` = demandée par un lien (e-mail) ; `'storage'` = préférence du visiteur. */

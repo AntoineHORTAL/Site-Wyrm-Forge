@@ -384,7 +384,7 @@ export const landingFr = {
     // dossier envoyé à Riot Games est pire que pas de lien du tout.
     columns: [
       { title: 'Produit', links: ['Fonctionnalités', 'Télécharger', 'Tarifs', 'FAQ'] },
-      { title: 'Ressources', links: ['Rechercher un joueur', 'Champions', 'Patch notes', 'Communauté'] },
+      { title: 'Ressources', links: ['Guide d’utilisation', 'Rechercher un joueur', 'Champions', 'Patch notes', 'Communauté'] },
     ],
     legalLinks: ['Conditions', 'Conditions de vente', 'Confidentialité', 'Mentions légales'],
     /* Rouvre la bannière de consentement (Google CMP) — voir
@@ -696,7 +696,7 @@ export const landingEn: LandingDict = {
     tagline: 'The ultimate assistant for climbing in League of Legends. Forge your ascent.',
     columns: [
       { title: 'Product', links: ['Features', 'Download', 'Pricing', 'FAQ'] },
-      { title: 'Resources', links: ['Player search', 'Champions', 'Patch notes', 'Community'] },
+      { title: 'Resources', links: ['User guide', 'Player search', 'Champions', 'Patch notes', 'Community'] },
     ],
     legalLinks: ['Terms', 'Terms of sale', 'Privacy', 'Legal notice'],
     manageCookies: 'Manage cookies',

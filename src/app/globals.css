@@ -980,3 +980,71 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
   white-space: nowrap;
   border: 0;
 }
+
+/* ─── /guide — page guide utilisateur ───────────────────────────────────────
+   Même gabarit que /about et les pages légales (largeur de lecture, Cinzel pour
+   les titres, `.wf-card` pour les blocs) — aucun nouveau jeton de couleur, tout
+   vient des variables du thème. */
+.guide-main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 64px) clamp(16px, 5vw, 64px) 96px;
+  color: var(--text);
+}
+.guide-eyebrow { margin-bottom: 12px; }
+.guide-h1 { font-size: clamp(30px, 6vw, 52px); font-weight: 700; margin: 0 0 18px; line-height: 1.15; }
+.guide-intro { font-size: 16px; line-height: 1.7; color: var(--text-muted); margin: 0 0 14px; max-width: 68ch; }
+.guide-meta { font-size: 12px; color: var(--text-dim); margin: 0 0 32px; }
+
+.guide-toc { padding: 22px 26px; margin-bottom: 56px; }
+.guide-toc:hover { transform: none; }
+.guide-toc-title { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin: 0 0 14px; }
+.guide-toc-sections { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.guide-toc-entries { list-style: none; margin: 6px 0 0; padding-left: 14px; display: grid; gap: 4px; }
+.guide-toc-section { font-weight: 600; color: var(--text); text-decoration: none; }
+.guide-toc-group { font-size: 13px; color: var(--text-muted); text-decoration: none; }
+.guide-toc-link { font-size: 14px; color: var(--purple); text-decoration: none; }
+.guide-toc a:hover, .guide-toc a:focus-visible { color: var(--gold-light); text-decoration: underline; }
+@media (min-width: 768px) {
+  .guide-toc-sections { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Le header global est fixe : sans marge de défilement, une ancre atterrirait
+   sous lui et masquerait le titre visé. */
+.guide-section, .guide-group, .guide-entry { scroll-margin-top: 88px; }
+.guide-section { margin-bottom: 64px; }
+.guide-h2 { font-size: clamp(24px, 4vw, 32px); font-weight: 700; margin: 0 0 8px; }
+.guide-blurb { color: var(--text-muted); line-height: 1.6; margin: 0 0 24px; }
+.guide-download { margin: 0 0 28px; }
+.guide-group { margin-top: 36px; }
+.guide-group-title {
+  font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-light);
+  margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+
+.guide-entry { padding: 24px 26px; margin-bottom: 18px; }
+.guide-entry:hover { transform: none; }
+.guide-entry-title { font-size: 19px; font-weight: 700; margin: 0 0 16px; }
+.guide-fields { display: grid; gap: 4px 18px; margin: 0 0 18px; }
+.guide-fields dt { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.guide-fields dd { margin: 0 0 8px; line-height: 1.6; color: var(--text); }
+@media (min-width: 640px) {
+  .guide-fields { grid-template-columns: 170px minmax(0, 1fr); }
+  .guide-fields dd { margin: 0; }
+}
+.guide-label { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin: 0 0 8px; }
+.guide-steps { margin: 0 0 18px; padding-left: 20px; display: grid; gap: 6px; line-height: 1.6; }
+.guide-text { margin: 0 0 18px; line-height: 1.6; }
+.guide-note {
+  margin: 0 0 18px; padding: 10px 14px; border-radius: 8px; line-height: 1.6; font-size: 14px;
+  background: rgba(239,159,39,0.06); border: 1px solid rgba(239,159,39,0.28); color: var(--text-muted);
+}
+.guide-note strong { color: var(--text); }
+.guide-shot {
+  margin: 0; padding: 18px; border-radius: 8px; min-height: 120px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  border: 1px dashed var(--border-h); background: var(--input-bg);
+  color: var(--text-dim); font-size: 13px; line-height: 1.5;
+}
+.guide-shot figcaption { display: grid; gap: 6px; max-width: 52ch; }
+.guide-shot-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
