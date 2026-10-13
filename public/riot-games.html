@@ -174,7 +174,7 @@
         <h3 class="wf-subgroup-label">Jungle &amp; minimap</h3>
         <ul class="wf-item-list">
           <li class="wf-item"><span class="wf-item-name">Jungle pathing on the minimap</span><span class="wf-item-detail">A suggested jungle route drawn directly on the in-game minimap.</span></li>
-          <li class="wf-item"><span class="wf-item-name">Automatic minimap calibration</span><span class="wf-item-detail">Detects the player's resolution and minimap scale automatically, so the pathing overlay lines up correctly without manual setup.</span></li>
+          <li class="wf-item"><span class="wf-item-name">Automatic minimap calibration</span><span class="wf-item-detail">Reads the minimap size setting from the game's own settings file and the screen resolution from Windows, then takes a few screenshots of the minimap corner to find the minimap's exact edges, so the jungle path lines up with the in-game map without manual setup. Screenshots are analysed in memory on the player's PC and are never uploaded. They are not saved either: only a debug mode reserved for development, switched on by hand on our own machines, writes them to disk. The app never reads game memory. This capture step can be switched off remotely at any time.</span></li>
         </ul>
       </div>
       <div>
@@ -236,6 +236,7 @@
     <div class="wf-stage-body">
       <ul class="wf-item-list">
         <li class="wf-item"><span class="wf-item-name">Required billing emails</span><span class="wf-item-detail">Transactional emails are being wired back in to cover three obligations under French consumer law: order confirmation, cancellation confirmation, and a reminder before an annual subscription renews.</span></li>
+        <li class="wf-item"><span class="wf-item-name">Inhibitor respawn timers on the minimap</span><span class="wf-item-detail">A countdown drawn over each destroyed inhibitor on the minimap. Whether a structure is up or down, and when it was destroyed, always comes from Riot's official Live Client Data API, never from the image. A follow-up step being built would place these countdowns precisely: a few extra screenshots at the start of a game would locate the inhibitor and nexus icons on the minimap, instead of relying on hand-entered positions. Those pixels are only used to position the timers. The same rules as the calibration above apply: analysed on the PC, never uploaded, never saved outside the development debug mode. Coded and unit-tested but not yet validated in a real game; held behind its own launch switch, currently off.</span></li>
         <li class="wf-item"><span class="wf-item-name">Code signing certificate</span><div class="wf-item-detail">The app's installer isn't code-signed yet, so Windows currently shows an "unknown publisher" SmartScreen warning on first install. An OV code-signing certificate has been ordered and is pending identity validation with the certificate authority; once issued, it will be wired into the release pipeline so every future build is signed automatically. Proof of this order is included directly below, since this application doesn't support file attachments.
             <div class="wf-proof">
               <figure>
