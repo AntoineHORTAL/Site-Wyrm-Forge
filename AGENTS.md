@@ -321,8 +321,10 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
-> ⚠️ Migration `20261013000001` **écrite, pas appliquée** : TEST d'abord, PROD seulement
-> après validation sur l'AdminTab. Retirer cette ligne une fois appliquée.
+> ⚠️ Migration `20261013000001` **appliquée sur TEST seulement** (2026-10-13), pas en
+> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
+> appliquée en PROD. Sur TEST, exécutée **hors historique** comme `20261012000001` :
+> voir la dette ci-dessous.
 
 > ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
 > PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
@@ -334,15 +336,18 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > - TEST a **plusieurs migrations de retard** sur PROD : `20260911000001/2` (drops
 >   tournois/prac) **et suivantes**. Un `supabase db push` sur TEST les appliquerait
 >   toutes d'un coup.
-> - `20261012000001` y a été exécutée **hors historique** : la ligne
->   `minimap_structure_detection_enabled` existe sur TEST, mais la migration n'est pas
->   inscrite dans `supabase_migrations.schema_migrations`. Un futur push la rejouera
->   (sans effet : elle est rejouable).
+> - `20261012000001` (2026-10-12) et `20261013000001` (2026-10-13) y ont été exécutées
+>   **hors historique** (fichier seul, `supabase db query -f`, pas de `db push`) : les
+>   lignes `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
+>   existent sur TEST, mais ces migrations ne sont pas inscrites dans
+>   `supabase_migrations.schema_migrations`. Un futur push les rejouera (sans effet :
+>   elles sont rejouables). Dernière version inscrite relevée le 2026-10-13 :
+>   `20260911000003`.
 > - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
 >   migrations de TEST comme l'état réel de TEST : on interroge la base.
 > - À faire plus tard : un rattrapage propre de TEST (liste exacte des migrations
->   manquantes, ordre d'application, inscription de `20261012000001` dans
->   l'historique), proposé à HORTAL avant exécution.
+>   manquantes, ordre d'application, inscription de `20261012000001` et
+>   `20261013000001` dans l'historique), proposé à HORTAL avant exécution.
 
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
