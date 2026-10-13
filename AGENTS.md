@@ -307,15 +307,22 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 41 lignes
+#### Catalogue de flags — 42 lignes
 
-**Catégorie 1, lancement (7)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
 `scenarios_enabled` ; `kit_sur_mesure_enabled` (migration `20260908000002`,
 `group_key = 'site'`, `sort_order = 630`) ; et `minimap_structure_detection_enabled`
 (migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
-capture d'écran de l'app, celle-ci comprise).
+capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_timers`
+(migration `20261013000001`, `surface = 'app'`, `group_key = 'overlay'`,
+`sort_order = 975`, 19ᵉ enfant d'`overlay_enabled` et SEUL flag de lancement parmi eux :
+timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
+est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
+
+> ⚠️ Migration `20261013000001` **écrite, pas appliquée** : TEST d'abord, PROD seulement
+> après validation sur l'AdminTab. Retirer cette ligne une fois appliquée.
 
 > ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
 > PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
@@ -340,7 +347,7 @@ capture d'écran de l'app, celle-ci comprise).
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
-> aucune brique de ce service, elle ne peut pas le laisser fuir. Les six autres
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Les sept autres
 > restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
