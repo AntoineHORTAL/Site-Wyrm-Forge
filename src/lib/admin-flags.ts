@@ -281,6 +281,32 @@ export function isPendingLaunch(row: FlagCatalogueRow): boolean {
 }
 
 /**
+ * Flag de lancement DÉJÀ en ligne (`kind = 'launch'`, `value = 'true'`) : l'état
+ * hérité décrit sur `isPendingLaunch`. Son bouton ne lance rien — la fonctionnalité
+ * est déjà visible — il CONVERTIT le flag en kill switch. La carte et la modale le
+ * disent, au lieu de « Lancer » (Écailles, Boutique, Quêtes en PROD le 2026-10-13).
+ */
+export function isLiveLegacyLaunch(row: FlagCatalogueRow): boolean {
+  return row.kind === 'launch' && isOn(row)
+}
+
+/**
+ * Date de la migration du catalogue (20260905000001) : avant elle, couper un flag
+ * n'exigeait aucun motif, et l'auteur n'était pas enregistré.
+ */
+export const REASON_REQUIRED_SINCE = '2026-09-05'
+
+/**
+ * Un kill switch coupé SANS motif : `'legacy'` s'il a été coupé avant que le motif
+ * devienne obligatoire (cas de `live_game_enabled`, coupé le 2026-07-29), `'missing'`
+ * sinon (écriture hors AdminTab). `null` si le flag est actif ou porte un motif.
+ */
+export function missingCutReason(row: FlagCatalogueRow): 'legacy' | 'missing' | null {
+  if (isOn(row) || (row.reason ?? '').trim() !== '') return null
+  return row.updated_at !== null && row.updated_at < REASON_REQUIRED_SINCE ? 'legacy' : 'missing'
+}
+
+/**
  * Ce qui est écrit en base pour lancer une feature — UNE SEULE écriture.
  *
  * ⚠️ `value` et `kind` partent ENSEMBLE, dans le même UPDATE. Les séparer en
