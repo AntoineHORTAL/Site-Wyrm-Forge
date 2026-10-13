@@ -317,8 +317,25 @@ future par RPC ou Edge Function.
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
 capture d'écran de l'app, celle-ci comprise).
 
-> ⚠️ Migration `20261012000001` **écrite, pas appliquée** : TEST d'abord, PROD seulement
-> après validation sur l'AdminTab. Retirer cette ligne une fois appliquée.
+> ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
+> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
+> appliquée en PROD. Sur TEST, elle a été exécutée **hors historique** (fichier seul,
+> pas de `db push`) : voir la dette « TEST en retard sur PROD » ci-dessous.
+
+> 🟡 **Dette connue — le projet TEST (`gyjcdswpybrhesarompg`) n'est pas aligné sur
+> PROD.** Constaté le 2026-10-12, **non traité** :
+> - TEST a **plusieurs migrations de retard** sur PROD : `20260911000001/2` (drops
+>   tournois/prac) **et suivantes**. Un `supabase db push` sur TEST les appliquerait
+>   toutes d'un coup.
+> - `20261012000001` y a été exécutée **hors historique** : la ligne
+>   `minimap_structure_detection_enabled` existe sur TEST, mais la migration n'est pas
+>   inscrite dans `supabase_migrations.schema_migrations`. Un futur push la rejouera
+>   (sans effet : elle est rejouable).
+> - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
+>   migrations de TEST comme l'état réel de TEST : on interroge la base.
+> - À faire plus tard : un rattrapage propre de TEST (liste exacte des migrations
+>   manquantes, ordre d'application, inscription de `20261012000001` dans
+>   l'historique), proposé à HORTAL avant exécution.
 
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
