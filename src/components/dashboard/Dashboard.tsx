@@ -29,6 +29,7 @@ import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
 import type { DashTab, UserProfile } from '@/lib/session-types'
+import { isLaunchTabVisible, isAdminOnlyEntry } from '@/lib/launch-tabs'
 
 /* ── Icons ── */
 const IconHome     = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -271,9 +272,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
               // Convention 'hidden' des flags de LANCEMENT : l'entrée disparaît
               // purement et simplement. L'admin garde les deux, c'est ce qui lui
               // permet de recetter avant d'ouvrir au public.
-              .filter(tab => tab.id !== 'ecailles'  || ecaillesEnabled  || isAdmin)
-              .filter(tab => tab.id !== 'scenarios' || scenariosEnabled || isAdmin)
-              .filter(tab => tab.id !== 'kit'       || kitEnabled       || isAdmin)
+              .filter(tab => isLaunchTabVisible(tab.id, { ecaillesEnabled, scenariosEnabled, kitEnabled }, isAdmin))
               .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
@@ -282,6 +281,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
                 active={activeTab === tab.id} c={c}
                 onClick={() => handleTabClick(tab)}
                 unlocked={isPro}
+                adminOnly={isAdminOnlyEntry(tab.id, { ecaillesEnabled, scenariosEnabled, kitEnabled })}
               />
             ))}
           </div>
@@ -398,13 +398,15 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
 }
 
 /* ── Sidebar button ── */
-function SidebarBtn({ tab, label, badges, active, c, onClick, unlocked, admin }: {
+function SidebarBtn({ tab, label, badges, active, c, onClick, unlocked, admin, adminOnly }: {
   tab: TabDef
   /** Libellé déjà résolu par l'appelant (dico ↔ `tab.id`) — jamais lu depuis `tab`. */
   label: string
-  badges: { pro: string; soon: string }
+  badges: { pro: string; soon: string; adminOnly: string }
   active: boolean; c: boolean; onClick: () => void
   unlocked?: boolean; admin?: boolean
+  /** Visible seulement grâce au passe-droit admin (flag de lancement fermé). */
+  adminOnly?: boolean
 }) {
   const isLocked = !unlocked && tab.locked
   const isSoon   = tab.soon
@@ -439,6 +441,11 @@ function SidebarBtn({ tab, label, badges, active, c, onClick, unlocked, admin }:
       {isSoon && (
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-dim)', marginLeft: 4 }}>
           {badges.soon}
+        </span>
+      )}
+      {adminOnly && (
+        <span data-testid="admin-only-badge" style={{ fontSize: 9, letterSpacing: 0.3, color: c ? '#EF9F27' : '#E24B4A', marginLeft: 4, whiteSpace: 'nowrap' }}>
+          {badges.adminOnly}
         </span>
       )}
     </button>

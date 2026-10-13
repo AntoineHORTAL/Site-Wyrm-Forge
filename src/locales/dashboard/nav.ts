@@ -186,6 +186,8 @@ export const navFr = {
   badges: {
     pro:  'Pro',
     soon: 'Bientôt',
+    /* Entrée visible SEULEMENT grâce au passe-droit admin : flag de lancement fermé. */
+    adminOnly: 'Non lancé · admin',
   },
   /**
    * Écran de remplacement d'un onglet verrouillé (`LockedScreen`, Dashboard.tsx).
@@ -221,6 +223,7 @@ export const navEn: NavDict = {
   badges: {
     pro:  'Pro',
     soon: 'Soon',
+    adminOnly: 'Not launched · admin',
   },
   locked: {
     upgrade: '. Upgrade to a higher plan to unlock this feature.',
