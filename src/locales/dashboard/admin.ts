@@ -333,6 +333,13 @@ export const adminFr = {
     launchConfirm:      'Lancer',
     launchCancel:       'Annuler',
 
+    /* Flag de lancement DÉJÀ en ligne (état hérité) : le bouton convertit, il ne lance rien. */
+    convertAction:      'Convertir en kill switch',
+    convertModalTitle:  'Convertir « {label} » en kill switch ?',
+    convertImpactLabel: 'Déjà en ligne :',
+    convertImpactText:  'aucun changement pour les joueurs. Le flag passe dans les kill switches et pourra être coupé.',
+    convertConfirm:     'Convertir',
+
     /* États affichés en pastille sur chaque carte. */
     stateNotLaunched: 'pas encore lancé',
     stateLive:        'en ligne',
@@ -357,6 +364,9 @@ export const adminFr = {
     cutBy:        'coupé par {who} {when}',
     cutByUnknown: 'coupé {when}',
     cutReason:    'Motif : {reason}',
+    /* Coupé sans motif : avant le 05/09 le motif n'était pas demandé. */
+    cutReasonLegacy:  'Coupé (motif non renseigné, avant le 05/09)',
+    cutReasonMissing: 'Coupé (motif non renseigné)',
 
     /* Verrouillage d'un enfant d'overlay quand le maître est coupé. */
     lockedByMaster: 'Indisponible — l\'overlay est coupé',
@@ -565,6 +575,12 @@ export const adminEn: AdminDict = {
     launchConfirm:      'Launch',
     launchCancel:       'Cancel',
 
+    convertAction:      'Convert to kill switch',
+    convertModalTitle:  'Convert "{label}" to a kill switch?',
+    convertImpactLabel: 'Already live:',
+    convertImpactText:  'nothing changes for players. The flag moves to the kill switches and can be turned off.',
+    convertConfirm:     'Convert',
+
     stateNotLaunched: 'not launched yet',
     stateLive:        'live',
     stateActive:      'active',
@@ -584,6 +600,8 @@ export const adminEn: AdminDict = {
     cutBy:        'turned off by {who} {when}',
     cutByUnknown: 'turned off {when}',
     cutReason:    'Reason: {reason}',
+    cutReasonLegacy:  'Off (no reason recorded, before 5 Sep)',
+    cutReasonMissing: 'Off (no reason recorded)',
 
     lockedByMaster: 'Unavailable — the overlay is off',
 

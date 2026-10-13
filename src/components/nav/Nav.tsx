@@ -7,6 +7,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import LanguageSwitch from '@/components/landing/LanguageSwitch'
 import { tabGroups, type TabDef } from '@/components/dashboard/Dashboard'
+import { isLaunchTabVisible, isAdminOnlyEntry } from '@/lib/launch-tabs'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { formatNumber } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
@@ -86,6 +87,11 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   // une lecture one-shot (une bascule admin n'atteignait un onglet ouvert qu'au
   // rechargement) et, surtout, aucun flag du tout pour un visiteur anonyme.
   const ecaillesEnabled = useFlag('ecailles_enabled')
+  // Mêmes flags de lancement que la barre latérale du Dashboard : le tiroir applique
+  // la même règle (isLaunchTabVisible), sinon Kit et Scénarios y fuitent.
+  const scenariosEnabled = useFlag('scenarios_enabled')
+  const kitEnabled = useFlag('kit_sur_mesure_enabled')
+  const launchFlags = { ecaillesEnabled, scenariosEnabled, kitEnabled }
   const c = theme === 'mythic'
   // Deux dicos, un seul état de langue (provider unique du layout racine) :
   // `t` pour la vitrine (mode visiteur), `d.nav` pour la zone connectée.
@@ -478,7 +484,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                       </div>
                     )}
                     {group.tabs
-                      .filter(tab => tab.id !== 'ecailles' || (ecaillesEnabled ?? false) || !!isAdmin)
+                      .filter(tab => isLaunchTabVisible(tab.id, launchFlags, !!isAdmin))
                       .map(tab => (
                       <DrawerTabBtn
                         key={tab.id} tab={tab}
@@ -493,6 +499,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                         }}
                         locked={!isPro && !!tab.locked}
                         soon={tab.soon}
+                        adminOnly={isAdminOnlyEntry(tab.id, launchFlags)}
                       />
                     ))}
                     {gi < tabGroups.length - 1 && (
@@ -577,12 +584,14 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
 }
 
 /* ── Drawer tab button ── */
-function DrawerTabBtn({ tab, label, badges, active, c, onClick, locked, admin, soon }: {
+function DrawerTabBtn({ tab, label, badges, active, c, onClick, locked, admin, soon, adminOnly }: {
   tab: TabDef
   /** Libellé déjà résolu par l'appelant (dico ↔ `tab.id`) — jamais lu depuis `tab`. */
   label: string
-  badges: { pro: string; soon: string }
+  badges: { pro: string; soon: string; adminOnly: string }
   active: boolean; c: boolean; onClick: () => void; locked?: boolean; admin?: boolean; soon?: boolean
+  /** Visible seulement grâce au passe-droit admin (flag de lancement fermé). */
+  adminOnly?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   return (
@@ -618,6 +627,11 @@ function DrawerTabBtn({ tab, label, badges, active, c, onClick, locked, admin, s
       {soon && (
         <span style={{ marginLeft: 'auto', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-dim)' }}>
           {badges.soon}
+        </span>
+      )}
+      {adminOnly && (
+        <span data-testid="admin-only-badge" style={{ marginLeft: 'auto', fontSize: 10, color: c ? '#EF9F27' : '#E24B4A', whiteSpace: 'nowrap' }}>
+          {badges.adminOnly}
         </span>
       )}
     </button>

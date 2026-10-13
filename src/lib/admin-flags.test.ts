@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   partitionCatalogue, cutKillSwitches, canSubmitCut, isChildLocked,
   offBehaviorKey, relativeTime, flagLabel, flagDescription, isOn,
-  byGroupThenOrder, OVERLAY_MASTER_KEY,
+  byGroupThenOrder, OVERLAY_MASTER_KEY, isPendingLaunch, isLiveLegacyLaunch, missingCutReason,
   type FlagCatalogueRow,
 } from './admin-flags'
 
@@ -260,5 +260,40 @@ describe('durée relative d\'une coupure', () => {
     // L'appelant omet alors la mention — jamais « il y a NaN ».
     expect(relativeTime(null, 'fr', now)).toBeNull()
     expect(relativeTime('pas une date', 'fr', now)).toBeNull()
+  })
+})
+
+describe('lancement : flag déjà en ligne (état hérité)', () => {
+  it('Écailles, Boutique, Quêtes en PROD (launch + true) : à convertir, pas à lancer', () => {
+    const ecailles = row('ecailles_enabled', true, 'launch')
+    expect(isPendingLaunch(ecailles)).toBe(true)      // garde son bouton…
+    expect(isLiveLegacyLaunch(ecailles)).toBe(true)   // …qui convertit
+  })
+
+  it('un vrai lancement en attente (launch + false) reste « Lancer »', () => {
+    expect(isLiveLegacyLaunch(row('kit_sur_mesure_enabled', false, 'launch'))).toBe(false)
+  })
+
+  it("un kill switch n'est jamais concerné, actif ou coupé", () => {
+    expect(isLiveLegacyLaunch(row('overlay_enabled', true, 'kill'))).toBe(false)
+    expect(isLiveLegacyLaunch(row('live_game_enabled', false, 'kill'))).toBe(false)
+  })
+})
+
+describe('coupure sans motif', () => {
+  it('live_game_enabled, coupé le 2026-07-29 sans motif : antérieur au motif obligatoire', () => {
+    const live = row('live_game_enabled', false, 'kill', { updated_at: '2026-07-29T13:29:32.896327+00:00' })
+    expect(missingCutReason(live)).toBe('legacy')
+  })
+
+  it('coupé sans motif après le 05/09 (écriture hors AdminTab) : simplement non renseigné', () => {
+    expect(missingCutReason(row('x', false, 'kill', { updated_at: '2026-10-01T00:00:00+00:00' }))).toBe('missing')
+    expect(missingCutReason(row('x', false, 'kill', { updated_at: null }))).toBe('missing')
+  })
+
+  it('rien à dire : flag actif, ou motif présent', () => {
+    expect(missingCutReason(row('x', true, 'kill'))).toBeNull()
+    expect(missingCutReason(row('x', false, 'kill', { reason: 'en attente de la clé Riot de production' }))).toBeNull()
+    expect(missingCutReason(row('x', false, 'kill', { reason: '   ', updated_at: '2026-07-29T00:00:00Z' }))).toBe('legacy')
   })
 })

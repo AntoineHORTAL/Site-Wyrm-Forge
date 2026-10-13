@@ -29,6 +29,7 @@ import {
   partitionCatalogue, cutKillSwitches, canSubmitCut, isChildLocked,
   offBehaviorKey, relativeTime, flagLabel, flagDescription, isOn,
   groupKillBySurface, SURFACE_ORDER, DEFAULT_KILL_SURFACE, isPendingLaunch,
+  isLiveLegacyLaunch, missingCutReason,
   launchPatch, applyLaunch, type SurfaceKey,
   type FlagCatalogueRow,
 } from '@/lib/admin-flags'
@@ -782,6 +783,11 @@ export default function AdminTab() {
         {!on && row.reason && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
             {F.cutReason.replace('{reason}', row.reason)}
+          </div>
+        )}
+        {missingCutReason(row) && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
+            {missingCutReason(row) === 'legacy' ? F.cutReasonLegacy : F.cutReasonMissing}
           </div>
         )}
 
@@ -1658,7 +1664,7 @@ export default function AdminTab() {
                 bg={bg}
                 variant="launch"
                 stateLabel={isOn(row) ? F.stateLive : F.stateNotLaunched}
-                actionLabel={isPendingLaunch(row) ? F.launchAction : undefined}
+                actionLabel={isPendingLaunch(row) ? (isLiveLegacyLaunch(row) ? F.convertAction : F.launchAction) : undefined}
                 indented={row.parent_key !== null}
               />
             ))}
@@ -1938,7 +1944,15 @@ export default function AdminTab() {
           saving={settingsSaving === launchTarget.key}
           onConfirm={() => void launchFlag(launchTarget.key)}
           onCancel={() => setConfirmLaunchKey(null)}
-          labels={{
+          labels={isLiveLegacyLaunch(launchTarget) ? {
+            // Déjà en ligne : on convertit, on ne lance rien (voir isLiveLegacyLaunch).
+            launchTitle:        F.convertModalTitle,
+            launchImpactLabel:  F.convertImpactLabel,
+            launchImpactText:   F.convertImpactText,
+            launchIrreversible: F.launchIrreversible,
+            launchConfirm:      F.convertConfirm,
+            launchCancel:       F.launchCancel,
+          } : {
             launchTitle:        F.launchModalTitle,
             launchImpactLabel:  F.launchImpactLabel,
             launchImpactText:   F.launchImpactText,
