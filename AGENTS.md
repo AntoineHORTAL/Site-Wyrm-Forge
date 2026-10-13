@@ -307,17 +307,40 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 40 lignes
+#### Catalogue de flags — 41 lignes
 
-**Catégorie 1, lancement (6)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (7)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
-`scenarios_enabled` ; et `kit_sur_mesure_enabled` (migration `20260908000002`,
-`group_key = 'site'`, `sort_order = 630`).
+`scenarios_enabled` ; `kit_sur_mesure_enabled` (migration `20260908000002`,
+`group_key = 'site'`, `sort_order = 630`) ; et `minimap_structure_detection_enabled`
+(migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
+enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
+capture d'écran de l'app, celle-ci comprise).
+
+> ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
+> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
+> appliquée en PROD. Sur TEST, elle a été exécutée **hors historique** (fichier seul,
+> pas de `db push`) : voir la dette « TEST en retard sur PROD » ci-dessous.
+
+> 🟡 **Dette connue — le projet TEST (`gyjcdswpybrhesarompg`) n'est pas aligné sur
+> PROD.** Constaté le 2026-10-12, **non traité** :
+> - TEST a **plusieurs migrations de retard** sur PROD : `20260911000001/2` (drops
+>   tournois/prac) **et suivantes**. Un `supabase db push` sur TEST les appliquerait
+>   toutes d'un coup.
+> - `20261012000001` y a été exécutée **hors historique** : la ligne
+>   `minimap_structure_detection_enabled` existe sur TEST, mais la migration n'est pas
+>   inscrite dans `supabase_migrations.schema_migrations`. Un futur push la rejouera
+>   (sans effet : elle est rejouable).
+> - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
+>   migrations de TEST comme l'état réel de TEST : on interroge la base.
+> - À faire plus tard : un rattrapage propre de TEST (liste exacte des migrations
+>   manquantes, ordre d'application, inscription de `20261012000001` dans
+>   l'historique), proposé à HORTAL avant exécution.
 
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
-> aucune brique de ce service, elle ne peut pas le laisser fuir. Les cinq autres
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Les six autres
 > restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.

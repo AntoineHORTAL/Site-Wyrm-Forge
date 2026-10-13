@@ -50,6 +50,9 @@ export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
   // Service « Kit sur mesure » (migration 20260908000002). `surface='web'` :
   // aucune brique côté app de bureau, donc aucun pendant dans `ColdStartClosed`.
   'kit_sur_mesure_enabled',
+  // Positions mesurées des structures sur la minimap (migration 20261012000001).
+  // `surface='app'` : pendant dans `ColdStartClosed` de l'app WPF.
+  'minimap_structure_detection_enabled',
 ])
 
 /**
