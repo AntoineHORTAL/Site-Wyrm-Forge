@@ -53,6 +53,9 @@ export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
   // Positions mesurées des structures sur la minimap (migration 20261012000001).
   // `surface='app'` : pendant dans `ColdStartClosed` de l'app WPF.
   'minimap_structure_detection_enabled',
+  // Timers des tourelles du nexus dans l'overlay (migration 20261013000001).
+  // `surface='app'` : pendant dans `ColdStartClosed` de l'app WPF.
+  'overlay_show_nexus_turret_timers',
 ])
 
 /**

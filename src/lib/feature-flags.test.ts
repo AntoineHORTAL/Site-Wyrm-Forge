@@ -137,20 +137,25 @@ describe('politique de repli asymétrique', () => {
 
   it('la liste des flags fermés est celle du catalogue de lancement', () => {
     // ⚠️ Doit rester alignée sur les lignes kind='launch' des migrations de
-    // catalogue (20260905000001, 20260908000002, puis 20261012000001), et — pour
+    // catalogue (20260905000001, 20260908000002, 20261012000001, puis 20261013000001), et — pour
     // les seules clés `surface` 'shared'/'app' — sur `ColdStartClosed` de
     // `Services/FeatureFlagService.cs` (app WPF). Sans ce test, les listes
     // divergeraient en silence.
     //
     // `kit_sur_mesure_enabled` est `surface='web'` : il n'a PAS de pendant côté
     // WPF, et c'est correct — l'app n'embarque pas la feature, elle ne peut donc
-    // pas la laisser fuir. Les six autres restent la liste partagée, dont
-    // `minimap_structure_detection_enabled` (`surface='app'`).
+    // pas la laisser fuir. Les sept autres restent la liste partagée, dont
+    // `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
+    // (`surface='app'`).
     expect([...LAUNCH_FLAG_KEYS].sort()).toEqual([
       'cosmetics_enabled', 'ecailles_enabled', 'kit_sur_mesure_enabled',
-      'minimap_structure_detection_enabled',
+      'minimap_structure_detection_enabled', 'overlay_show_nexus_turret_timers',
       'quests_enabled', 'scenarios_enabled', 'shop_enabled',
     ])
+    // Premier flag de LANCEMENT parmi les enfants d'overlay_enabled : fermé par défaut,
+    // contrairement à ses 18 frères, kill switches ouverts.
+    expect(flagFallback('overlay_show_nexus_turret_timers')).toBe(false)
+    expect(flagFallback('overlay_show_inhib_timers')).toBe(true)
     expect(flagFallback('ecailles_enabled')).toBe(false)
     expect(flagFallback('overlay_enabled')).toBe(true)
     // Son parent, la détection de la minimap, reste un kill switch ouvert par défaut.

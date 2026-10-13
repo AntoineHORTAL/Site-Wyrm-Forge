@@ -307,15 +307,24 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 41 lignes
+#### Catalogue de flags — 42 lignes
 
-**Catégorie 1, lancement (7)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
 `scenarios_enabled` ; `kit_sur_mesure_enabled` (migration `20260908000002`,
 `group_key = 'site'`, `sort_order = 630`) ; et `minimap_structure_detection_enabled`
 (migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
-capture d'écran de l'app, celle-ci comprise).
+capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_timers`
+(migration `20261013000001`, `surface = 'app'`, `group_key = 'overlay'`,
+`sort_order = 975`, 19ᵉ enfant d'`overlay_enabled` et SEUL flag de lancement parmi eux :
+timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
+est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
+
+> ⚠️ Migration `20261013000001` **appliquée sur TEST seulement** (2026-10-13), pas en
+> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
+> appliquée en PROD. Sur TEST, exécutée **hors historique** comme `20261012000001` :
+> voir la dette ci-dessous.
 
 > ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
 > PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
@@ -327,20 +336,23 @@ capture d'écran de l'app, celle-ci comprise).
 > - TEST a **plusieurs migrations de retard** sur PROD : `20260911000001/2` (drops
 >   tournois/prac) **et suivantes**. Un `supabase db push` sur TEST les appliquerait
 >   toutes d'un coup.
-> - `20261012000001` y a été exécutée **hors historique** : la ligne
->   `minimap_structure_detection_enabled` existe sur TEST, mais la migration n'est pas
->   inscrite dans `supabase_migrations.schema_migrations`. Un futur push la rejouera
->   (sans effet : elle est rejouable).
+> - `20261012000001` (2026-10-12) et `20261013000001` (2026-10-13) y ont été exécutées
+>   **hors historique** (fichier seul, `supabase db query -f`, pas de `db push`) : les
+>   lignes `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
+>   existent sur TEST, mais ces migrations ne sont pas inscrites dans
+>   `supabase_migrations.schema_migrations`. Un futur push les rejouera (sans effet :
+>   elles sont rejouables). Dernière version inscrite relevée le 2026-10-13 :
+>   `20260911000003`.
 > - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
 >   migrations de TEST comme l'état réel de TEST : on interroge la base.
 > - À faire plus tard : un rattrapage propre de TEST (liste exacte des migrations
->   manquantes, ordre d'application, inscription de `20261012000001` dans
->   l'historique), proposé à HORTAL avant exécution.
+>   manquantes, ordre d'application, inscription de `20261012000001` et
+>   `20261013000001` dans l'historique), proposé à HORTAL avant exécution.
 
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
-> aucune brique de ce service, elle ne peut pas le laisser fuir. Les six autres
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Les sept autres
 > restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
