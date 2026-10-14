@@ -319,7 +319,7 @@ Deno.serve(async (req) => {
     await incrementQuota(FN, riotCalls)
     // Alimente searched_summoners avec le joueur recherché (fire-and-forget)
     if (gameNameRaw && tagLineRaw) {
-      upsertSearchedSummoner(platform, sanitize(gameNameRaw), sanitize(tagLineRaw))
+      upsertSearchedSummoner(platform, sanitize(gameNameRaw), sanitize(tagLineRaw), puuid)
     }
 
     // Alimente rank_stat_samples pour la comparaison de rang (fire-and-forget)
