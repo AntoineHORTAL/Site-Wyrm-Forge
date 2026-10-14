@@ -22,7 +22,7 @@ export const confidentialiteFr = {
   title: 'Politique de',
   accent: 'confidentialité',
   /** ISO — formatée dans la langue lue par `LegalPage`. */
-  updated: '2026-09-11',
+  updated: '2026-10-14',
   intro: (
     <>
       Wyrm Forge est un assistant de jeu pour League of Legends. Pour fonctionner, il traite
@@ -84,11 +84,39 @@ export const confidentialiteFr = {
           <p style={{ marginTop: 16 }}><strong>Données de jeu</strong> :</p>
           <List>
             <li>historique de parties, statistiques et compositions récupérés à la demande auprès de
-              l&apos;API Riot Games, mis en cache quelques minutes pour ne pas saturer cette API ;</li>
-            <li>échantillons de performance agrégés par rang (dégâts, vision, CS par minute…),
-              utilisés uniquement pour calculer des moyennes par palier. Ces échantillons ne sont
-              jamais affichés individuellement ;</li>
+              l&apos;API Riot Games, et conservés en cache pour une durée limitée (voir § 6) ;</li>
             <li>parties dont tu as consulté le détail, afin de valider les quêtes correspondantes.</li>
+          </List>
+
+          {/* Chantier confidentialité (2026-10-14) : `riot_cache` (détail des matchs, 30 j),
+              `rank_stat_samples` (1 an), `searched_summoners` (6 mois), purgés par
+              `privacy_purge()` (20261014000001) ; opposition : `riot_privacy_exclusions`
+              (20261014000003). Toute promesse ci-dessous doit rester vraie dans le code. */}
+          <p style={{ marginTop: 16 }}><strong>Joueurs consultés — avec ou sans compte Wyrm
+            Forge</strong> — quand quelqu&apos;un consulte un joueur sur le site ou dans
+            l&apos;application, l&apos;API officielle de Riot Games nous transmet les données de ce
+            joueur et celles des autres participants de ses parties. Ces personnes n&apos;ont pas
+            forcément de compte chez nous et ne nous ont pas fourni ces données elles-mêmes :
+            elles proviennent de Riot Games, qui les rend accessibles pour tout compte League of
+            Legends. Il s&apos;agit :</p>
+          <List>
+            <li>du Riot ID (nom de jeu et tag), du PUUID (identifiant stable attribué par Riot
+              Games), de la région et du rang ;</li>
+            <li>des statistiques de chaque partie : champion, rôle, éliminations, morts et
+              assistances, sbires, score de vision, dégâts, or, objets, runes, déroulé de la
+              partie.</li>
+          </List>
+          <p style={{ marginTop: 8 }}>Nous en conservons trois choses :</p>
+          <List>
+            <li>le détail des parties consultées, en cache, pour ne pas interroger Riot Games à
+              chaque affichage ;</li>
+            <li>pour les joueurs recherchés par leur Riot ID sur la page joueur, un échantillon par
+              partie (PUUID, rang, rôle et statistiques de la partie). Ces échantillons sont
+              stockés un par un et ne sont additionnés qu&apos;au moment de calculer une moyenne
+              par rang, affichée seulement à partir de 50 parties pour un même rang, rôle et file.
+              Ils ne sont jamais affichés individuellement ;</li>
+            <li>les Riot ID réellement recherchés, pour l&apos;autocomplétion de la barre de
+              recherche.</li>
           </List>
 
           <p style={{ marginTop: 16 }}><strong>Contenus que tu crées</strong> :</p>
@@ -122,12 +150,14 @@ export const confidentialiteFr = {
           <p style={{ marginTop: 16 }}><strong>Recherches publiques</strong> — les Riot ID recherchés
             sur le site (région, nom, tag) sont mémorisés pour alimenter l&apos;autocomplétion de la
             barre de recherche. Ces entrées ne sont associées à aucun compte : il est impossible de
-            savoir qui a recherché quoi.</p>
+            savoir qui a recherché quoi. Seuls les Riot ID effectivement recherchés y figurent, pas
+            les autres joueurs des parties affichées.</p>
 
-          <p style={{ marginTop: 16 }}><strong>Données techniques</strong> — ton adresse IP est
-            utilisée de manière transitoire pour limiter le nombre de requêtes par visiteur
-            (protection anti-abus et respect des quotas Riot). Elle n&apos;est pas conservée dans un
-            journal consultable et ne sert à aucun profilage.</p>
+          <p style={{ marginTop: 16 }}><strong>Données techniques</strong> — ton adresse IP sert à
+            limiter le nombre de requêtes par visiteur (protection anti-abus et respect des quotas
+            Riot). Elle n&apos;est jamais enregistrée en clair : pour compter tes requêtes, nous
+            n&apos;en gardons qu&apos;une empreinte calculée avec une clé secrète, supprimée au plus
+            tard deux heures après ta dernière requête. Elle ne sert à aucun profilage.</p>
         </>
       ),
     },
@@ -230,6 +260,13 @@ export const confidentialiteFr = {
             moment, sans justification.</li>
           <li><strong>Intérêt légitime</strong> — sécurité du service, prévention des abus,
             respect des quotas imposés par Riot Games, amélioration des fonctionnalités.</li>
+          <li><strong>Intérêt légitime — joueurs consultés</strong> — afficher les statistiques de
+            jeu d&apos;un joueur à la personne qui le consulte, et calculer des moyennes par rang.
+            Nous estimons que cet intérêt ne porte pas une atteinte excessive aux droits des
+            joueurs concernés, car les données sont publiées par Riot Games pour tout compte, nous
+            ne les rattachons à aucune identité civile, elles ne servent à aucun profilage ni à
+            aucune publicité, et leur durée de conservation est courte (§ 6). Chaque joueur peut
+            s&apos;y opposer (§ 7).</li>
           <li><strong>Obligation légale</strong> — conservation des pièces comptables des
             abonnements payants, et de la preuve de ta demande d&apos;accès immédiat au service
             (article L221-25 du Code de la consommation), que nous devons pouvoir produire en
@@ -262,9 +299,12 @@ export const confidentialiteFr = {
             <li><strong>Riot Games</strong> — l&apos;API officielle de League of Legends. Nos serveurs
               lui transmettent ton Riot ID ou ton PUUID pour récupérer tes données de jeu.
               Ces échanges sont régis par la politique de confidentialité de Riot Games.</li>
-            <li><strong>Anthropic</strong> — génération des analyses IA (Match Up, résumés de patch
-              notes). Seul le contexte de la simulation est envoyé (champions, niveaux, objets) ;
-              aucun identifiant de compte, aucune adresse e-mail.</li>
+            <li><strong>Anthropic</strong> — génération des analyses IA (Match Up, bilan
+              d&apos;après-partie, résumés de patch notes). Seul le contexte nécessaire est envoyé :
+              pour un Match Up, les champions, niveaux et objets de la simulation ; pour un bilan
+              d&apos;après-partie, les faits de la partie analysée (champion, rôle, statistiques,
+              objets, runes, morts, objectifs et, selon l&apos;option choisie, ceux de
+              l&apos;adversaire de voie). Aucun Riot ID, aucun PUUID, aucune adresse e-mail.</li>
             <li><strong>Stripe</strong> — traitement des paiements des abonnements, facturation et
               portail de gestion de l&apos;abonnement. Nous ne stockons aucune donnée de carte
               bancaire : elles sont saisies directement chez Stripe.</li>
@@ -321,10 +361,15 @@ export const confidentialiteFr = {
         <List>
           <li><strong>Compte et contenus</strong> — tant que ton compte existe. Après une demande de
             suppression, effacement définitif sous 30 jours maximum.</li>
-          <li><strong>Cache des données Riot</strong> — de quelques minutes à quelques heures selon
-            le type de donnée. Il s&apos;agit d&apos;un cache technique, pas d&apos;un archivage.</li>
-          <li><strong>Échantillons de performance par rang</strong> — un an au maximum,
-            puis purge.</li>
+          <li><strong>Cache des données Riot</strong> — de quelques minutes à 30 jours selon le type
+            de donnée (30 jours pour le détail d&apos;une partie), puis suppression dans les 48 heures
+            qui suivent. Ce délai permet de continuer à afficher les données si le quota d&apos;appels
+            Riot du jour est épuisé. Il s&apos;agit d&apos;un cache technique, pas d&apos;un
+            archivage.</li>
+          <li><strong>Échantillons de performance par rang</strong> — un an au maximum, puis
+            suppression automatique.</li>
+          <li><strong>Parties dont tu as consulté le détail</strong> — 30 jours.</li>
+          <li><strong>Empreintes d&apos;adresse IP</strong> — deux heures au plus.</li>
           <li><strong>Journal des Écailles</strong> — conservé tant que le compte existe, pour
             garantir l&apos;intégrité du solde ; supprimé avec le compte.</li>
           <li><strong>Données d&apos;abonnement</strong> — tant que le compte existe ; supprimées
@@ -344,8 +389,9 @@ export const confidentialiteFr = {
             adressées. Si ton compte est supprimé avant, l&apos;historique est conservé pour la
             même durée, détaché de ton compte ; un e-mail qui n&apos;était pas encore parti
             n&apos;est jamais envoyé.</li>
-          <li><strong>Riot ID recherchés (autocomplétion)</strong> — conservés sans limite de durée.
-            Il s&apos;agit d&apos;identifiants de jeu publics, non rattachés à un compte Wyrm Forge.</li>
+          <li><strong>Riot ID recherchés (autocomplétion)</strong> — 6 mois après la dernière
+            recherche. Il s&apos;agit d&apos;identifiants de jeu, non rattachés à un compte Wyrm
+            Forge.</li>
         </List>
       ),
     },
@@ -369,6 +415,16 @@ export const confidentialiteFr = {
               copie de tes données dans un format structuré et lisible par machine.</li>
             <li><strong>Retrait du consentement</strong> — délier ton compte Riot depuis ton
               profil, à tout moment et sans justification.</li>
+            {/* Procédure : `privacy_forget_player()` (20261014000003). */}
+            <li><strong>Tu n&apos;as pas de compte Wyrm Forge ?</strong> — tes droits d&apos;accès,
+              d&apos;effacement et d&apos;opposition s&apos;appliquent aussi aux données décrites au
+              § 2 « Joueurs consultés ». Écris-nous à contact@wyrm-forge.com en indiquant ton Riot
+              ID et ta région. Nous pouvons te demander de prouver que ce compte Riot est le tien.
+              Nous supprimons alors, dans un délai d&apos;un mois, les échantillons liés à ton
+              PUUID, les parties en cache qui te concernent et ton Riot ID de
+              l&apos;autocomplétion. Pour que ton opposition tienne dans le temps, nous gardons ton
+              seul PUUID dans une liste d&apos;exclusion, et plus aucun échantillon ni entrée
+              d&apos;autocomplétion n&apos;est créé à ton nom.</li>
           </List>
           <p style={{ marginTop: 12 }}>
             Nous répondons à toute demande dans un délai d&apos;un mois. Si tu estimes que tes droits
@@ -427,7 +483,7 @@ export type ConfidentialiteDict = typeof confidentialiteFr
 export const confidentialiteEn: ConfidentialiteDict = {
   title: 'Privacy',
   accent: 'policy',
-  updated: '2026-09-11',
+  updated: '2026-10-14',
   intro: (
     <>
       Wyrm Forge is a companion tool for League of Legends. To work, it processes a small amount of
@@ -489,12 +545,32 @@ export const confidentialiteEn: ConfidentialiteDict = {
           <p style={{ marginTop: 16 }}><strong>Game data</strong>:</p>
           <List>
             <li>match history, statistics and team compositions retrieved on demand from the Riot
-              Games API, cached for a few minutes so as not to saturate that API;</li>
-            <li>performance samples aggregated by rank (damage, vision, CS per minute, etc.), used
-              solely to compute averages per rank. These samples are never displayed
-              individually;</li>
+              Games API, and kept in cache for a limited time (see § 6);</li>
             <li>matches whose detail you have viewed, in order to validate the corresponding
               quests.</li>
+          </List>
+
+          <p style={{ marginTop: 16 }}><strong>Players looked up — with or without a Wyrm Forge
+            account</strong> — when someone looks up a player on the site or in the app, the
+            official Riot Games API sends us that player&apos;s data and the data of the other
+            participants in their games. These people do not necessarily have an account with us
+            and did not give us this data themselves: it comes from Riot Games, which makes it
+            available for any League of Legends account. It consists of:</p>
+          <List>
+            <li>the Riot ID (game name and tag), the PUUID (the stable identifier assigned by Riot
+              Games), the region and the rank;</li>
+            <li>the statistics of each game: champion, role, kills, deaths and assists, minions,
+              vision score, damage, gold, items, runes, how the game unfolded.</li>
+          </List>
+          <p style={{ marginTop: 8 }}>We keep three things from it:</p>
+          <List>
+            <li>the detail of the games looked up, in cache, so as not to query Riot Games at every
+              display;</li>
+            <li>for players searched for by their Riot ID on the player page, one sample per game
+              (PUUID, rank, role and the game&apos;s statistics). These samples are stored one by one
+              and only added up when an average per rank is computed, which is shown only from 50
+              games for the same rank, role and queue. They are never displayed individually;</li>
+            <li>the Riot IDs actually searched for, for the search bar&apos;s autocompletion.</li>
           </List>
 
           <p style={{ marginTop: 16 }}><strong>Content you create</strong>:</p>
@@ -526,12 +602,14 @@ export const confidentialiteEn: ConfidentialiteDict = {
           <p style={{ marginTop: 16 }}><strong>Public searches</strong> — the Riot IDs searched for
             on the site (region, name, tag) are stored to feed the autocompletion of the search bar.
             These entries are not associated with any account: it is impossible to know who searched
-            for what.</p>
+            for what. Only the Riot IDs actually searched for are listed there, not the other players
+            of the games displayed.</p>
 
-          <p style={{ marginTop: 16 }}><strong>Technical data</strong> — your IP address is used
-            transiently to limit the number of requests per visitor (abuse protection and compliance
-            with Riot quotas). It is not kept in a consultable log and is not used for any
-            profiling.</p>
+          <p style={{ marginTop: 16 }}><strong>Technical data</strong> — your IP address is used to
+            limit the number of requests per visitor (abuse protection and compliance with Riot
+            quotas). It is never recorded in plain text: to count your requests we only keep a
+            fingerprint of it computed with a secret key, deleted at most two hours after your last
+            request. It is not used for any profiling.</p>
         </>
       ),
     },
@@ -620,6 +698,12 @@ export const confidentialiteEn: ConfidentialiteDict = {
             without justification.</li>
           <li><strong>Legitimate interest</strong> — security of the service, prevention of abuse,
             compliance with the quotas imposed by Riot Games, improvement of the features.</li>
+          <li><strong>Legitimate interest — players looked up</strong> — showing a player&apos;s
+            game statistics to the person looking them up, and computing averages per rank. We
+            consider that this interest does not unduly infringe the rights of the players
+            concerned, because the data is published by Riot Games for any account, we do not link
+            it to any real-world identity, it is not used for any profiling or advertising, and it
+            is kept for a short time (§ 6). Each player may object to it (§ 7).</li>
           <li><strong>Legal obligation</strong> — retention of the accounting records of paid
             subscriptions, and of the proof of your request for immediate access to the service
             (article L221-25 of the French Consumer Code), which we must be able to produce in the
@@ -651,9 +735,12 @@ export const confidentialiteEn: ConfidentialiteDict = {
             <li><strong>Riot Games</strong> — the official League of Legends API. Our servers send it
               your Riot ID or your PUUID to retrieve your game data. These exchanges are governed by
               the Riot Games privacy policy.</li>
-            <li><strong>Anthropic</strong> — generation of the AI analyses (Match Up, patch note
-              summaries). Only the context of the simulation is sent (champions, levels, items); no
-              account identifier, no email address.</li>
+            <li><strong>Anthropic</strong> — generation of the AI analyses (Match Up, post-game
+              review, patch note summaries). Only the necessary context is sent: for a Match Up, the
+              champions, levels and items of the simulation; for a post-game review, the facts of
+              the game analysed (champion, role, statistics, items, runes, deaths, objectives and,
+              depending on the option chosen, those of the lane opponent). No Riot ID, no PUUID, no
+              email address.</li>
             <li><strong>Stripe</strong> — processing of subscription payments, billing and
               subscription management portal. We store no bank card data: it is entered directly with
               Stripe.</li>
@@ -699,9 +786,14 @@ export const confidentialiteEn: ConfidentialiteDict = {
         <List>
           <li><strong>Account and content</strong> — for as long as your account exists. After a
             deletion request, permanent erasure within 30 days at most.</li>
-          <li><strong>Cache of Riot data</strong> — from a few minutes to a few hours depending on
-            the type of data. It is a technical cache, not an archive.</li>
-          <li><strong>Performance samples by rank</strong> — one year at most, then purged.</li>
+          <li><strong>Cache of Riot data</strong> — from a few minutes to 30 days depending on the
+            type of data (30 days for the detail of a game), then deleted within the following 48
+            hours. This delay lets us keep showing the data if the day&apos;s Riot call quota is
+            exhausted. It is a technical cache, not an archive.</li>
+          <li><strong>Performance samples by rank</strong> — one year at most, then deleted
+            automatically.</li>
+          <li><strong>Matches whose detail you have viewed</strong> — 30 days.</li>
+          <li><strong>IP address fingerprints</strong> — two hours at most.</li>
           <li><strong>Scales log</strong> — kept for as long as the account exists, to guarantee the
             integrity of the balance; deleted with the account.</li>
           <li><strong>Subscription data</strong> — for as long as the account exists; deleted with
@@ -715,8 +807,8 @@ export const confidentialiteEn: ConfidentialiteDict = {
             prove that the legal information was indeed sent to you. If your account is deleted
             before then, the history is kept for the same period, detached from your account; an
             email that had not yet gone out is never sent.</li>
-          <li><strong>Riot IDs searched for (autocompletion)</strong> — kept without a time limit.
-            These are public game identifiers, not attached to a Wyrm Forge account.</li>
+          <li><strong>Riot IDs searched for (autocompletion)</strong> — 6 months after the last
+            search. These are game identifiers, not attached to a Wyrm Forge account.</li>
         </List>
       ),
     },
@@ -741,6 +833,14 @@ export const confidentialiteEn: ConfidentialiteDict = {
               copy of your data in a structured, machine-readable format.</li>
             <li><strong>Withdrawal of consent</strong> — unlink your Riot account from your profile,
               at any time and without justification.</li>
+            <li><strong>You don&apos;t have a Wyrm Forge account?</strong> — your rights of access,
+              erasure and objection also apply to the data described in § 2 &quot;Players looked
+              up&quot;. Write to us at contact@wyrm-forge.com stating your Riot ID and your region.
+              We may ask you to prove that this Riot account is yours. We then delete, within one
+              month, the samples linked to your PUUID, the cached games concerning you and your
+              Riot ID from the autocompletion. So that your objection holds over time, we keep only
+              your PUUID in an exclusion list, and no sample or autocompletion entry is created in
+              your name any more.</li>
           </List>
           <p style={{ marginTop: 12 }}>
             We answer every request within one month. If you consider that your rights are not being
