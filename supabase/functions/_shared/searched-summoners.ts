@@ -1,5 +1,7 @@
 // Fire-and-forget upsert dans searched_summoners.
-// Utilisé depuis riot-matches et riot-match-detail via service_role.
+// Utilisé UNIQUEMENT par riot-matches, pour le Riot ID recherché : la table ne
+// doit contenir que de vraies recherches (purgées après 6 mois sans nouvelle
+// recherche, pg_cron 20261014000001). Ne pas y ajouter d'autres appelants.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 function db() {

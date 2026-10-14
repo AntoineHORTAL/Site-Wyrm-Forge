@@ -10,7 +10,6 @@ import { requireSecret, getUser }   from '../_shared/auth.ts'
 import { cacheGet, cacheSet, cacheGetStale, cacheGetNegative, cacheSetNegative } from '../_shared/cache.ts'
 import { isRateLimited } from '../_shared/rate-limit.ts'
 import { isCircuitOpen, incrementQuota, secondsUntilMidnightUtc } from '../_shared/circuit-breaker.ts'
-import { upsertSearchedSummoner } from '../_shared/searched-summoners.ts'
 import { isFeatureEnabled } from '../_shared/feature-flags.ts'
 
 const FN = 'riot-match-detail'
@@ -483,11 +482,9 @@ Deno.serve(async (req) => {
 
     await cacheSet(cacheKey, FN, result)
     await incrementQuota(FN)
-    // Alimente searched_summoners avec les 10 participants du match (fire-and-forget)
-    // deno-lint-ignore no-explicit-any
-    result.participants.forEach((p: any) => {
-      if (p.riotIdGameName) upsertSearchedSummoner(platform, p.riotIdGameName, p.riotIdTagline)
-    })
+    // ⚠️ N'alimente PAS searched_summoners : l'autocomplétion ne retient que les
+    // Riot ID réellement recherchés (riot-matches). Y verser les 10 participants
+    // de chaque match ouvert enregistrait des joueurs que personne n'a cherchés.
 
     logMatchViewed(questUser, matchId)
 
