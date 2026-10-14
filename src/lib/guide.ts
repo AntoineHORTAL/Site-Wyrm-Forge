@@ -74,7 +74,7 @@ export const GUIDE_ENTRY_IDS = [
   'parcours-jungle', 'calibrage-minimap',
   'build-en-jeu', 'panneau-stats', 'todo-en-jeu',
   'conseiller-champ-select', 'runes-auto', 'sets-objets',
-  'comparaison-rang', 'mises-a-jour',
+  'bilan-post-game', 'mises-a-jour',
 ] as const
 export type GuideEntryId = (typeof GUIDE_ENTRY_IDS)[number]
 
@@ -156,7 +156,7 @@ export const GUIDE_STRUCTURE: readonly GuideSectionDef[] = [
       },
     ],
     entries: [
-      { id: 'comparaison-rang' },
+      { id: 'bilan-post-game' },
       { id: 'mises-a-jour' },
     ],
   },

@@ -110,7 +110,7 @@ describe('masquage par les feature flags', () => {
     expect(app.intro).toBeUndefined()
     expect(app.groups.map(g => g.id)).toEqual(['jungle', 'avant-partie'])
     expect(app.groups.find(g => g.id === 'jungle')!.entries.map(e => e.id)).toEqual(['calibrage-minimap'])
-    expect(app.entries.map(e => e.id)).toEqual(['comparaison-rang', 'mises-a-jour'])
+    expect(app.entries.map(e => e.id)).toEqual(['bilan-post-game', 'mises-a-jour'])
   })
 
   it('le flag IA du Match Up ne masque pas la sous-section, seulement sa partie IA', () => {
