@@ -6,7 +6,11 @@ const TTL_MS: Record<string, number> = {
   'riot-rotation':          6 * 60 * 60 * 1000, // fallback — remplacé à l'écriture par nextRotationExpiryIso() (mardi 12:00 UTC)
   'riot-rank':                  5 * 60 * 1000,  // 5 min   — rank changes per game
   'riot-matches':               3 * 60 * 1000,  // 3 min   — list changes after each game
-  'riot-match-detail':                    -1,   // permanent — completed matches are immutable
+  // 30 jours, plus « permanent » : le corps porte puuid, Riot ID et stats des 10
+  // joueurs, et la politique de confidentialité borne leur conservation. Riot
+  // garde un match ~2 ans : au-delà de 30 jours, le relire coûte 2 appels.
+  // Les entrées expirées sont purgées 48 h après expiration (pg_cron, 20261014000001).
+  'riot-match-detail':     30 * 24 * 60 * 60 * 1000, // 30 j
   'patch-notes-generator': 24 * 60 * 60 * 1000, // 24h — DDragon versions list changes rarely
   'patch-notes':            1 * 60 * 60 * 1000, // 1h  — published patch notes list
   // Fallback court seulement — riot-live-game passe TOUJOURS un `expiresAtIso`
@@ -25,7 +29,6 @@ function db() {
 
 function expiresAt(fn: string): string {
   const ttl = TTL_MS[fn] ?? 5 * 60 * 1000
-  if (ttl === -1) return '2099-01-01T00:00:00.000Z'
   return new Date(Date.now() + ttl).toISOString()
 }
 

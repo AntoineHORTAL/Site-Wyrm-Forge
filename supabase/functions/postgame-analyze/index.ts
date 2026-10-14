@@ -409,7 +409,7 @@ function findOpponent(parts: any[], self: any): { p: any; idx: number } | null {
 
 // ── Appel interne à riot-match-detail ───────────────────────────────────────
 // Réutilise l'EF existante plutôt que de refrapper Riot : bénéficie de son
-// cache permanent, de son comptage de quota et de son circuit breaker.
+// cache (30 jours), de son comptage de quota et de son circuit breaker.
 async function fetchMatch(matchId: string, platform: string) {
   const base = Deno.env.get('SUPABASE_URL')!
   const anon = requireSecret('SUPABASE_ANON_KEY')

@@ -1,6 +1,7 @@
 // Per-IP rate limiting via HMAC-hashed IP + 1-minute sliding window in Postgres.
 // Uses fn_riot_rate_increment (SECURITY DEFINER) for atomic upsert.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { hmacHex } from './ip-hash.ts'
 
 const LIMIT_PER_MINUTE = 20
 
@@ -9,20 +10,6 @@ function db() {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
-}
-
-async function hmacHex(data: string, secret: string): Promise<string> {
-  const enc = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false, ['sign'],
-  )
-  const buf = await crypto.subtle.sign('HMAC', key, enc.encode(data))
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 32)
 }
 
 function clientIp(req: Request): string {

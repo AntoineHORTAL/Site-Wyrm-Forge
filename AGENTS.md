@@ -404,8 +404,29 @@ Index `idx_ss_prefix` sur `(region, lower(game_name) text_pattern_ops)` — auto
 - DELETE : bloqué (aucune policy)
 
 ### Alimentation
-- `riot-matches` : upsert du joueur recherché après résolution Riot ID réussie
-- `riot-match-detail` : upsert fire-and-forget des 10 participants à chaque consultation de match (post-déploiement, cache v2 uniquement)
+- `riot-matches` : upsert du joueur recherché après résolution Riot ID réussie — **seul alimenteur**.
+- ~~`riot-match-detail` : upsert des 10 participants de chaque match consulté~~ — **retiré** (chantier confidentialité, 2026-10-14) : la table retenait des joueurs que personne n'avait cherchés. Table vidée une fois par `20261014000001`. Ne pas réintroduire d'autre appelant.
+- **Conservation** : 6 mois sans nouvelle recherche (`last_seen`), purge par `privacy_purge()`.
+
+---
+
+## 🔒 Purges et durées de conservation (chantier confidentialité, migration 20261014000001)
+
+**Principe : le code tient ce que promet `/confidentialite`, jamais l'inverse.** Toute nouvelle donnée de joueur ou d'IP stockée côté serveur doit avoir sa purge ici AVANT d'être annoncée dans la politique.
+
+`public.privacy_purge()` (SECURITY DEFINER, `postgres` seul), job pg_cron `privacy-purge`, toutes les 15 min :
+
+| Donnée | Durée | Remarque |
+|---|---|---|
+| `rank_stat_samples` | 1 an (`collected_at`) | |
+| `riot_cache`, clés `rate:*` (limiteurs par IP) | jusqu'à expiration (1 h) | clés = HMAC de l'IP (`_shared/ip-hash.ts`), jamais l'IP |
+| `riot_cache`, autres entrées | expiration + 48 h | ⚠️ pas plus tôt : `cacheGetStale` ressert une entrée expirée de tout âge quand le circuit breaker est ouvert ; 48 h couvrent une journée de panne |
+| détail de match (`riot-match-detail`) | 30 jours (TTL `_shared/cache.ts`) | puis purge 48 h après |
+| `searched_summoners` | 6 mois sans recherche | |
+| `app_events` | 30 jours (job `app-events-purge`, `20261014000002`) | lecteurs limités au jour UTC courant ; effet de bord accepté sur la dédup totale `uq_app_events_dedup` |
+| `riot_rate_limits` | 5 min (job `purge_riot_rate_limits`, préexistant) | IP déjà en HMAC |
+
+Contrôle en base : `select jobname, schedule, active from cron.job;` puis `select public.privacy_purge();` (renvoie le nombre de lignes supprimées par catégorie). Tests : `supabase/tests/20261014000001_privacy_purges_test.sql`.
 
 ---
 
@@ -495,7 +516,7 @@ Index `idx_rss_collected` sur `(collected_at)` — purges temporelles.
 ### Alimentation
 - `riot-matches` : appelle `harvestRankStats()` depuis `supabase/functions/_shared/harvest-rank-stats.ts` — fire-and-forget, cache MISS + start===0 + appel by Riot ID uniquement. Lit le tier depuis `riot_cache` (clé `rank:{platform}:{gameName}:{tagLine}`).
 - Insertion via service_role — bypass RLS automatique.
-- Purge recommandée : `DELETE FROM public.rank_stat_samples WHERE collected_at < NOW() - INTERVAL '1 year'`
+- Purge **automatique** à 1 an par `privacy_purge()` (`20261014000001`, voir § Purges et durées de conservation). Elle n'était que « recommandée » auparavant, et rien ne la faisait.
 
 ### Consommateurs
 - **Site React** : appel `get_rank_avg()` pour comparaison de performance joueur vs bucket de rang
@@ -1326,8 +1347,8 @@ AND (NOT (EXISTS ( SELECT 1
 
 ### Impact d'items (`/match/...`) — précisions techniques
 - **Cache v3** (depuis 2026-07-31) : `riot-match-detail` utilise `match:v3:${routing}:${matchId}`. Historique des versions : v1 (origine) → v2 (`playerStats` de timeline) → **v3 (runes complètes : 6 perks + stat shards)**.
-  - ⚠️ **Le cache de cette EF est PERMANENT** (`expires_at` 2099 — un match terminé est immuable). **Tout enrichissement du corps de réponse exige donc un bump de version de clé**, sinon les matchs déjà consultés resservent éternellement l'ancien corps. C'est la contrainte structurante de cette EF : le contrat de sortie est figé au moment où le match entre en cache.
-  - Les entrées des versions précédentes sont **laissées en place** (aucune purge) — elles n'expirent qu'en 2099 et ne coûtent que du stockage. Prix du bump : les matchs déjà vus repayent **2 appels Riot** (match + timeline) à leur prochaine ouverture.
+  - ⚠️ **Le cache de cette EF dure 30 JOURS** depuis le 2026-10-14 (`20261014000001` ; il était PERMANENT, `expires_at` 2099, jusque-là). Raison : le corps porte puuid, Riot ID et stats des 10 joueurs, et la politique de confidentialité borne leur conservation. Un enrichissement du corps devient visible au plus 30 jours après déploiement même sans bump ; **le bump de version de clé reste nécessaire** si l'ancien corps ne doit plus être servi du tout.
+  - Les entrées des versions précédentes (v2) sont purgées comme les autres, 48 h après expiration. Prix d'une relecture : **2 appels Riot** (match + timeline).
   - Runes v3 : `perks: { primaryStyle, subStyle, selected[6], statPerks: { offense, flex, defense } }`, `selected[0]` = keystone. **`keystoneId` et `secondaryStyleId` sont CONSERVÉS** — six consommateurs les lisent (pages `/match`, `/summoner`, `/matches`, `AccueilTab` ; `RiotService` + `MatchHistoryView` côté WPF). Le champ `perks` est purement additif, ne pas les retirer.
 - **Vue 1 Timeline** : métrique sélectionnable (Or / PA / AD / Armure / RM / PV max / Hâte / Dégâts champs). Courbes par frame (~1 min). Activée si `playerStats` présents (cache v2) + `queueId ∈ {420, 440}`.
 - **Vue 2 Importance** : part d'or (DDragon) + stats Meraki par item avec contribution % si `playerStats` disponibles. Route handler `/api/external/items` — cache 24h, fallback silencieux. Bandeau si Meraki daté.
@@ -1337,7 +1358,7 @@ AND (NOT (EXISTS ( SELECT 1
 - Client Component — rate limit distribué par IP visiteur.
 - Appelle `riot-rank` **puis** `riot-matches` en **séquentiel** (intentionnel) : le rang doit être en cache `riot_cache` avant que `riot-matches` soit appelé, pour que le harvest `harvestRankStats` puisse y lire le tier sans appel Riot supplémentaire.
 - `riot-rank` retourne désormais `profileIconId` + `summonerLevel`.
-- Autocomplete via `searched_summoners` (Supabase anon SELECT), alimentée par `riot-matches` + `riot-match-detail`.
+- Autocomplete via `searched_summoners` (Supabase anon SELECT), alimentée par `riot-matches` seul (vraies recherches, 6 mois de conservation).
 - Jour 1 : recherche exacte fonctionnelle. Autocomplete opérationnel dès que la table se remplit organiquement.
 
 ### Comparaison de rang (`/summoner/...`) — précisions techniques
@@ -1600,7 +1621,7 @@ Mesurer à 3000 n'aurait pas testé la configuration de prod — c'est précisé
 **3 profondeurs** (`simple`/`medium`/`advanced`) **× 3 modes** (`perso`/`adversaire`/`les_deux`). La première brique (2026-07-31) n'ouvrait que `simple × perso` pour valider le patron EF/prompt/coût ; `depth`/`mode` étaient déjà dans le contrat, donc la généralisation **n'a cassé aucun client** — les défauts restent `simple`/`perso`.
 
 ### 🔑 Aucun enrichissement de `riot-match-detail` n'a été nécessaire
-C'était le risque majeur du chantier, et il ne s'est pas matérialisé : **tout ce dont les 9 combinaisons ont besoin est déjà dans le cache v3** — `teamPosition` (adversaire), `timeline[].playerGold/playerXp/playerCs` (courbes), `perks` (runes), `summoner1Id/2Id`, `skillEvents`, `events[]` (BUILDING_KILL / ELITE_MONSTER_KILL), `teams[].objectives`, `teams[].bans`, multikills, `totalHeal`, `timeCcOthers`, `longestLife`. **Pas de bump de clé de cache**, donc aucun match déjà consulté ne re-paie les 2 appels Riot. Vérifier cet inventaire AVANT d'envisager un v4 : la contrainte du cache permanent (expiration 2099) rend tout enrichissement coûteux.
+C'était le risque majeur du chantier, et il ne s'est pas matérialisé : **tout ce dont les 9 combinaisons ont besoin est déjà dans le cache v3** — `teamPosition` (adversaire), `timeline[].playerGold/playerXp/playerCs` (courbes), `perks` (runes), `summoner1Id/2Id`, `skillEvents`, `events[]` (BUILDING_KILL / ELITE_MONSTER_KILL), `teams[].objectives`, `teams[].bans`, multikills, `totalHeal`, `timeCcOthers`, `longestLife`. **Pas de bump de clé de cache**, donc aucun match déjà consulté ne re-paie les 2 appels Riot. Vérifier cet inventaire AVANT d'envisager un v4 : tout enrichissement exige un bump de clé ou 30 jours d'attente (durée du cache).
 
 ### Prompt — module partagé `_shared/postgame-prompt.ts`
 Module **PUR** (aucun import, aucune API Deno), importé par l'EF **et** par le script de mesure `scripts/postgame-measure.ts` (lancé sous Node/tsx). C'est ce qui garantit que **le prompt mesuré est byte-identique au prompt servi** — la première brique mesurait depuis une copie dans le scratchpad, qui pouvait dériver en silence.
@@ -1648,7 +1669,7 @@ Plafonds de sortie (`MAX_TOKENS`, **source unique dans le module partagé**) : `
 Proxy Anthropic serveur + `verify_jwt = true` + **`consume_ai_credits` sur le pot « Chaleur de la Forge »** — le même solde que MatchUp, pas un compteur PostGame. C'est la 2ᵉ preuve que le patron est réutilisable tel quel : aucune migration, aucune fonction SQL nouvelle.
 
 ### Source de données
-Appel **interne** à `riot-match-detail` (`fetch` vers `${SUPABASE_URL}/functions/v1/…` avec la clé anon, patron de `prac-track`) plutôt qu'un accès Riot direct : bénéficie de son cache permanent, de son comptage de quota et de son circuit breaker. Le client n'envoie que `{ matchId, puuid }` — **aucune stat ne transite par lui**, il ne peut donc rien falsifier.
+Appel **interne** à `riot-match-detail` (`fetch` vers `${SUPABASE_URL}/functions/v1/…` avec la clé anon, patron de `prac-track`) plutôt qu'un accès Riot direct : bénéficie de son cache (30 jours), de son comptage de quota et de son circuit breaker. Le client n'envoie que `{ matchId, puuid }` — **aucune stat ne transite par lui**, il ne peut donc rien falsifier.
 
 - `platform` déduite du préfixe du matchId (`EUW1_…` → `euw1`) si absente, puis validée contre la liste `ROUTING`.
 - `participantId` Riot = index dans `participants` + 1 (convention de `riot-match-detail`) — c'est ce qui relie le joueur à ses `itemEvents` et à ses morts dans `kills[]`.
@@ -1777,7 +1798,7 @@ SECURITY DEFINER, `REVOKE FROM PUBLIC`, **aucun GRANT** → service_role uniquem
   Functions Supabase qui font office de proxy.
 - Edge Functions actives : `riot-rotation`, `riot-matches`, `riot-match-detail`,
   `riot-rank`, `riot-live-game`, `riot-link-init`, `shop-purchase`, `quest-claim`, `quest-status`, `detail-quota`, `matchup-analyze`. Déploiement auto via GitHub Action sur push.
-- `detail-quota` (F3 Lot 2) : quota anonyme de consultation du **détail** d'un match, SÉPARÉ du limiteur de recherche (Lot 1). `verify_jwt = false`, public. Clé `rate:detail:ip:{ip}` (dictionnaire `matchId→ts`, 10 matchs DISTINCTS/IP/h, fenêtre glissante) — cf. `_shared/ip-rate-limit.ts` (`peekDetailRateLimit`/`commitDetailRateLimit`/`riotCacheDetailBackend`). ⚠️ Ces limiteurs IP détournent `riot_cache` comme KV : tout nouveau `function_name` DOIT être ajouté à la contrainte `riot_cache_function_name_check` (sinon `23514` silencieux avalé par le fail-open des backends → compteur jamais persisté). Ajoutés par la migration `20260719000001` : `'public-search'` (Lot 1) + `'detail-quota'` (Lot 2). Deux actions : `GET` → PEEK (lecture seule, alimente l'affichage « X/10 ») ; `POST { matchId }` → COMMIT (réserve un créneau, **idempotent par match** dans la fenêtre → re-vue gratuite ; 429 si budget épuisé + match neuf). Aucune donnée Riot touchée.
+- `detail-quota` (F3 Lot 2) : quota anonyme de consultation du **détail** d'un match, SÉPARÉ du limiteur de recherche (Lot 1). `verify_jwt = false`, public. Clé `rate:detail:ip:{HMAC de l'IP}` (dictionnaire `matchId→ts`, 10 matchs DISTINCTS/IP/h, fenêtre glissante) — cf. `_shared/ip-rate-limit.ts` (`peekDetailRateLimit`/`commitDetailRateLimit`/`riotCacheDetailBackend`). ⚠️ Ces limiteurs IP détournent `riot_cache` comme KV : tout nouveau `function_name` DOIT être ajouté à la contrainte `riot_cache_function_name_check` (sinon `23514` silencieux avalé par le fail-open des backends → compteur jamais persisté). Ajoutés par la migration `20260719000001` : `'public-search'` (Lot 1) + `'detail-quota'` (Lot 2). Deux actions : `GET` → PEEK (lecture seule, alimente l'affichage « X/10 ») ; `POST { matchId }` → COMMIT (réserve un créneau, **idempotent par match** dans la fenêtre → re-vue gratuite ; 429 si budget épuisé + match neuf). Aucune donnée Riot touchée.
   - ⚠️ **DEUX contraintes distinctes à tenir synchronisées** : `riot_cache_function_name_check` (le KV détourné par les limiteurs IP) **ET** `riot_rate_limits_function_name_check` (le limiteur atomique `isRateLimited`, `_shared/rate-limit.ts`, qui appelle `fn_riot_rate_increment`). Elles avaient divergé (public-search/detail-quota ajoutées à `riot_cache` par `20260719000001` mais jamais à `riot_rate_limits`) — c'est cette divergence qui produit la classe de bug ci-dessus. La migration `20260728000001` (socle `riot-live-game`) les réaligne sur la même liste de 9 valeurs et **corrige explicitement** une affirmation périmée de `20260719000001` (« riot_rate_limits N'est PAS concernée ») : ce n'était vrai que pour les limiteurs KV de l'époque, pas pour une EF future qui appellerait `isRateLimited()` sous un nouveau nom. Toute nouvelle EF utilisant `isRateLimited()` doit ajouter son nom aux DEUX contraintes.
   - **Câblage** : `/matches/[region]/[riotId]` (public) peek au chargement + bouton « Voir tous les détails » par match affichant le quota restant → COMMIT au clic puis navigation (connecté = illimité, aucun peek/compteur). La page `/match/[platform]/[matchId]` est désormais **accessible aux non-connectés** : anonyme → COMMIT au chargement (idempotent : gratuit si le bouton a déjà réservé le match → **pas de 429 surprise**), 429 → message « quota atteint, connecte-toi » ; connecté → accès illimité (highlight profil + rang inchangés).
 - ⚠️ **Piège backend — validation PUUID dans `riot-matches`** (résolu 23/06/2026) : la fonction accepte `?puuid=` OU `?gameName=&tagLine=`. La regex `PUUID_RE` validait à l'origine un **UUID v4 (36 car., format `8-4-4-4-12`)** — or ce format est précisément le **GUID anonymisé du LCU**, PAS un vrai PUUID Riot (**78 car.**, charset `[A-Za-z0-9_-]`). Conséquence : tout appel `?puuid=` avec un vrai PUUID renvoyait `400 {"error":"Format PUUID invalide."}`. Le chemin `gameName/tagLine` n'était PAS touché (le puuid y est résolu côté serveur via account-v1 et n'est jamais soumis à `PUUID_RE`), d'où un bug **latent** : le site n'utilise que le chemin Riot ID, et le 1er consommateur `?puuid=` (app WPF `WyrmBackendService.GetMatchIdsByPuuidAsync`) l'a révélé. **Correctif** : `PUUID_RE = /^[A-Za-z0-9_-]{70,128}$/` (charset borné → anti path-injection ; le puuid est en plus `encodeURIComponent`'d avant l'appel Riot). **Règle** : toute validation de PUUID côté backend cible ce format, JAMAIS un UUID.
@@ -1827,7 +1848,7 @@ SECURITY DEFINER, `REVOKE FROM PUBLIC`, **aucun GRANT** → service_role uniquem
   - **Décision 1 — « pas en partie » = 200 porteur, jamais 404** : c'est l'état nominal d'un joueur, pas une erreur (`{ in_game: false, requested_puuid }`). Spectator-v5 renvoie lui-même un 404 upstream aussi bien pour « pas en partie » que pour « puuid inconnu » (Riot ne distingue pas les deux) — sans conséquence ici, car côté chemin puuid l'existence n'est de toute façon jamais vérifiée, et côté chemin Riot ID elle l'a déjà été par account-v1 juste avant. Le vrai 404 client (`{ error: 'Invocateur introuvable.' }`) ne peut venir QUE d'account-v1 (Riot ID inexistant), jamais de spectator-v5.
   - **Décision 2 — TTL variable, jamais le fallback de `TTL_MS`** : 30s si `in_game:false` ou écran de chargement (`game_start_time === 0`), 5 min si en partie (donnée spectator immuable une fois la game lancée). Toujours passé explicitement via le 4ᵉ paramètre `expiresAtIso` de `cacheSet` — l'entrée `TTL_MS['riot-live-game']` (30s) n'est qu'un filet de sécurité si un futur appel omettait ce paramètre.
   - **Décision 3 — mutualisation par partie** : sur MISS, la réponse Riot contient les 10 participants → le MÊME corps (strictement centré partie, **sans** `requested_puuid`) est écrit sous les 10 clés `live:{platform}:puuid:{puuid}` + une clé `live:{platform}:game:{game_id}` (observabilité). Un seul appel Riot couvre donc les 10 joueurs. `requested_puuid` est ajouté **à la réponse**, après lecture du cache, jamais au corps stocké — sinon un joueur B recevrait un corps marqué « demandé : A ». Chemin confort (`gameName`/`tagLine`) : clé additionnelle dédiée `live:{platform}:name:{gameName}:{tagLine}` (privée à cette identité, contrairement aux clés puuid/game) permettant un HIT total (0 appel Riot, même pas account-v1) sur une requête répétée.
-  - **Ordre des gardes** : CORS → feature flag (403) → validation params (400) → `isRateLimited` (429) → `checkIpRateLimit` (429, bucket `public-search` **partagé** avec `riot-matches` — `riotCacheBackend()` sans argument ; la clé réelle `rate:ip:{ip}` est câblée en dur, un `fn` différent ne changerait que la colonne `function_name`) → `cacheGet` (HIT) → `cacheGetNegative` (HIT-NEG) → `isCircuitOpen` (STALE ou 503 `quota_exceeded`) → appels Riot.
+  - **Ordre des gardes** : CORS → feature flag (403) → validation params (400) → `isRateLimited` (429) → `checkIpRateLimit` (429, bucket `public-search` **partagé** avec `riot-matches` — `riotCacheBackend()` sans argument ; la clé réelle `rate:ip:{HMAC de l'IP}` est câblée en dur, un `fn` différent ne changerait que la colonne `function_name`) → `cacheGet` (HIT) → `cacheGetNegative` (HIT-NEG) → `isCircuitOpen` (STALE ou 503 `quota_exceeded`) → appels Riot.
   - **Comptage quota réel** (comme `riot-matches`, aucune entrée forfaitaire dans `RIOT_CALLS`) : 1 appel sur le chemin puuid (spectator-v5 seul), 2 sur le chemin Riot ID (account-v1 + spectator-v5).
   - **`ranks: null`** en V1 — emplacement réservé pour l'enrichissement serveur futur (winrate par champion, Scope Raisonnable), même motif que le `role?` optionnel de `matchup-analyze` : rétrocompatible par construction, aucun client à redéployer le jour où le serveur le remplit.
   - ⚠️ **429 « server » de Riot ≠ notre quota** (mesuré le 2026-07-28) : le service spectator EUW1 déleste **par intermittence** (~1 appel sur 3 refusé) avec `x-rate-limit-type: server` et `retry-after` 20-30 s, **alors que la clé est très loin de ses plafonds** (SPECTATOR-V5 : 3000 req/10 s) et que le circuit breaker est fermé. Les trois types de 429 Riot n'ont pas le même sens : `application` et `method` nous incriminent, **`server` non — c'est l'endpoint saturé en amont**. Ne PAS diagnostiquer ça comme un dépassement de quota ni comme un problème de périmètre de clé. L'EF le traduit en **503 `{ reason: 'riot_busy', retry_after_s }` + header `Retry-After`** (et non en 429, qui est réservé à NOS limiteurs) et ne mémorise rien — l'état de la partie est inconnu. Le front doit reproposer l'action, pas afficher un échec dur.
