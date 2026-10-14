@@ -78,12 +78,23 @@ describe('pages légales — la bascule de langue change bien le document', () =
     expect(en).toContain('Not affiliated with Riot Games')
   })
 
-  it.each(PAGES)('$route — la date de mise à jour est la même, formatée par langue', ({ Content }) => {
-    // Formatée depuis l'ISO `2026-09-11` : même jour, deux écritures. Une date
+  // Date attendue par page : chaque document évolue à son rythme (la politique de
+  // confidentialité a été mise à jour seule le 2026-10-14, chantier confidentialité).
+  const UPDATED: Record<string, { fr: string; en: string }> = {
+    '/confidentialite':  { fr: '14 octobre 2026',   en: '14 October 2026' },
+    '/mentions-legales': { fr: '11 septembre 2026', en: '11 September 2026' },
+    '/cgu':              { fr: '11 septembre 2026', en: '11 September 2026' },
+    '/cgv':              { fr: '11 septembre 2026', en: '11 September 2026' },
+  }
+
+  it.each(PAGES)('$route — la date de mise à jour est la même, formatée par langue', ({ route, Content }) => {
+    // Formatée depuis l'ISO du dictionnaire : même jour, deux écritures. Une date
     // rédigée à la main dans chaque dictionnaire finirait par diverger — et pour
     // les CGV, cette date EST la version enregistrée avec la preuve.
-    expect(render(Content, 'fr')).toContain('Dernière mise à jour : 11 septembre 2026')
-    expect(render(Content, 'en')).toContain('Last updated: 11 September 2026')
+    const d = UPDATED[route]
+    expect(d, `date attendue manquante pour ${route}`).toBeDefined()
+    expect(render(Content, 'fr')).toContain(`Dernière mise à jour : ${d.fr}`)
+    expect(render(Content, 'en')).toContain(`Last updated: ${d.en}`)
   })
 
   it.each(PAGES)('$route — navigation croisée traduite, sans lien vers soi-même', ({ route, Content }) => {
