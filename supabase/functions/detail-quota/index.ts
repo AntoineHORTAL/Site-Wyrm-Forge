@@ -1,5 +1,5 @@
 // Edge Function : quota de consultation du DÉTAIL d'un match pour les visiteurs
-// anonymes (F3 Lot 2). SÉPARÉE du limiteur de recherche (Lot 1, clé `rate:ip:{ip}`).
+// anonymes (F3 Lot 2). SÉPARÉE du limiteur de recherche (Lot 1, clé `rate:ip:{empreinte de l'IP}`).
 //
 // Deux actions, aucune donnée Riot n'est touchée ici :
 //   • GET  → PEEK : lecture seule du quota (aucune mutation). Alimente l'affichage

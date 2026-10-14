@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     //    (start>0), riot-rank et riot-match-detail ne consomment pas le budget → une
     //    recherche = un incrément, fidèle au sens « 30 recherches ». Placé avant la lecture
     //    du cache (comme isRateLimited) : un dépassement rejette AVANT toute résolution Riot.
-    //    Bucket partagé par IP (clé `rate:ip:{ip}`), non-atomique (compromis assumé, cf. helper).
+    //    Bucket partagé par IP (clé `rate:ip:{empreinte de l'IP}`), non-atomique (compromis assumé, cf. helper).
     //    Valeur généreuse : le burst atomique 20/min + le circuit breaker journalier (1000
     //    appels Riot) restent les vraies barrières ; 30/h borne le scraping soutenu sans
     //    gêner un humain qui consulte plusieurs joueurs.

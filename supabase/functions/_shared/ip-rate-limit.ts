@@ -1,9 +1,15 @@
 // F3 — Lot 1 : rate limit par IP visiteur pour la recherche publique.
 //
 // 10 recherches / IP / heure, fenêtre GLISSANTE, stockée dans `riot_cache`
-// (clé `rate:ip:{ip}`, `response_body` = liste d'horodatages epoch ms de la
-// dernière heure). Vrai glissant : à chaque appel on ne garde que les
+// (clé `rate:ip:{empreinte}`, `response_body` = liste d'horodatages epoch ms de
+// la dernière heure). Vrai glissant : à chaque appel on ne garde que les
 // horodatages < 1h, on refuse si ≥ 10, sinon on ajoute « maintenant ».
+//
+// 🔒 L'IP n'est JAMAIS écrite en clair : la clé porte son HMAC (`ip-hash.ts`),
+// promesse de la politique de confidentialité. Secret absent ⇒ aucun compteur
+// n'est écrit et la requête passe (fail-open, comme `isRateLimited`), avec une
+// erreur dans les logs. Écrire l'IP brute « en attendant » n'est pas une option.
+// Les clés `rate:*` sont purgées dès leur expiration (pg_cron, 20261014000001).
 //
 // La logique (extraction IP + fenêtre glissante) est PURE et prend un
 // `RateBackend` injectable → testable hors Deno (Node/curl). Le backend
@@ -15,6 +21,8 @@
 // simultanées de la MÊME IP peuvent sur-compter d'une unité. Acceptable pour de
 // l'anti-scraping (pas une frontière de sécurité).
 
+import { hmacHex, ipHashSecretFromEnv } from './ip-hash.ts'
+
 export const IP_RATE_LIMIT = 10                 // recherches autorisées
 export const IP_WINDOW_MS  = 60 * 60 * 1000     // par IP et par heure (glissante)
 
@@ -25,7 +33,6 @@ export interface RateBackend {
 
 export interface RateResult {
   allowed: boolean
-  ip: string
   remaining: number      // recherches restantes dans la fenêtre (0 si refusé)
   retryAfterS: number    // secondes avant qu'un créneau se libère (0 si autorisé)
 }
@@ -45,6 +52,22 @@ export function extractIp(req: Request): string {
   return 'unknown'
 }
 
+/** Options communes aux trois limiteurs ; `secret` sert aux tests (sinon : env). */
+interface LimitOpts { limit?: number; windowMs?: number; now?: number; secret?: string }
+
+/**
+ * Empreinte de l'IP pour la clé de stockage, ou `null` si le secret manque —
+ * l'appelant n'écrit alors RIEN et laisse passer.
+ */
+async function ipKeyPart(ip: string, secret?: string): Promise<string | null> {
+  const s = secret ?? ipHashSecretFromEnv()
+  if (!s) {
+    console.error('ip-rate-limit: RATE_LIMITE_RIOT_IP absent, limiteur par IP desactive (aucune IP stockee)')
+    return null
+  }
+  return hmacHex(ip, s)
+}
+
 /**
  * Vérifie ET incrémente le compteur glissant pour l'IP de la requête.
  * Ne bloque jamais sur erreur backend en amont (l'appelant décide) : ici on
@@ -54,13 +77,15 @@ export function extractIp(req: Request): string {
 export async function checkIpRateLimit(
   req: Request,
   backend: RateBackend,
-  opts?: { limit?: number; windowMs?: number; now?: number },
+  opts?: LimitOpts,
 ): Promise<RateResult> {
   const limit    = opts?.limit ?? IP_RATE_LIMIT
   const windowMs = opts?.windowMs ?? IP_WINDOW_MS
   const now      = opts?.now ?? Date.now()
   const ip       = extractIp(req)
-  const key      = `rate:ip:${ip}`
+  const part     = await ipKeyPart(ip, opts?.secret)
+  if (part === null) return { allowed: true, remaining: limit, retryAfterS: 0 }
+  const key      = `rate:ip:${part}`
 
   const stored = (await backend.get(key)) ?? []
   const recent = stored.filter(ts => ts > now - windowMs)
@@ -68,12 +93,12 @@ export async function checkIpRateLimit(
   if (recent.length >= limit) {
     const oldest      = Math.min(...recent)
     const retryAfterS = Math.max(1, Math.ceil((oldest + windowMs - now) / 1000))
-    return { allowed: false, ip, remaining: 0, retryAfterS }
+    return { allowed: false, remaining: 0, retryAfterS }
   }
 
   recent.push(now)
   await backend.set(key, recent, windowMs)
-  return { allowed: true, ip, remaining: limit - recent.length, retryAfterS: 0 }
+  return { allowed: true, remaining: limit - recent.length, retryAfterS: 0 }
 }
 
 // ── Backend riot_cache réel (Deno / Edge Function uniquement) ────────────────
@@ -110,12 +135,13 @@ export function riotCacheBackend(fn = 'public-search'): RateBackend {
 // ── Limiteur DÉTAIL (F3 Lot 2) — « 1 unité par MATCH DISTINCT » ──────────────
 // Différent du limiteur recherche (call-count) : ici on borne le nombre de
 // MATCHS DISTINCTS dont un visiteur anonyme consulte le détail par heure. On
-// stocke donc un dictionnaire { matchId → epoch ms } (clé `rate:detail:ip:{ip}`,
-// SÉPARÉE de `rate:ip:{ip}` de la recherche), on élague > 1h, et :
+// stocke donc un dictionnaire { matchId → epoch ms } (clé
+// `rate:detail:ip:{empreinte}`, SÉPARÉE de `rate:ip:{empreinte}` de la
+// recherche), on élague > 1h, et :
 //   • re-consulter un match DÉJÀ dans la fenêtre = gratuit (aucun débit).
 //   • un match nouveau = +1 s'il reste du budget, sinon refus.
-// Décision produit actée : le cache riot-match-detail est permanent, donc une
-// re-vue ne coûte rien côté Riot → ne pas la recompter côté quota.
+// Décision produit actée : le cache riot-match-detail garde un match 30 jours,
+// donc une re-vue dans l'heure ne coûte rien côté Riot → ne pas la recompter.
 
 export const DETAIL_RATE_LIMIT = 10                 // matchs distincts autorisés
 export const DETAIL_WINDOW_MS  = 60 * 60 * 1000     // par IP et par heure (glissante)
@@ -126,13 +152,13 @@ export interface DetailBackend {
 }
 
 export interface DetailPeek {
-  ip: string; limit: number; used: number; remaining: number; viewedIds: string[]
+  limit: number; used: number; remaining: number; viewedIds: string[]
 }
 export interface DetailCommit {
-  allowed: boolean; ip: string; remaining: number; alreadyViewed: boolean; retryAfterS: number
+  allowed: boolean; remaining: number; alreadyViewed: boolean; retryAfterS: number
 }
 
-const detailKey = (ip: string) => `rate:detail:ip:${ip}`
+const detailKey = (part: string) => `rate:detail:ip:${part}`
 
 /** Élague les entrées expirées ; garde uniquement les matchs vus dans la fenêtre. */
 function pruneViews(stored: Record<string, number> | null, now: number, windowMs: number): Record<string, number> {
@@ -149,17 +175,19 @@ function pruneViews(stored: Record<string, number> | null, now: number, windowMs
 export async function peekDetailRateLimit(
   req: Request,
   backend: DetailBackend,
-  opts?: { limit?: number; windowMs?: number; now?: number },
+  opts?: LimitOpts,
 ): Promise<DetailPeek> {
   const limit    = opts?.limit ?? DETAIL_RATE_LIMIT
   const windowMs = opts?.windowMs ?? DETAIL_WINDOW_MS
   const now      = opts?.now ?? Date.now()
   const ip       = extractIp(req)
+  const part     = await ipKeyPart(ip, opts?.secret)
+  if (part === null) return { limit, used: 0, remaining: limit, viewedIds: [] }
 
-  const recent    = pruneViews(await backend.get(detailKey(ip)), now, windowMs)
+  const recent    = pruneViews(await backend.get(detailKey(part)), now, windowMs)
   const viewedIds = Object.keys(recent)
   const used      = viewedIds.length
-  return { ip, limit, used, remaining: Math.max(0, limit - used), viewedIds }
+  return { limit, used, remaining: Math.max(0, limit - used), viewedIds }
 }
 
 /**
@@ -171,32 +199,34 @@ export async function commitDetailRateLimit(
   req: Request,
   backend: DetailBackend,
   matchId: string,
-  opts?: { limit?: number; windowMs?: number; now?: number },
+  opts?: LimitOpts,
 ): Promise<DetailCommit> {
   const limit    = opts?.limit ?? DETAIL_RATE_LIMIT
   const windowMs = opts?.windowMs ?? DETAIL_WINDOW_MS
   const now      = opts?.now ?? Date.now()
   const ip       = extractIp(req)
-  const key      = detailKey(ip)
+  const part     = await ipKeyPart(ip, opts?.secret)
+  if (part === null) return { allowed: true, remaining: limit, alreadyViewed: false, retryAfterS: 0 }
+  const key      = detailKey(part)
 
   const recent = pruneViews(await backend.get(key), now, windowMs)
   const used   = Object.keys(recent).length
 
   // Re-vue d'un match déjà compté → gratuit, aucun débit.
   if (recent[matchId] !== undefined) {
-    return { allowed: true, ip, remaining: Math.max(0, limit - used), alreadyViewed: true, retryAfterS: 0 }
+    return { allowed: true, remaining: Math.max(0, limit - used), alreadyViewed: true, retryAfterS: 0 }
   }
 
   // Budget atteint pour un match NOUVEAU → refus.
   if (used >= limit) {
     const oldest      = Math.min(...Object.values(recent))
     const retryAfterS = Math.max(1, Math.ceil((oldest + windowMs - now) / 1000))
-    return { allowed: false, ip, remaining: 0, alreadyViewed: false, retryAfterS }
+    return { allowed: false, remaining: 0, alreadyViewed: false, retryAfterS }
   }
 
   recent[matchId] = now
   await backend.set(key, recent, windowMs)
-  return { allowed: true, ip, remaining: Math.max(0, limit - Object.keys(recent).length), alreadyViewed: false, retryAfterS: 0 }
+  return { allowed: true, remaining: Math.max(0, limit - Object.keys(recent).length), alreadyViewed: false, retryAfterS: 0 }
 }
 
 /** Backend riot_cache pour le limiteur détail (dictionnaire matchId→ts). */

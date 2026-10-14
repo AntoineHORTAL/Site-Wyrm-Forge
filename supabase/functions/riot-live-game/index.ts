@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
 
     // 5. Rate limit IP glissant (anti-scraping soutenu). `riotCacheBackend()`
     // SANS argument = bucket `function_name = 'public-search'` PARTAGÉ avec
-    // riot-matches. La clé réelle du compteur (`rate:ip:{ip}`) est construite
+    // riot-matches. La clé réelle du compteur (`rate:ip:{empreinte de l'IP}`) est construite
     // EN DUR dans checkIpRateLimit — passer un `fn` différent ici ne changerait
     // QUE la colonne `function_name` (observabilité), jamais le bucket compté.
     // Croire le contraire rejouerait le bug documenté de la migration
