@@ -42,9 +42,9 @@ interface UserProfile {
   riot_rank?:     string | null
 }
 
-// Rangs LoL utilisés pour la comparaison de stats moyennes.
-// Valeurs approximatives basées sur les stats publiques de la communauté
-// (sources : op.gg statistics, lolalytics, données aggregees).
+// Rangs LoL proposés au sélecteur « Ton rang » du profil (`profiles.riot_rank`,
+// choisi par l'utilisateur). Aucune moyenne de stats n'y est attachée : la
+// comparaison au rang de la page de match, qui s'en servait, a été retirée.
 //
 // ⚠️ `key` EST la valeur écrite dans `profiles.riot_rank`, validée par
 // `chk_profiles_riot_rank` : elle ne se traduit pas. Le libellé vit dans le dico

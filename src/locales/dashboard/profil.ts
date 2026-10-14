@@ -205,12 +205,12 @@ export const profilFr = {
       done: 'Mot de passe mis à jour.',
     },
     rank: {
-      label: 'Rang League (pour comparaisons)',
+      label: 'Rang League',
       editLabel: 'Nouveau rang League',
       empty: 'Non renseigné',
       placeholder: 'Sélectionne ton rang',
       required: 'Sélectionne un rang.',
-      done: 'Rang mis à jour. Tu verras la comparaison sur la page des matchs.',
+      done: 'Rang mis à jour.',
     },
 
     /* Bloc Riot en lecture seule — la liaison se fait depuis l'onglet Accueil. */
@@ -424,12 +424,12 @@ export const profilEn: ProfilDict = {
       done: 'Password updated.',
     },
     rank: {
-      label: 'League rank (for comparisons)',
+      label: 'League rank',
       editLabel: 'New League rank',
       empty: 'Not set',
       placeholder: 'Pick your rank',
       required: 'Pick a rank.',
-      done: 'Rank updated. You will see the comparison on the matches page.',
+      done: 'Rank updated.',
     },
 
     riotTitle: 'Riot account',
