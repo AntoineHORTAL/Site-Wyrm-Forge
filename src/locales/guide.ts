@@ -460,16 +460,16 @@ const fr: GuideDict = {
     },
     'panneau-stats': {
       name: 'Panneau de stats',
-      purpose: 'Suis tes stats clés en direct et compare-les à une référence.',
+      purpose: 'Suis tes stats clés en direct et compare-les à celles de ton adversaire de lane.',
       where:
         "Onglet « Stats » de l'app pour le contenu ; onglet « Overlay » → « Bloc de stats » pour l'afficher.",
       steps: [
         "Dans l'onglet « Stats », coche les stats à afficher : CS, CS/min, Gold/min, KDA, Niveau, Score de vision.",
-        "Choisis les comparaisons : avec ton adversaire de lane, et/ou avec la moyenne de ton rang en Solo/Duo (CS/min, Gold/min, score de vision, KDA).",
+        "Coche « Comparer avec l'adversaire de lane » pour afficher ses valeurs à côté des tiennes.",
         "Dans l'onglet « Overlay », coche « Afficher le bloc de stats ».",
       ],
       inGame:
-        'Le bloc STATS affiche tes valeurs en direct, en couleur selon que tu es au-dessus ou en dessous de la référence choisie. Tu peux le déplacer.',
+        'Le bloc STATS affiche tes valeurs en direct et, si la comparaison est cochée, celles de ton adversaire de lane, en couleur selon que tu es devant ou derrière. Tu peux le déplacer.',
       screenshot: "L'onglet « Stats » de l'app avec ses cases cochées, et le bloc STATS en jeu.",
     },
     'todo-en-jeu': {
@@ -518,15 +518,15 @@ const fr: GuideDict = {
       inGame: "Dans la boutique, tes builds apparaissent parmi les sets d'objets, prêts à l'achat.",
       screenshot: "La boutique en jeu, onglet des sets d'objets, avec un build Wyrm Forge.",
     },
-    'comparaison-rang': {
-      name: 'Comparaison à ton rang',
+    'bilan-post-game': {
+      name: 'Bilan de partie',
       purpose:
-        'Après une partie, vois ce que tu as bien fait et ce qui est à travailler, par rapport aux joueurs de ton rang.',
+        'Après une partie, retrouve tes stats, celles des dix joueurs et le déroulé des objectifs.',
       where: "App : onglet « Post Game ».",
       steps: [
         'Saisis ton Riot ID (NomJoueur#TAG) et clique sur « 🔄 Analyser dernière partie ».',
-        "Laisse l'onglet ouvert : une nouvelle partie est détectée automatiquement.",
-        'Lis les « 💡 Points clés » : chaque constat compare tes stats à la moyenne de ton rang. Tu trouves aussi tes stats, celles de tous les joueurs et les objectifs clés de la partie.',
+        "Laisse l'onglet ouvert : à la fin de ta partie suivante, elle est chargée automatiquement, en général en quelques minutes.",
+        'Tu y trouves tes stats, celles de tous les joueurs et les objectifs clés de la partie. Les « 💡 Points clés » signalent une partie sans mort ou avec beaucoup de morts.',
       ],
       note: "Cette analyse n'utilise pas l'IA et ne consomme pas de braises.",
       screenshot: "L'onglet « Post Game » de l'app avec les « Points clés » d'une partie.",
@@ -907,15 +907,15 @@ const en: GuideDict = {
     },
     'panneau-stats': {
       name: 'Stats panel',
-      purpose: 'Follow your key stats live and compare them with a reference.',
+      purpose: 'Follow your key stats live and compare them with your lane opponent’s.',
       where: 'The app’s “Stats” tab for the content; “Overlay” tab → “Stats block” to show it.',
       steps: [
         'In the “Stats” tab, tick the stats to show: CS, CS/min, Gold/min, KDA, Level, Vision score.',
-        'Pick the comparisons: with your lane opponent, and/or with your rank’s Solo/Duo average (CS/min, Gold/min, vision score, KDA).',
+        'Tick “Compare with the lane opponent” to show their figures next to yours.',
         'In the “Overlay” tab, tick “Show the stats block”.',
       ],
       inGame:
-        'The STATS block shows your figures live, coloured depending on whether you are above or below the chosen reference. You can move it.',
+        'The STATS block shows your figures live and, if the comparison is ticked, your lane opponent’s, coloured depending on whether you are ahead or behind. You can move it.',
       screenshot: 'The app’s “Stats” tab with its ticked boxes, and the STATS block in game.',
     },
     'todo-en-jeu': {
@@ -962,14 +962,14 @@ const en: GuideDict = {
       inGame: 'In the shop, your builds show up among the item sets, ready to buy.',
       screenshot: 'The in-game shop, item sets tab, with a Wyrm Forge build.',
     },
-    'comparaison-rang': {
-      name: 'Comparison with your rank',
-      purpose: 'After a game, see what you did well and what to work on, compared with players of your rank.',
+    'bilan-post-game': {
+      name: 'Game summary',
+      purpose: 'After a game, get your stats, the ten players’ stats and how the objectives went.',
       where: 'App: “Post Game” tab.',
       steps: [
         'Enter your Riot ID (GameName#TAG) and click “🔄 Analyse the last game”.',
-        'Leave the tab open: a new game is detected automatically.',
-        'Read the “💡 Key points”: each one compares your stats with your rank’s average. You also get your stats, every player’s stats and the game’s key objectives.',
+        'Leave the tab open: when your next game ends, it loads automatically, usually within a few minutes.',
+        'You get your stats, every player’s stats and the game’s key objectives. The “💡 Key points” flag a game with no deaths or with many deaths.',
       ],
       note: 'This analysis does not use AI and does not use any embers.',
       screenshot: 'The app’s “Post Game” tab with a game’s “Key points”.',

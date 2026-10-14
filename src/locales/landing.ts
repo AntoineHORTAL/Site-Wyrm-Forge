@@ -172,7 +172,9 @@ export const landingFr = {
         body:
           "Wyrm Forge lit votre historique via l'API officielle de Riot Games et en tire des "
           + "statistiques par champion, par rôle et par file : évolution du KDA, des sbires par "
-          + "minute, du score de vision, comparaison avec la moyenne de votre palier. Des "
+          + "minute et du score de vision. Sur la page joueur, une comparaison avec la moyenne "
+          + "de votre rang s'affiche dès que nous avons recueilli assez de parties à ce rang : "
+          + "cette moyenne est calculée sur ces parties, pas reprise d'un autre site. Des "
           + "analyses assistées par intelligence artificielle complètent la lecture — préparation "
           + "d'un match up, bilan d'après-partie, résumé des patch notes en français. Ce sont des "
           + "indications, pas des vérités : aucune ne garantit un résultat en jeu, et elles ne "
@@ -533,7 +535,9 @@ export const landingEn: LandingDict = {
         body:
           'Wyrm Forge reads your match history through the official Riot Games API and draws '
           + 'statistics from it, by champion, by role and by queue: how your KDA, creep score per '
-          + 'minute and vision score evolve, compared with the average for your rank. '
+          + 'minute and vision score evolve. On the player page, a comparison with the average '
+          + 'for your rank appears once we have collected enough games at that rank: this '
+          + 'average is calculated from those games, not taken from another site. '
           + 'AI-assisted analyses round this out — match up preparation, post-game review, patch '
           + 'note summaries. These are indications, not truths: none of them guarantees a result '
           + 'in game, and they do not replace your own reading of the match.',
