@@ -1,6 +1,7 @@
 // Edge Function : détail complet d'un match (10 joueurs + objectifs + timeline).
 // Accès public — la clé Riot reste côté serveur.
-// Les matches terminés sont immutables : cache permanent (expires 2099).
+// Les matches terminés sont immutables, mais le corps porte les données des
+// 10 joueurs : cache de 30 jours (TTL dans _shared/cache.ts), plus permanent.
 //
 // Appel : GET /functions/v1/riot-match-detail?matchId=EUW1_XXXX&platform=euw1
 // Headers : apikey: <SUPABASE_ANON_KEY>
@@ -98,11 +99,14 @@ Deno.serve(async (req) => {
     // futur correctif s'appuie sur cette clé.
     // v2 → v3 (2026-07-31, cadrage PostGame) : ajout des runes COMPLÈTES
     // (6 perks + stat shards) au bloc participant. Le bump est nécessaire parce
-    // que le cache de cette EF est PERMANENT (expires 2099) : sans nouvelle clé,
-    // les matchs déjà vus resserviraient éternellement un corps sans runes.
-    // Les entrées v2 sont LAISSÉES EN PLACE (aucune purge) — elles expirent
-    // d'elles-mêmes en 2099 et ne coûtent que du stockage. Prix du bump : les
-    // matchs déjà consultés repayent 2 appels Riot à leur prochaine ouverture.
+    // que le cache de cette EF était alors PERMANENT (expires 2099) : sans
+    // nouvelle clé, les matchs déjà vus auraient resservi un corps sans runes.
+    // Prix du bump : les matchs déjà consultés repayent 2 appels Riot à leur
+    // prochaine ouverture.
+    // ⚠️ Depuis 20261014000001, le cache dure 30 jours et les entrées expirées
+    // (v2 comprises) sont purgées : un enrichissement du corps reste visible au
+    // plus 30 jours après son déploiement même SANS bump. Le bump reste
+    // nécessaire si l'ancien corps ne doit plus jamais être servi.
     const cacheKey = `match:v3:${routing}:${matchId}`
 
     // Résolution parallèle : cache + user JWT — getUser est nécessaire sur HIT aussi
