@@ -28,9 +28,9 @@ export const mentionsFr = {
   updated: '2026-09-11',
   intro: (
     <>
-      Informations légales relatives au site wyrm-forge.com et à l&apos;application de bureau
-      Wyrm Forge, conformément à l&apos;article 6 de la loi n° 2004-575 du 21 juin 2004 pour la
-      confiance dans l&apos;économie numérique.
+      Informations légales relatives au site wyrm-forge.com et à l’application de bureau
+      Wyrm Forge, conformément à l’article 6 de la loi n° 2004-575 du 21 juin 2004 pour la
+      confiance dans l’économie numérique.
     </>
   ),
   sections: {
@@ -90,8 +90,8 @@ export const mentionsFr = {
               07 83 28 91 06</a></li>
           </List>
           <p style={{ marginTop: 12 }}>
-            Ces coordonnées permettent d&apos;entrer en contact directement et efficacement avec
-            l&apos;éditeur, conformément à l&apos;article L221-5 du Code de la consommation.
+            Ces coordonnées permettent d’entrer en contact directement et efficacement avec
+            l’éditeur, conformément à l’article L221-5 du Code de la consommation.
           </p>
         </>
       ),
@@ -109,12 +109,12 @@ export const mentionsFr = {
           </List>
 
           <p style={{ marginTop: 16 }}><strong>Hébergeur de la base de données, de
-            l&apos;authentification et des fichiers</strong></p>
+            l’authentification et des fichiers</strong></p>
           <List>
             <li>Supabase, Inc.</li>
             <li>65 Chulia Street, #38-02/03, OCBC Centre, Singapour 049513</li>
-            <li>Région d&apos;hébergement du projet : <strong>Irlande (Union européenne)</strong>
-              — les données sont stockées et traitées sur des serveurs situés dans l&apos;UE</li>
+            <li>Région d’hébergement du projet : <strong>Irlande (Union européenne)</strong>
+              — les données sont stockées et traitées sur des serveurs situés dans l’UE</li>
             <li><a href="https://supabase.com" target="_blank" rel="noopener noreferrer"
               style={{ color: 'var(--gold-pale)' }}>supabase.com</a></li>
           </List>
@@ -123,9 +123,9 @@ export const mentionsFr = {
           <List>
             <li>Cloudflare, Inc.</li>
             <li>101 Townsend St, San Francisco, CA 94107, États-Unis</li>
-            <li>L&apos;ensemble du trafic du site transite par le réseau de Cloudflare avant
-              d&apos;atteindre l&apos;hébergement : il assure la diffusion des contenus (réseau de
-              serveurs périphériques, dont plusieurs dans l&apos;Union européenne) et la protection
+            <li>L’ensemble du trafic du site transite par le réseau de Cloudflare avant
+              d’atteindre l’hébergement : il assure la diffusion des contenus (réseau de
+              serveurs périphériques, dont plusieurs dans l’Union européenne) et la protection
               contre les attaques par déni de service et les robots</li>
             <li><a href="https://www.cloudflare.com" target="_blank" rel="noopener noreferrer"
               style={{ color: 'var(--gold-pale)' }}>cloudflare.com</a></li>
@@ -147,14 +147,14 @@ export const mentionsFr = {
         <>
           <p>
             La structure du site, son code source, son identité visuelle, ses textes et la marque
-            « Wyrm Forge » sont la propriété exclusive de l&apos;éditeur. Toute reproduction,
+            « Wyrm Forge » sont la propriété exclusive de l’éditeur. Toute reproduction,
             représentation ou exploitation, totale ou partielle, sans autorisation écrite préalable
             est interdite.
           </p>
           <p style={{ marginTop: 10 }}>
             Les contenus publiés par les utilisateurs (builds, jungle paths, scénarios, contributions
             au Workshop) restent la propriété de leurs auteurs. En les publiant sur les espaces
-            communautaires, l&apos;auteur concède à Wyrm Forge une licence non exclusive et gratuite
+            communautaires, l’auteur concède à Wyrm Forge une licence non exclusive et gratuite
             de reproduction et de représentation, limitée à leur affichage au sein du service, pour
             la durée de leur publication.
           </p>
@@ -166,12 +166,12 @@ export const mentionsFr = {
       body: (
         <>
           <p>
-            Wyrm Forge n&apos;est pas affilié, sponsorisé ni approuvé par Riot Games, Inc. ou
-            l&apos;une de ses filiales. League of Legends et Riot Games sont des marques ou marques
+            Wyrm Forge n’est pas affilié, sponsorisé ni approuvé par Riot Games, Inc. ou
+            l’une de ses filiales. League of Legends et Riot Games sont des marques ou marques
             déposées de Riot Games, Inc. League of Legends © Riot Games, Inc.
           </p>
           <p style={{ marginTop: 10 }}>
-            Les données de jeu, noms de champions, illustrations et icônes proviennent de l&apos;API
+            Les données de jeu, noms de champions, illustrations et icônes proviennent de l’API
             publique et de Data Dragon de Riot Games, et restent la propriété de Riot Games, Inc.
             Wyrm Forge les exploite dans le cadre du Riot Games API Developer Agreement.
           </p>
@@ -187,7 +187,7 @@ export const mentionsFr = {
           <a href="mailto:contact@wyrm-forge.com" style={{ color: 'var(--gold-pale)' }}>
             contact@wyrm-forge.com
           </a>{' '}
-          en précisant l&apos;URL concernée et la nature du problème. Nous traitons ces signalements
+          en précisant l’URL concernée et la nature du problème. Nous traitons ces signalements
           dans les meilleurs délais.
         </p>
       ),
@@ -199,7 +199,7 @@ export const mentionsFr = {
           <p>
             Conformément aux articles L616-1 et R616-1 du Code de la consommation, tout consommateur
             a le droit de recourir gratuitement à un médiateur de la consommation en vue de la
-            résolution amiable d&apos;un litige qui l&apos;oppose à un professionnel. Wyrm Forge
+            résolution amiable d’un litige qui l’oppose à un professionnel. Wyrm Forge
             relève du médiateur suivant :
           </p>
           {/* À COMPLÉTER PAR HORTAL — désigner un médiateur de la consommation AGRÉÉ par la
@@ -213,7 +213,7 @@ export const mentionsFr = {
             <li>Saisine en ligne : <Todo>URL de saisine du médiateur</Todo></li>
           </List>
           <p style={{ marginTop: 12 }}>
-            Le recours au médiateur suppose d&apos;avoir tenté au préalable de résoudre le litige
+            Le recours au médiateur suppose d’avoir tenté au préalable de résoudre le litige
             directement auprès de nous par une réclamation écrite.
           </p>
         </>
@@ -223,9 +223,9 @@ export const mentionsFr = {
       title: '8. Droit applicable',
       body: (
         <p>
-          Le présent site est soumis au droit français. Les conditions d&apos;utilisation du service
+          Le présent site est soumis au droit français. Les conditions d’utilisation du service
           et les règles de règlement des litiges sont détaillées dans nos conditions générales
-          d&apos;utilisation.
+          d’utilisation.
         </p>
       ),
     },
@@ -321,7 +321,7 @@ export const mentionsEn: MentionsDict = {
           <List>
             <li>Cloudflare, Inc.</li>
             <li>101 Townsend St, San Francisco, CA 94107, United States</li>
-            <li>All traffic to the site passes through Cloudflare&apos;s network before reaching
+            <li>All traffic to the site passes through Cloudflare’s network before reaching
               the hosting provider: it handles content delivery (a network of edge servers,
               several of them in the European Union) and protection against denial-of-service
               attacks and bots</li>
