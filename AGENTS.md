@@ -1477,7 +1477,9 @@ Ajouter une capture = **déposer un fichier**, sans toucher au code :
 `public/guide/<id>.webp` ou `<id>-1.webp`, `<id>-2.webp`… (`<id>` = ancre de la
 sous-section). Conversion : `node scripts/guide-shot-convert.mjs "<source.png>"
 <id>-<N> [--crop=x,y,w,h]` (WebP q85, ≤ 1600 px, jamais agrandi, source intacte).
-- `scripts/guide-shots.mjs` (lancé par `predev` / `prebuild`) écrit
+- `scripts/guide-shots.mjs` (enchaîné en tête de `npm run dev` / `build` — pas en
+  hook `pre*`, que `ignore-scripts=true` désactive en silence ; à la main :
+  `npm run guide:shots`) écrit
   `src/lib/guide-shots.generated.json` avec les dimensions, lues dans l'en-tête
   WebP (`scripts/webp-size.mjs`, sans `sharp` : il ne doit pas pouvoir casser le
   build Vercel). Le JSON est **commité** ; `guide-shots.test.ts` échoue s'il ne

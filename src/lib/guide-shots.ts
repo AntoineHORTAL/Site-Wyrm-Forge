@@ -2,7 +2,7 @@
  * Captures d'écran de `/guide` — module PUR.
  *
  * La liste vient de `guide-shots.generated.json`, produit par
- * `scripts/guide-shots.mjs` (lancé par `predev` / `prebuild`) à partir des
+ * `scripts/guide-shots.mjs` (enchaîné dans `npm run dev` / `build`) à partir des
  * fichiers déposés dans `public/guide/`. Ajouter une capture ne demande donc
  * aucune modification de code : voir l'en-tête du script pour la convention.
  *

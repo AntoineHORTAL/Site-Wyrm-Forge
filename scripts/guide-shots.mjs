@@ -1,8 +1,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Manifeste des captures du guide — `public/guide/*.webp` → JSON
 // ════════════════════════════════════════════════════════════════════════════
-// Lancé par `predev` et `prebuild` : ajouter une capture = DÉPOSER le fichier
-// dans `public/guide/`, rien d'autre. Le build suivant la découvre.
+// Enchaîné en tête de `npm run dev` et `npm run build` — volontairement PAS en
+// hook `predev`/`prebuild`, qu'un `ignore-scripts=true` désactive en silence.
+// Ajouter une capture = DÉPOSER le fichier dans `public/guide/`, rien d'autre :
+// le build suivant la découvre.
 //
 // Convention de nommage (ancre = id de sous-section, `GUIDE_ENTRY_IDS`) :
 //   <id>.webp            capture unique (affichée en premier si des -N existent)

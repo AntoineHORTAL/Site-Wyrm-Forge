@@ -3,13 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/guide-shots.mjs",
-    "dev": "next dev",
-    "prebuild": "node scripts/guide-shots.mjs",
-    "build": "next build",
+    "dev": "node scripts/guide-shots.mjs && next dev",
+    "build": "node scripts/guide-shots.mjs && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "guide:shots": "node scripts/guide-shots.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
