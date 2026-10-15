@@ -1,4 +1,16 @@
 {
+  "builds": [
+    {
+      "src": "/guide/builds-1.webp",
+      "width": 1600,
+      "height": 644
+    },
+    {
+      "src": "/guide/builds-2.webp",
+      "width": 1600,
+      "height": 699
+    }
+  ],
   "champions": [
     {
       "src": "/guide/champions-1.webp",
@@ -23,6 +35,13 @@
       "src": "/guide/match-up.webp",
       "width": 1600,
       "height": 607
+    }
+  ],
+  "patch-notes": [
+    {
+      "src": "/guide/patch-notes-1.webp",
+      "width": 1600,
+      "height": 830
     }
   ]
 }

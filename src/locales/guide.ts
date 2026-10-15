@@ -161,6 +161,12 @@ const fr: GuideDict = {
         "Le build actif n°1 du champion que tu joues s'affiche dans l'overlay (voir « Ton build en jeu »). Il sert aussi à remplir tes runes et tes sets d'objets au moment du pick.",
       screenshot:
         "L'onglet « Builds Items » de l'app avec un build marqué « ✓ Actif » et les flèches d'ordre, à côté de l'éditeur de build du site.",
+      // Les deux premières captures ne montrent que l'éditeur du site ; celle de
+      // l'app viendra en 3ᵉ (repli sur `screenshot`, numéroté).
+      shotAlts: [
+        "L'éditeur de build du site : la grille des objets avec ses filtres, et le build en cours (objets de départ, objets cœur, reste du build).",
+        "La suite de l'éditeur de build du site : les runes (arbres principal et secondaire, fragments de stats) et l'ordre des sorts niveau par niveau.",
+      ],
     },
     champions: {
       name: 'Champions',
@@ -187,6 +193,9 @@ const fr: GuideDict = {
         "Dans le tableau de bord du site, tu peux afficher un patch en plein écran ou l'exporter en image (PNG) ou en PDF.",
       ],
       screenshot: 'Un patch ouvert, avec ses faits marquants et ses sections Champions / Items / Runes.',
+      shotAlts: [
+        'Le patch 26.20 ouvert : ses compteurs (champions, objets, runes, système), ses faits marquants et le début de la section Champions.',
+      ],
     },
     'partie-en-direct': {
       name: 'Partie en direct',
@@ -628,6 +637,10 @@ const en: GuideDict = {
         'Active build no. 1 for the champion you play shows in the overlay (see “Your build in game”). It is also used to fill in your runes and item sets when you pick.',
       screenshot:
         'The app’s “Item Builds” tab with a build marked “✓ Active” and the order arrows, next to the site’s build editor.',
+      shotAlts: [
+        'The site’s build editor: the item grid with its filters, and the build in progress (starting items, core items, rest of the build).',
+        'The rest of the site’s build editor: the runes (primary and secondary trees, stat shards) and the ability order level by level.',
+      ],
     },
     champions: {
       name: 'Champions',
@@ -654,6 +667,9 @@ const en: GuideDict = {
       ],
       note: 'Patch notes are written in French only.',
       screenshot: 'An open patch, with its highlights and its Champions / Items / Runes sections.',
+      shotAlts: [
+        'Patch 26.20 open: its counters (champions, items, runes, system), its highlights and the start of the Champions section.',
+      ],
     },
     'partie-en-direct': {
       name: 'Live game',
