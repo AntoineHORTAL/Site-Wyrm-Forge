@@ -1987,6 +1987,7 @@ Une inversion de `team_id` dans ce contexte **n'entraîne aucun plantage** — c
 | `430` | Normale Aveugle |
 | `440` | Classée Flex |
 | `450` | ARAM |
+| `480` | Partie rapide (Swiftplay — ajouté le 2026-10-15, absent des trois sources d'origine ; côté WPF, à recopier) |
 | `700` | Clash |
 | `900` | URF |
 | `1020` | Légendes Uniques |

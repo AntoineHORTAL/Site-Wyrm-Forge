@@ -33,6 +33,7 @@ const queuesFr = {
   430:  'Normale Aveugle',
   440:  'Classée Flex',
   450:  'ARAM',
+  480:  'Partie rapide', // Swiftplay — queues.json officiel de Riot
   700:  'Clash',
   900:  'URF',
   1020: 'Légendes Uniques',
@@ -50,6 +51,7 @@ const queuesEn: Record<QueueId, string> = {
   430:  'Normal Blind',
   440:  'Ranked Flex',
   450:  'ARAM',
+  480:  'Swiftplay',
   700:  'Clash',
   900:  'URF',
   1020: 'One for All',
