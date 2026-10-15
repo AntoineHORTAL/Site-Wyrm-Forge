@@ -111,7 +111,7 @@ export default function SubscriptionReminder({ tier, tierExpiresAt, isAdmin, onR
         </div>
 
         <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 24 }}>
-          Renouvelle dès maintenant pour garder l&apos;accès à toutes tes fonctionnalités
+          Renouvelle dès maintenant pour garder l’accès à toutes tes fonctionnalités
           Wyrm Forge sans interruption.
         </div>
 

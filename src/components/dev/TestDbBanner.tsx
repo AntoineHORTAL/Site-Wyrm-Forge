@@ -132,7 +132,7 @@ function ConfigError({ title, detail, fix }: { title: string; detail: string; fi
         <p style={{ margin: 0, color: '#A1A1AA', fontSize: 12 }}>
           Projet de production : <code>{PROD_SUPABASE_URL}</code>
           <br />
-          Cet écran n&apos;apparaît qu&apos;en développement.
+          Cet écran n’apparaît qu’en développement.
         </p>
       </div>
     </div>

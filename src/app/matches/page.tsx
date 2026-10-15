@@ -53,8 +53,8 @@ export default function MatchesSearchPage() {
         <span className="accent-text">Historique</span> de parties
       </h1>
       <p style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 28px', maxWidth: 520 }}>
-        Entre un Riot ID (<code>GameName#TAG</code>) pour consulter l&apos;historique complet
-        d&apos;un joueur — résultat, champion, KDA, items. Aucun compte requis.
+        Entre un Riot ID (<code>GameName#TAG</code>) pour consulter l’historique complet
+        d’un joueur — résultat, champion, KDA, items. Aucun compte requis.
       </p>
 
       <PlayerSearchBar basePath="/matches" />

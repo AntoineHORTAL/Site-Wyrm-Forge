@@ -820,7 +820,7 @@ export default function SummonerPage() {
               )}
               {reachedEnd && (
                 <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                  Fin de l&apos;historique — {matches.length} parties affichées
+                  Fin de l’historique — {matches.length} parties affichées
                 </div>
               )}
             </div>

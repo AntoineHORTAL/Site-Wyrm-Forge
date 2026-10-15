@@ -76,14 +76,14 @@ export default async function ChampionsPage() {
         <p style={{ margin: '0 0 10px' }}>
           Chaque champion appartient à une ou deux des six classes du jeu —{' '}
           {ALL_TAGS.length} au total : combattant, tank, mage, assassin, tireur et support. La
-          classe indique le rôle qu&apos;il tient en partie plus que la voie où il se joue : un
+          classe indique le rôle qu’il tient en partie plus que la voie où il se joue : un
           même champion peut être joué en solo, en jungle ou en duo selon la composition.
         </p>
         <p style={{ margin: 0 }}>
           La <strong>difficulté</strong> est la note que Riot attribue à chaque champion, de 1 à 10.
-          Elle mesure l&apos;exigence mécanique — combos, précision des compétences, gestion des
-          ressources — et non la puissance : un champion facile n&apos;est pas un champion faible.
-          Si tu débutes sur une voie, les notes de 1 à 3 demandent le moins d&apos;apprentissage
+          Elle mesure l’exigence mécanique — combos, précision des compétences, gestion des
+          ressources — et non la puissance : un champion facile n’est pas un champion faible.
+          Si tu débutes sur une voie, les notes de 1 à 3 demandent le moins d’apprentissage
           avant de pouvoir se concentrer sur le placement et les objectifs.
         </p>
       </div>
