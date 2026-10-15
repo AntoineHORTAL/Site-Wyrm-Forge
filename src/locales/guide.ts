@@ -40,8 +40,16 @@ export interface GuideEntryText {
   inGame?: string
   /** Mise en garde explicite (non-synchronisation, langue…). */
   note?: string
-  /** Description de la capture d'écran attendue (placeholder visible). */
+  /**
+   * Description de la capture. Affichée dans l'encadré « à venir » tant qu'aucune
+   * image n'existe, puis sert de texte alternatif par défaut (`lib/guide-shots.ts`).
+   */
   screenshot: string
+  /**
+   * Texte alternatif propre à chaque capture, dans l'ordre des fichiers
+   * (`<id>-1.webp`, `<id>-2.webp`…). Facultatif : absent, c'est `screenshot` qui sert.
+   */
+  shotAlts?: string[]
 }
 
 export interface GuideDict {
@@ -69,6 +77,8 @@ export interface GuideDict {
     inGame: string
     note: string
     screenshot: string
+    /** Texte réservé aux lecteurs d'écran sur le lien vers la capture en taille réelle. */
+    openFull: string
   }
   defaultTier: string
   entries: Record<GuideEntryId, GuideEntryText>
@@ -130,6 +140,7 @@ const fr: GuideDict = {
     inGame: 'Ce que tu vois en jeu',
     note: 'À savoir :',
     screenshot: "Capture d'écran à venir",
+    openFull: '(ouvre la capture en taille réelle dans un nouvel onglet)',
   },
   defaultTier: 'Gratuit (Apprenti)',
   entries: {
@@ -160,6 +171,10 @@ const fr: GuideDict = {
         'Ouvre sa fiche pour voir ses statistiques, ses sorts, son histoire et des conseils pour le jouer ou jouer contre lui.',
       ],
       screenshot: 'La page Champions du site avec la recherche, et la fiche d’un champion ouverte.',
+      shotAlts: [
+        'La page Champions du site : la présentation, la recherche, les filtres par classe et par difficulté, et la grille des champions.',
+        'La fiche d’Ahri : sa classe, sa difficulté, son histoire, ses statistiques au niveau 1 et ses sorts.',
+      ],
     },
     'patch-notes': {
       name: 'Patch notes',
@@ -202,7 +217,7 @@ const fr: GuideDict = {
       aiSteps: [
         'Lance une « Analyse rapide » ou une « Analyse détaillée » : si ton solde de braises ne suffit pas, le nombre nécessaire s’affiche. Ton solde se recharge chaque semaine.',
       ],
-      screenshot: 'Le Match Up du site avec deux alliés, deux ennemis et le radar de comparaison des stats.',
+      screenshot: 'Le Match Up du site en 1v1, Ahri contre Akali, avec le rôle, le niveau et le build de chaque champion, et le radar de comparaison des stats.',
     },
     'workshop-builds': {
       name: 'Workshop Builds',
@@ -280,6 +295,9 @@ const fr: GuideDict = {
         'Plus bas : la tendance victoires / défaites, les champions joués, la répartition par rôle et par mode de jeu.',
       ],
       screenshot: "L'onglet Stats du site avec les indicateurs du haut et la tendance des 20 parties.",
+      shotAlts: [
+        "L'onglet Stats du site avec les indicateurs du haut, la tendance des 20 dernières parties et le tableau des champions joués.",
+      ],
     },
     'bilan-ia': {
       name: 'Bilan IA',
@@ -589,6 +607,7 @@ const en: GuideDict = {
     inGame: 'What you see in game',
     note: 'Good to know:',
     screenshot: 'Screenshot coming',
+    openFull: '(opens the full-size screenshot in a new tab)',
   },
   defaultTier: 'Free (Apprentice)',
   entries: {
@@ -619,6 +638,10 @@ const en: GuideDict = {
         'Open its page to see its stats, spells, lore and tips for playing it or playing against it.',
       ],
       screenshot: 'The site’s Champions page with the search, and one champion page open.',
+      shotAlts: [
+        'The site’s Champions page: the introduction, the search, the class and difficulty filters, and the champion grid.',
+        'Ahri’s page: her class, difficulty, lore, level 1 stats and abilities.',
+      ],
     },
     'patch-notes': {
       name: 'Patch notes',
@@ -658,7 +681,7 @@ const en: GuideDict = {
       aiSteps: [
         'Run a “Quick analysis” or a “Detailed analysis”: if your ember balance is too low, the number needed is shown. Your balance refills every week.',
       ],
-      screenshot: 'The site’s Match Up with two allies, two enemies and the stat comparison radar.',
+      screenshot: 'The site’s Match Up in 1v1, Ahri against Akali, with each champion’s role, level and build, and the stat comparison radar.',
     },
     'workshop-builds': {
       name: 'Workshop Builds',
@@ -733,6 +756,9 @@ const en: GuideDict = {
         'Further down: your win / loss trend, the champions you played, and your split by role and by game mode.',
       ],
       screenshot: 'The site’s Stats tab with the headline figures and the 20-game trend.',
+      shotAlts: [
+        'The site’s Stats tab with the headline figures, the trend over the last 20 games and the table of champions played.',
+      ],
     },
     'bilan-ia': {
       name: 'AI review',

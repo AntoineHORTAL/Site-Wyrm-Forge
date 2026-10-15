@@ -1061,6 +1061,17 @@ body:has(.guide-main) .land-footer {
 }
 .guide-shot figcaption { display: grid; gap: 6px; max-width: 52ch; }
 .guide-shot-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+/* Captures réelles (`Shots`) : une par ligne, pleine largeur de la carte. Le lien
+   ouvre le fichier en taille réelle — sur mobile, c'est là qu'on zoome. */
+.guide-shots { display: grid; gap: 12px; }
+.guide-shot-figure { margin: 0; }
+.guide-shot-link { display: block; border-radius: 8px; }
+.guide-shot-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.guide-shot-img {
+  display: block; width: 100%; height: auto;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg);
+}
+.guide-shot-link:hover .guide-shot-img { border-color: var(--border-h); }
 
 /* Bouton flottant « retour au sommaire » (`BackToToc`). Visible seulement quand
    le sommaire est hors écran ET que le footer ne l'est pas : il ne recouvre

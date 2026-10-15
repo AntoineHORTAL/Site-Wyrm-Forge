@@ -1,0 +1,28 @@
+{
+  "champions": [
+    {
+      "src": "/guide/champions-1.webp",
+      "width": 1332,
+      "height": 1152
+    },
+    {
+      "src": "/guide/champions-2.webp",
+      "width": 1334,
+      "height": 1169
+    }
+  ],
+  "historique-stats": [
+    {
+      "src": "/guide/historique-stats-1.webp",
+      "width": 1600,
+      "height": 796
+    }
+  ],
+  "match-up": [
+    {
+      "src": "/guide/match-up.webp",
+      "width": 1600,
+      "height": 607
+    }
+  ]
+}

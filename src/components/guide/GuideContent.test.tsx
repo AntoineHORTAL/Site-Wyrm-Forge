@@ -4,6 +4,7 @@ import { landingDicts, type Lang } from '@/locales/landing'
 import { guideDicts } from '@/locales/guide'
 import { GUIDE_ENTRY_IDS, guideFlagKeys, visibleGuide } from '@/lib/guide'
 import { GUIDE_APP_VERSION } from '@/lib/guide-release'
+import { guideShotAlt, guideShotIds, guideShots } from '@/lib/guide-shots'
 
 /**
  * Rendu de `/guide`. `renderToStaticMarkup` n'exécute aucun effet : ce qui sort
@@ -63,11 +64,32 @@ describe('rendu de la page', () => {
     expect(textOf(render('en'))).not.toBe(textOf(render('fr')))
   })
 
-  it('chaque sous-section porte son emplacement de capture, visible', () => {
+  it('chaque sous-section porte exactement un bloc de capture : images OU encadré « à venir »', () => {
     const html = render('fr')
     for (const id of GUIDE_ENTRY_IDS) expect(html).toContain(`data-guide-screenshot="${id}"`)
     expect(html.match(/data-guide-screenshot=/g)).toHaveLength(GUIDE_ENTRY_IDS.length)
-    expect(textOf(html)).toContain(guideDicts.fr.labels.screenshot)
+    const pending = GUIDE_ENTRY_IDS.filter(id => guideShots(id).length === 0)
+    const label = guideDicts.fr.labels.screenshot
+    expect(textOf(html).split(label).length - 1).toBe(pending.length)
+  })
+
+  it.each(['fr', 'en'] as const)('%s — une sous-section illustrée rend ses images, sans encadré vide', (lang) => {
+    const html = render(lang)
+    const d = guideDicts[lang]
+    for (const id of guideShotIds() as (typeof GUIDE_ENTRY_IDS)[number][]) {
+      const article = html.slice(html.indexOf(`<article id="${id}"`), html.indexOf('</article>', html.indexOf(`<article id="${id}"`)))
+      expect(article, id).not.toContain('class="guide-shot"')
+      expect(article, id).not.toContain(d.labels.screenshot)
+      const shots = guideShots(id)
+      shots.forEach((s, i) => {
+        expect(article).toContain(`href="${s.src}"`)
+        expect(article).toContain(`width="${s.width}" height="${s.height}"`)
+        expect(article).toContain('loading="lazy"')
+        const alt = guideShotAlt(d.entries[id], i, shots.length)
+          .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
+        expect(article).toContain(`alt="${alt}"`)
+      })
+    }
   })
 
   it('palier par défaut partout, palier IA seulement sur Match Up et Bilan IA', () => {
