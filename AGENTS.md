@@ -307,7 +307,7 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 42 lignes
+#### Catalogue de flags — 43 lignes
 
 **Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
@@ -320,6 +320,13 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 `sort_order = 975`, 19ᵉ enfant d'`overlay_enabled` et SEUL flag de lancement parmi eux :
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
+
+> ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
+> **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
+> l'app** qui embarque le lot 2 « overlay fenêtré » — sans la ligne, le kill switch vaut
+> `true` et ne peut pas être coupé. Sur TEST, exécutée **hors historique** (`supabase db
+> query --linked -f` depuis un worktree lié à TEST ; le dépôt principal reste lié à PROD).
+> Retirer cette ligne une fois appliquée en PROD.
 
 > ⚠️ Migration `20261013000001` **appliquée sur TEST seulement** (2026-10-13), pas en
 > PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
@@ -336,18 +343,20 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > - TEST a **plusieurs migrations de retard** sur PROD : `20260911000001/2` (drops
 >   tournois/prac) **et suivantes**. Un `supabase db push` sur TEST les appliquerait
 >   toutes d'un coup.
-> - `20261012000001` (2026-10-12) et `20261013000001` (2026-10-13) y ont été exécutées
->   **hors historique** (fichier seul, `supabase db query -f`, pas de `db push`) : les
->   lignes `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
->   existent sur TEST, mais ces migrations ne sont pas inscrites dans
+> - `20261012000001` (2026-10-12), `20261013000001` (2026-10-13) et `20261015000001`
+>   (2026-10-15) y ont été exécutées **hors historique** (fichier seul, `supabase db
+>   query -f`, pas de `db push`) : les lignes `minimap_structure_detection_enabled`,
+>   `overlay_show_nexus_turret_timers` et `overlay_game_window_follow_enabled` existent
+>   sur TEST, mais ces migrations ne sont pas inscrites dans
 >   `supabase_migrations.schema_migrations`. Un futur push les rejouera (sans effet :
 >   elles sont rejouables). Dernière version inscrite relevée le 2026-10-13 :
 >   `20260911000003`.
 > - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
 >   migrations de TEST comme l'état réel de TEST : on interroge la base.
 > - À faire plus tard : un rattrapage propre de TEST (liste exacte des migrations
->   manquantes, ordre d'application, inscription de `20261012000001` et
->   `20261013000001` dans l'historique), proposé à HORTAL avant exécution.
+>   manquantes, ordre d'application, inscription de `20261012000001`,
+>   `20261013000001` et `20261015000001` dans l'historique), proposé à HORTAL avant
+>   exécution.
 
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
@@ -357,16 +366,16 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
 
-**Catégorie 2, kill switches (34)** — valeur `'true'` :
+**Catégorie 2, kill switches (35)** — valeur `'true'` :
 
 | group_key | clés |
 |---|---|
 | `riot` | `riot_history_enabled` (EF riot-matches / riot-match-detail / riot-rank), `live_game_enabled`, `riot_link_enabled` |
-| `ia` | `matchup_ai_enabled` (**seul `'degraded'`** — le repli stats+radar existe déjà), `postgame_ai_enabled` |
+| `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; le seul autre est `overlay_game_window_follow_enabled`), `postgame_ai_enabled` |
 | `contenu` | `patch_notes_enabled`, `workshop_builds_enabled`, `workshop_jungle_enabled` |
 | `site` | `ads_enabled`, `player_search_enabled`, `prac_enabled` |
 | `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` |
-| `overlay` | `overlay_enabled` (maître) + **18 enfants**, parité 1:1 avec les propriétés `Show*` de `Models/OverlayConfig.cs` (app WPF) |
+| `overlay` | `overlay_enabled` (maître) + **18 enfants**, parité 1:1 avec les propriétés `Show*` de `Models/OverlayConfig.cs` (app WPF) ; + `overlay_game_window_follow_enabled` (migration `20261015000001`, `sort_order = 990`, **`'degraded'`**), enfant du maître mais **pas un bloc** : overlay calé sur la fenêtre du jeu + per-monitor v2 (lot 2 « overlay fenêtré »). Coupé : overlay sur l'écran principal, comme avant ; le suivi s'arrête en direct, le DPI au démarrage suivant de l'app |
 
 > ⚠️ Les deux clés en gras gardent les seules features qui écrivent **hors du périmètre
 > de l'app, dans les fichiers du client League** (sets d'objets, page de runes). Ce sont
