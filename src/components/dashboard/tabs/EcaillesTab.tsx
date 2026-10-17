@@ -53,7 +53,11 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
   // façon l'équipement (`cosmetics_disabled`, migration 20261017000003) : la montrer
   // ferait cliquer sur des boutons voués à l'échec.
   const cosmeticsEnabled = useFlag('cosmetics_enabled')
-  const views = VIEWS.filter(v => v.id !== 'equipement' || cosmeticsEnabled || isAdmin)
+  // Même règle pour la Boutique (`shop_enabled`, fermée en PROD depuis le 2026-10-17) :
+  // l'encart « désactivée » de ShopPanel annonçait une boutique qui n'existe pas encore.
+  const views = VIEWS.filter(v =>
+    (v.id !== 'equipement' || cosmeticsEnabled || isAdmin) &&
+    (v.id !== 'boutique'   || shopEnabled      || isAdmin))
   const { isLoading: flagsLoading } = useFeatureFlags()
 
   const accent = c ? '#EF9F27' : '#7F77DD'
@@ -96,7 +100,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
 
       {view === 'balance'    && <BalanceHistory balance={balance} balanceLoading={balanceLoading} />}
       {view === 'quetes'     && <QuestsPanel questsEnabled={questsEnabled} onBalanceChange={onRefreshBalance} />}
-      {view === 'boutique'   && <ShopPanel shopEnabled={shopEnabled} onBalanceChange={onRefreshBalance} />}
+      {view === 'boutique'   && (shopEnabled || isAdmin) && <ShopPanel shopEnabled={shopEnabled} onBalanceChange={onRefreshBalance} />}
       {view === 'equipement' && (cosmeticsEnabled || isAdmin) && <EquipmentPanel />}
     </div>
   )
