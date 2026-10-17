@@ -1138,10 +1138,11 @@ describe("initiales de résultat — W/L partout, dans les deux langues", () => 
  * permet d'afficher un libellé traduit SANS aucun changement d'API serveur.
  */
 describe('dico common — libellés de file', () => {
-  /* Les 12 `queue_id` normatifs, recopiés depuis AGENTS.md §D. */
-  const QUEUE_IDS = [0, 400, 420, 430, 440, 450, 700, 900, 1020, 1400, 1700, 1900]
+  /* Les 13 `queue_id` normatifs, recopiés depuis AGENTS.md §D (480 Swiftplay ajouté
+     le 2026-10-15 : il s'affichait « File #480 » dans l'onglet Stats). */
+  const QUEUE_IDS = [0, 400, 420, 430, 440, 450, 480, 700, 900, 1020, 1400, 1700, 1900]
 
-  it('couvre les 12 queue_id normatifs, sans orphelin', () => {
+  it('couvre les 13 queue_id normatifs, sans orphelin', () => {
     expect(Object.keys(dashboardFr.common.queues).map(Number).sort((a, b) => a - b))
       .toEqual(QUEUE_IDS)
     expect(Object.keys(dashboardEn.common.queues).map(Number).sort((a, b) => a - b))
@@ -1160,6 +1161,8 @@ describe('dico common — libellés de file', () => {
     expect(dashboardEn.common.queues[420]).toBe('Ranked Solo/Duo')
     expect(dashboardEn.common.queues[1020]).toBe('One for All')
     expect(dashboardEn.common.queues[1400]).toBe('Ultimate Spellbook')
+    expect(dashboardEn.common.queues[480]).toBe('Swiftplay')
+    expect(dashboardFr.common.queues[480]).toBe('Partie rapide')
   })
 
   it('résout un id connu dans les deux langues', () => {

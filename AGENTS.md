@@ -1481,6 +1481,27 @@ cette page seulement via `body:has(.guide-main) .wf-nav / .land-footer`
 (`max(32px, …)`). Les marges latérales du footer sont donc passées de l'inline
 à la classe `.land-footer` (mêmes 32px) — un inline ne se surcharge pas en CSS.
 
+### Captures d'écran (`public/guide/`)
+Ajouter une capture = **déposer un fichier**, sans toucher au code :
+`public/guide/<id>.webp` ou `<id>-1.webp`, `<id>-2.webp`… (`<id>` = ancre de la
+sous-section). Conversion : `node scripts/guide-shot-convert.mjs "<source.png>"
+<id>-<N> [--crop=x,y,w,h]` (WebP q85, ≤ 1600 px, jamais agrandi, source intacte).
+- `scripts/guide-shots.mjs` (enchaîné en tête de `npm run dev` / `build` — pas en
+  hook `pre*`, que `ignore-scripts=true` désactive en silence ; à la main :
+  `npm run guide:shots`) écrit
+  `src/lib/guide-shots.generated.json` avec les dimensions, lues dans l'en-tête
+  WebP (`scripts/webp-size.mjs`, sans `sharp` : il ne doit pas pouvoir casser le
+  build Vercel). Le JSON est **commité** ; `guide-shots.test.ts` échoue s'il ne
+  correspond plus au dossier.
+- Rendu (`Shots` dans `GuideContent`) : au moins une image ⇒ les images seules,
+  chacune liée au fichier en taille réelle ; aucune ⇒ encadré « à venir » visible.
+- Texte alternatif : `shotAlts[i]` (FR **et** EN, même longueur) sinon la
+  description `screenshot`, numérotée « (i/n) » s'il y a plusieurs images. Quand
+  une capture ne montre pas exactement ce que dit `screenshot`, écrire son
+  `shotAlts` : un texte alternatif faux est pire qu'un générique.
+- `<img>` et non `next/image` : fichiers déjà optimisés, et l'optimiseur Vercel
+  compterait les variantes sur le quota du plan Hobby.
+
 ### Mettre à jour à chaque release de l'app
 1. relire `src/locales/guide.ts` contre la nouvelle version (libellés entre « ») ;
 2. `GUIDE_APP_VERSION` = version relue, `GUIDE_UPDATED` = date de mise en ligne ;
@@ -1977,6 +1998,7 @@ Une inversion de `team_id` dans ce contexte **n'entraîne aucun plantage** — c
 | `430` | Normale Aveugle |
 | `440` | Classée Flex |
 | `450` | ARAM |
+| `480` | Partie rapide (Swiftplay — ajouté le 2026-10-15, absent des trois sources d'origine ; côté WPF, à recopier) |
 | `700` | Clash |
 | `900` | URF |
 | `1020` | Légendes Uniques |

@@ -6,6 +6,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { GUIDE_APP_VERSION, GUIDE_UPDATED } from '@/lib/guide-release'
 import { GUIDE_TOC_ID, type VisibleGuideEntry, type VisibleGuideSection } from '@/lib/guide'
+import { guideShotAlt, guideShots } from '@/lib/guide-shots'
 import BackToToc from './BackToToc'
 import { formatDate } from '@/lib/intl'
 import { guideDicts, type GuideDict } from '@/locales/guide'
@@ -169,14 +170,55 @@ function Entry({ entry, d, level, heading }: {
         <p className="guide-note"><strong>{d.labels.note}</strong> {t.note}</p>
       )}
 
-      {/* Emplacement de capture — VISIBLE à dessein : une capture manquante doit
-          se voir sur la page, pas se perdre dans un commentaire. */}
+      <Shots entry={entry} t={t} d={d} />
+    </article>
+  )
+}
+
+/* Captures de la sous-section (`public/guide/`, via `lib/guide-shots.ts`).
+   Au moins une image ⇒ les images seules, jamais d'encadré vide à côté — même si
+   d'autres captures sont prévues. Aucune ⇒ encadré VISIBLE à dessein : une
+   capture manquante doit se voir sur la page, pas se perdre dans un commentaire. */
+function Shots({ entry, t, d }: {
+  entry: VisibleGuideEntry
+  t: GuideDict['entries'][VisibleGuideEntry['id']]
+  d: GuideDict
+}) {
+  const shots = guideShots(entry.id)
+
+  if (shots.length === 0) {
+    return (
       <figure className="guide-shot" data-guide-screenshot={entry.id}>
         <figcaption>
           <span className="guide-shot-label">{d.labels.screenshot}</span>
           <span>{t.screenshot}</span>
         </figcaption>
       </figure>
-    </article>
+    )
+  }
+
+  // `<img>` et non `next/image` : les fichiers sont déjà en WebP à la bonne
+  // taille, et l'optimiseur Vercel compterait chaque variante sur le quota Hobby.
+  // `width`/`height` réservent la place avant chargement (pas de décalage).
+  return (
+    <div className="guide-shots" data-guide-screenshot={entry.id}>
+      {shots.map((s, i) => (
+        <figure key={s.src} className="guide-shot-figure">
+          <a href={s.src} target="_blank" rel="noopener" className="guide-shot-link">
+            {/* eslint-disable-next-line @next/next/no-img-element -- voir ci-dessus */}
+            <img
+              src={s.src}
+              width={s.width}
+              height={s.height}
+              alt={guideShotAlt(t, i, shots.length)}
+              loading="lazy"
+              decoding="async"
+              className="guide-shot-img"
+            />
+            <span className="sr-only">{d.labels.openFull}</span>
+          </a>
+        </figure>
+      ))}
+    </div>
   )
 }
