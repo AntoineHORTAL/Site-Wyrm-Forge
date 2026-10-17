@@ -153,7 +153,7 @@ const pageTitlesFr = {
   matchup:           { title: 'Match Up',         subtitle: 'Analyse tes matchups en temps réel' },
   postgame:          { title: 'Post Game',        subtitle: 'Analyse détaillée après la partie' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'Résumés des mises à jour League of Legends' },
-  ecailles:          { title: 'La Forge',         subtitle: 'Écailles, quêtes journalières et boutique de cosmétiques' },
+  ecailles:          { title: 'La Forge',         subtitle: 'Écailles et quêtes journalières' },
   kit:               { title: 'Kit sur mesure',   subtitle: 'Un accompagnement construit pour ton jeu' },
   tarifs:            { title: 'Tarifs',           subtitle: 'Choisis ou renouvelle ton abonnement' },
 }
@@ -173,7 +173,7 @@ const pageTitlesEn: Record<PageTitleId, { title: string; subtitle: string }> = {
   matchup:           { title: 'Match Up',         subtitle: 'Analyse your matchups in real time' },
   postgame:          { title: 'Post Game',        subtitle: 'Detailed post-game analysis' },
   patchnotes:        { title: 'Patch Notes',      subtitle: 'League of Legends update summaries' },
-  ecailles:          { title: 'The Forge',        subtitle: 'Scales, daily quests and cosmetics shop' },
+  ecailles:          { title: 'The Forge',        subtitle: 'Scales and daily quests' },
   kit:               { title: 'Custom kit',       subtitle: 'Coaching built around your game' },
   tarifs:            { title: 'Pricing',          subtitle: 'Choose or renew your subscription' },
 }
