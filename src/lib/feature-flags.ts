@@ -56,6 +56,10 @@ export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
   // Timers des tourelles du nexus dans l'overlay (migration 20261013000001).
   // `surface='app'` : pendant dans `ColdStartClosed` de l'app WPF.
   'overlay_show_nexus_turret_timers',
+  // Éditeur Jungle Path du SITE, encore une maquette (migration 20261017000001).
+  // `surface='web'` comme le kit : l'éditeur de l'app est une autre feature, livrée,
+  // qui ne lit pas ce flag — donc aucun pendant dans `ColdStartClosed`.
+  'jungle_path_web_enabled',
 ])
 
 /**

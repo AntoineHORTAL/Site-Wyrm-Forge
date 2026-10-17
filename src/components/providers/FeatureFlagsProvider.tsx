@@ -6,6 +6,7 @@ import {
   readFlag, resolveFlags, startFlagsRefresh, REFRESH_INTERVAL_MS,
   type FlagRow,
 } from '@/lib/feature-flags'
+import type { LaunchTabFlags } from '@/lib/launch-tabs'
 
 /**
  * Feature flags du catalogue `app_settings`, pour TOUT le site.
@@ -105,4 +106,21 @@ export function useFlag(key: string): boolean {
 /** État complet — pour les écrans qui doivent attendre le premier chargement. */
 export function useFeatureFlags(): FeatureFlagsCtx {
   return useContext(Ctx)
+}
+
+/**
+ * Les flags de LANCEMENT qui gardent des onglets du dashboard, lus d'UN seul endroit.
+ * Consommé par la barre latérale et le routeur d'onglets (`Dashboard.tsx`) et par le
+ * tiroir mobile (`Nav.tsx`) : chacun lisait ses propres clés, et c'est ainsi que le
+ * tiroir a longtemps laissé voir Kit et Scénarios. Un onglet de lancement ajouté ici
+ * l'est pour les trois à la fois.
+ */
+export function useLaunchTabFlags(): LaunchTabFlags {
+  const { flags } = useContext(Ctx)
+  return useMemo(() => ({
+    ecaillesEnabled:  readFlag(flags, 'ecailles_enabled'),
+    scenariosEnabled: readFlag(flags, 'scenarios_enabled'),
+    kitEnabled:       readFlag(flags, 'kit_sur_mesure_enabled'),
+    jungleEnabled:    readFlag(flags, 'jungle_path_web_enabled'),
+  }), [flags])
 }

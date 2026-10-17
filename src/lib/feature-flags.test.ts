@@ -137,18 +137,18 @@ describe('politique de repli asymétrique', () => {
 
   it('la liste des flags fermés est celle du catalogue de lancement', () => {
     // ⚠️ Doit rester alignée sur les lignes kind='launch' des migrations de
-    // catalogue (20260905000001, 20260908000002, 20261012000001, puis 20261013000001), et — pour
+    // catalogue (20260905000001, 20260908000002, 20261012000001, 20261013000001, puis 20261017000001), et — pour
     // les seules clés `surface` 'shared'/'app' — sur `ColdStartClosed` de
     // `Services/FeatureFlagService.cs` (app WPF). Sans ce test, les listes
     // divergeraient en silence.
     //
-    // `kit_sur_mesure_enabled` est `surface='web'` : il n'a PAS de pendant côté
+    // `kit_sur_mesure_enabled` et `jungle_path_web_enabled` sont `surface='web'` : ils n'ont PAS de pendant côté
     // WPF, et c'est correct — l'app n'embarque pas la feature, elle ne peut donc
     // pas la laisser fuir. Les sept autres restent la liste partagée, dont
     // `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
     // (`surface='app'`).
     expect([...LAUNCH_FLAG_KEYS].sort()).toEqual([
-      'cosmetics_enabled', 'ecailles_enabled', 'kit_sur_mesure_enabled',
+      'cosmetics_enabled', 'ecailles_enabled', 'jungle_path_web_enabled', 'kit_sur_mesure_enabled',
       'minimap_structure_detection_enabled', 'overlay_show_nexus_turret_timers',
       'quests_enabled', 'scenarios_enabled', 'shop_enabled',
     ])
@@ -165,6 +165,9 @@ describe('politique de repli asymétrique', () => {
     // Le point de ce flag : tant qu'il n'est pas lancé, un catalogue absent ou
     // une panne réseau ne doit PAS ouvrir un service payant.
     expect(flagFallback('kit_sur_mesure_enabled')).toBe(false)
+    // Idem pour la maquette de l'éditeur Jungle Path du site (`surface='web'`) :
+    // fermée tant que le catalogue n'a pas répondu.
+    expect(flagFallback('jungle_path_web_enabled')).toBe(false)
   })
 })
 

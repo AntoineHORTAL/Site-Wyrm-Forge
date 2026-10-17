@@ -121,7 +121,7 @@ export const landingFr = {
       },
       {
         title: 'Routine et progression',
-        desc: 'To-do lists, scénarios de macro, statistiques et quêtes quotidiennes.',
+        desc: 'To-do lists et statistiques de tes parties.',
       },
       {
         title: '100% sécurisé',
@@ -492,7 +492,7 @@ export const landingEn: LandingDict = {
       },
       {
         title: 'Routine and progress',
-        desc: 'To-do lists, macro scenarios, statistics and daily quests.',
+        desc: 'To-do lists and statistics from your games.',
       },
       {
         title: '100% safe',

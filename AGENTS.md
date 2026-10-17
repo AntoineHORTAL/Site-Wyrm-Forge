@@ -126,6 +126,8 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 - `TabDef` type : `{ id, label, shortLabel, icon, locked?, soon? }`
 - `locked: true` → nécessite `unlocked={isAdmin}` dans SidebarBtn pour être accessible
 - `soon: true` → non cliquable, badge "Bientôt", opacité réduite
+- **Onglets gardés par un flag de LANCEMENT** (`ecailles`, `kit`, `scenarios`, `jungle`) : une seule règle, `src/lib/launch-tabs.ts`, lue via `useLaunchTabFlags()` par la sidebar, le tiroir mobile ET le routeur d'onglets. Flag fermé, pour un non-admin : pas d'entrée de navigation, et l'URL directe (`?tab=…`) rend l'**Accueil** (`resolveDashTab`) — plus d'écran « bientôt », qui annonçait la feature à qui tapait l'URL. L'onglet demandé n'est pas réécrit : si le flag s'ouvre, le même `?tab=` l'affiche. L'admin voit tout (recette), marqué « Non lancé · admin ». Un nouvel onglet de lancement s'ajoute à `isAdminOnlyEntry` et à `useLaunchTabFlags`, nulle part ailleurs.
+- **La vitrine et le guide ne citent aucune fonctionnalité fermée** : `landing.test.ts` et `guide.test.ts` échouent sur Écailles, cosmétiques, quêtes, Scénarios, Kit sur mesure. À la sortie d'une feature, retirer son motif du test en même temps qu'on écrit sa phrase.
 - **Overlay tab supprimé volontairement** — fonctionnalité réservée à l'app desktop, inutile sur le site
 
 ### Admin
@@ -307,12 +309,16 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 43 lignes
+#### Catalogue de flags — 44 lignes
 
-**Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
-`scenarios_enabled` ; `kit_sur_mesure_enabled` (migration `20260908000002`,
-`group_key = 'site'`, `sort_order = 630`) ; et `minimap_structure_detection_enabled`
+`scenarios_enabled` (lu par le site ET l'app, et par la RLS de `scenarios` depuis
+`20261017000002`, voir § table `scenarios`) ; `kit_sur_mesure_enabled` (migration `20260908000002`,
+`group_key = 'site'`, `sort_order = 630`) ; `jungle_path_web_enabled` (migration
+`20261017000001`, `surface = 'web'`, `group_key = 'site'`, `sort_order = 640` : la
+maquette de l'éditeur Jungle Path du SITE — rien à voir avec l'éditeur de l'app ni
+avec le Workshop Jungle) ; et `minimap_structure_detection_enabled`
 (migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
 capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_timers`
@@ -361,7 +367,9 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
-> aucune brique de ce service, elle ne peut pas le laisser fuir. Les sept autres
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Même cas pour
+> `jungle_path_web_enabled` (2026-10-17) : l'éditeur de l'app est une autre
+> feature, livrée, qui ne lit pas ce flag. Les sept autres
 > restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
@@ -463,9 +471,16 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
   - Une seule liste, champ `phase` par élément (pas de listes séparées).
 - **Ennemis NON stockés** (rangée décorative fixe côté UI).
 
-### RLS scenarios (owner-based, migration 20260622000001)
-- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` (INSERT + UPDATE avec `WITH CHECK` pour bloquer la réassignation de `user_id`).
+### RLS scenarios (owner-based + flag de lancement, migrations 20260622000001 et 20261017000002)
+- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` **ET** `(launch_flag_on('scenarios_enabled') OR is_admin())` (INSERT + UPDATE avec `WITH CHECK` sur le même prédicat, pour bloquer la réassignation de `user_id` et toute écriture flag fermé).
 - `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
+
+> 🔴 **`20261017000002` — la table obéit au flag `scenarios_enabled`.** Avant, le flag n'était qu'un rideau : le site cachait l'entrée de navigation mais `/?tab=scenarios` ouvrait l'onglet, l'app ne lisait pas le flag, et la base ne le regardait pas — tout compte connecté faisait son CRUD au `curl`. Désormais, flag fermé : SELECT → `[]`, INSERT → `42501`, UPDATE / DELETE → 0 ligne, pour tout compte non admin. Les lignes ne sont **pas supprimées**, elles réapparaissent à l'ouverture. Ouvrir le flag depuis l'AdminTab prend effet **à la requête suivante**, sans déploiement (la policy relit `app_settings`) ; les clients suivent à leur rythme (site 60 s, app 5 min).
+> - **Passe-droit admin** (décision HORTAL, 2026-10-17) : un admin lit et écrit **ses propres** scénarios flag fermé, pour recetter. Le prédicat de propriété reste obligatoire pour lui aussi.
+> - **`public.launch_flag_on(p_key text) → boolean`** : SECURITY DEFINER, STABLE, EXECUTE `authenticated` seul (règle des trois instructions ; `authenticated` est OBLIGATOIRE, les policies s'évaluent sous son rôle). Vrai si la ligne est un flag **public** (jamais une valeur de tuning : la fonction est appelable par tout compte connecté) valant `'true'`, ET tous ses ancêtres `parent_key` aussi. Ligne absente ⇒ `false` (repli fermé). Réutilisable pour la prochaine table à garder derrière un flag de lancement.
+> - La migration **se vérifie elle-même** (bloc `DO` : privilèges réels, et exactement 4 policies sur la table, toutes relisant le flag — une 5ᵉ policy permissive contournerait tout).
+> - Tests : `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` (14 lignes, `ROLLBACK` final, **TEST seulement** : le script bascule le flag dans sa transaction).
+> - ⚠️ Une app de bureau **antérieure** à la release qui lit le flag affiche encore l'onglet : flag fermé, elle y voit une liste vide et ses sauvegardes échouent (refus RLS, journalisé en debug, sans plantage). C'est la barrière qui fait son travail.
 
 > ✅ **`20260901000003` — jeu de policies ad-hoc retiré. APPLIQUÉE ET VALIDÉE sur test ET prod le 2026-09-01** (`db push` manuel, sondes vertes : la sonde `anon` est passée de `200 []` à `42501`, le CRUD utilisateur est resté inchangé). Elle retire les 4 policies `"Users can ..."` — sans clause `TO`, donc PUBLIC, `anon` compris — que `20260815000005` avait **reproduites** sans les nettoyer, pose le `REVOKE ALL ... FROM anon, authenticated` qui manquait depuis toujours, et supprime l'index `scenarios_user_idx` (préfixe strict de `idx_scenarios_user_time`). Les 4 policies `scn_*` restent seules en place.
 >
@@ -480,7 +495,8 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 > Correction éventuelle = policies avec jointure sur `profiles.tier`, dans une migration dédiée. **Non planifiée à ce jour.**
 
 ### Consommateurs
-- **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro).
+- **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro), gardé par `scenarios_enabled` : flag fermé, ni entrée de navigation ni onglet, `/?tab=scenarios` rend l'Accueil (`resolveDashTab`) — l'admin garde tout.
+- **App WPF** : onglet et bouton de navigation `NavScenarios` gardés par `scenarios_enabled` (lu par `FeatureFlagService`) — invisibles pour tout le monde flag fermé, l'app n'ayant pas de notion d'admin. Recette avant lancement : flag ouvert sur TEST + installation du canal preview.
 - **App WPF** : `ScenarioService` (CRUD PostgREST sous **JWT user**, calqué sur `ForgeService`) — port en cours (Lot 0 : migration + modèles miroir + service ; Lot 1 : vue lecture seule `ScenariosTab`). Carte de fond = **même art que le site** (DDragon `map11` v14.24.1, `ScenarioService.MapImageUrl`), pas la minimap in-game — garantit l'alignement des tracés.
 
 ---
@@ -1339,7 +1355,7 @@ AND (NOT (EXISTS ( SELECT 1
 | Accueil | UI placeholder (pas de vraies données Riot) |
 | To-Do Lists | Fonctionnel (Supabase, Realtime actif) |
 | Stats | UI placeholder |
-| Jungle Path | Fonctionnel (données locales) |
+| Jungle Path | **Maquette** — parcours de démonstration en dur, dessin en mémoire perdu au rechargement, « Sauvegarder » sans action. Masquée par `jungle_path_web_enabled` (fermé) ; le vrai éditeur est celui de l'app |
 | Builds Items | Fonctionnel (données locales) |
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |

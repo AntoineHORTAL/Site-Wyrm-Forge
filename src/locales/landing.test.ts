@@ -316,3 +316,25 @@ describe('formatage des prix', () => {
     })
   })
 })
+
+describe('la vitrine n\'annonce aucune fonctionnalité pas encore lancée', () => {
+  // Une feature gardée par un flag de LANCEMENT fermé (Écailles, boutique,
+  // cosmétiques, quêtes, Scénarios, Kit sur mesure, éditeur Jungle Path du site)
+  // est invisible dans le dashboard : la vitrine ne doit pas la promettre non plus.
+  // La carte « Routine et progression » citait « scénarios de macro » et « quêtes
+  // quotidiennes » jusqu'au 2026-10-17. Le jour où l'une ouvre, retirer son motif
+  // d'ici en même temps qu'on réécrit la phrase.
+  //
+  // ⚠️ « boutique » / « shop » ne sont PAS dans la liste : la vitrine et le guide
+  // parlent de la boutique DU JEU (sets d'objets), qui n'a rien à voir.
+  const INTERDITS = [
+    /écailles?/i, /\bscales\b/i, /cosmétiques?/i, /\bcosmetics?\b/i,
+    /quêtes?/i, /\bquests?\b/i, /scénarios?/i, /\bscenarios?\b/i,
+    /kit sur mesure/i, /custom kit/i, /coaching/i,
+  ]
+
+  it.each([['FR', landingFr], ['EN', landingEn]] as const)('%s', (_, dict) => {
+    const texte = JSON.stringify(dict)
+    for (const motif of INTERDITS) expect(texte, String(motif)).not.toMatch(motif)
+  })
+})

@@ -97,13 +97,6 @@ const errorsEn: Record<KitRpcErrorKey, string> = {
 /* ── Dictionnaire ─────────────────────────────────────────────────────────── */
 
 export const kitFr = {
-  /* Écran « bientôt » — deep-link `?tab=kit` alors que le flag est fermé.
-     L'entrée de sidebar, elle, a déjà disparu (convention `off_behavior='hidden'`).
-     Clés dédiées plutôt que réutilisation de `pitch` : ici on ne vend rien, on
-     dit seulement que ce n'est pas encore ouvert. */
-  soonTitle: 'Kit sur mesure',
-  soonText:  'Ce service ouvre bientôt. Reviens d\'ici peu.',
-
   /* Présentation du service. */
   pitch: {
     eyebrow:  'Accompagnement',
@@ -203,9 +196,6 @@ export const kitFr = {
 export type KitDict = typeof kitFr
 
 export const kitEn: KitDict = {
-  soonTitle: 'Custom kit',
-  soonText:  'This service opens soon. Check back shortly.',
-
   pitch: {
     eyebrow:  'Coaching',
     title:    'A kit built for you',

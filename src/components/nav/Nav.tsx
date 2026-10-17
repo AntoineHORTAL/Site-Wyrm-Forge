@@ -15,7 +15,7 @@ import type { DashTab } from '@/lib/session-types'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { isPaidTier } from '@/lib/subscription'
 import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
-import { useFlag } from '@/components/providers/FeatureFlagsProvider'
+import { useFlag, useLaunchTabFlags } from '@/components/providers/FeatureFlagsProvider'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
   label: string; icon: React.ReactNode; onClick: () => void
@@ -87,11 +87,10 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   // une lecture one-shot (une bascule admin n'atteignait un onglet ouvert qu'au
   // rechargement) et, surtout, aucun flag du tout pour un visiteur anonyme.
   const ecaillesEnabled = useFlag('ecailles_enabled')
-  // Mêmes flags de lancement que la barre latérale du Dashboard : le tiroir applique
-  // la même règle (isLaunchTabVisible), sinon Kit et Scénarios y fuitent.
-  const scenariosEnabled = useFlag('scenarios_enabled')
-  const kitEnabled = useFlag('kit_sur_mesure_enabled')
-  const launchFlags = { ecaillesEnabled, scenariosEnabled, kitEnabled }
+  // Mêmes flags de lancement que la barre latérale du Dashboard, lus par le MÊME
+  // hook : le tiroir applique la même règle (isLaunchTabVisible), sinon Kit,
+  // Scénarios et l'éditeur Jungle Path y fuitent.
+  const launchFlags = useLaunchTabFlags()
   const c = theme === 'mythic'
   // Deux dicos, un seul état de langue (provider unique du layout racine) :
   // `t` pour la vitrine (mode visiteur), `d.nav` pour la zone connectée.
