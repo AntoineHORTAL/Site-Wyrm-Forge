@@ -154,18 +154,18 @@ const fr: GuideDict = {
         'Crée un build : donne-lui un nom, choisis un champion, puis range tes objets par blocs (objets de départ, objets cœur…).',
         'Ajoute si tu veux des runes : sur le site, coche les composants à inclure (objets, runes, ordre des sorts) ; dans l’app, utilise le bouton « 🔮 Runes ».',
         "Les builds sont enregistrés sur ton compte : ceux créés sur le site apparaissent dans l'app, et inversement, dès que tu es connecté.",
-        "Dans l'app, clique sur « Activer » pour qu'un build serve en partie. Si plusieurs builds sont actifs pour un même champion, l'ordre (flèches ↑ ↓) décide lequel passe en premier.",
+        "Dans l'app, clique sur « Activer » dans « Mes builds » (onglet « Builds Items ») pour qu'un build serve en partie. Si plusieurs builds sont actifs pour un même champion, l'ordre (flèches ↑ ↓) décide lequel passe en premier.",
         "Un build sans champion ne s'affiche jamais en jeu : pense à en choisir un.",
       ],
       inGame:
         "Le build actif n°1 du champion que tu joues s'affiche dans l'overlay (voir « Ton build en jeu »). Il sert aussi à remplir tes runes et tes sets d'objets au moment du pick.",
-      screenshot:
-        "L'onglet « Builds Items » de l'app avec un build marqué « ✓ Actif » et les flèches d'ordre, à côté de l'éditeur de build du site.",
-      // Les deux premières captures ne montrent que l'éditeur du site ; celle de
-      // l'app viendra en 3ᵉ (repli sur `screenshot`, numéroté).
+      screenshot: "L'éditeur de build du site et celui de l'app, avec la fenêtre des runes de l'app.",
+      // 1-2 : éditeur du site ; 3-4 : éditeur de l'app et sa fenêtre des runes.
       shotAlts: [
         "L'éditeur de build du site : la grille des objets avec ses filtres, et le build en cours (objets de départ, objets cœur, reste du build).",
         "La suite de l'éditeur de build du site : les runes (arbres principal et secondaire, fragments de stats) et l'ordre des sorts niveau par niveau.",
+        "L'éditeur de build de l'app : la grille des objets avec ses filtres, le nom et le champion du build, et ses blocs d'objets.",
+        "La fenêtre « Runes du build » de l'app : arbre primaire, arbre secondaire et fragments de stats.",
       ],
     },
     champions: {
@@ -261,10 +261,14 @@ const fr: GuideDict = {
       where:
         "App : onglet « Accueil ». Site : tableau de bord → Accueil (« Mes dernières parties ») et page de chaque joueur.",
       steps: [
-        "Dans l'app, l'onglet « Accueil » reconnaît le compte connecté au client League et affiche son historique ; ouvre une partie pour voir son détail.",
+        "Dans l'app, l'onglet « Accueil » reconnaît le compte connecté au client League et affiche son historique. Sans client détecté, il affiche le dernier compte consulté : l'historique reste visible.",
+        "Le menu « Compte : » liste les comptes détectés sur ce PC et tes comptes suivis ; choisis-en un pour afficher son historique. « ↻ Actualiser » relance la détection et recharge les parties.",
+        "« + Suivre » ajoute n'importe quel joueur EUW par son Riot ID (Nom#TAG) pour consulter son historique en lecture seule, sans lien avec ton compte. Le compte suivi reste enregistré sur ce PC ; « × Retirer » l'enlève de la liste.",
+        "Choisis le nombre de parties (10, 25, 50, 100 ou la saison actuelle). « Développer » affiche le détail d'une partie sous sa ligne ; clique sur la partie pour ouvrir sa fiche complète.",
         'Sur le site, ton historique s’affiche une fois ton compte Riot lié (voir « Lier ton compte Riot »).',
       ],
-      screenshot: "L'historique de l'onglet « Accueil » de l'app, avec une partie dépliée.",
+      screenshot:
+        "L'historique de l'onglet « Accueil » de l'app, avec le sélecteur de compte et les filtres 10 / 25 / 50 / 100 / Saison actuelle.",
     },
 
     // ── Site ──────────────────────────────────────────────────────────────
@@ -357,7 +361,8 @@ const fr: GuideDict = {
         "Lance l'app et laisse-la ouverte : dès qu'une partie démarre, l'overlay s'affiche ; il se ferme à la fin de la partie.",
         "Dans l'onglet « Overlay », coche les blocs que tu veux voir. Chaque bloc est détaillé ci-dessous.",
         "L'overlay laisse passer tes clics vers le jeu : seuls ses boutons et les zones qui servent à déplacer un bloc réagissent à la souris.",
-        "Section « Scoreboard & boutique » : coche « Masquer l'overlay pendant le scoreboard / la boutique » pour qu'il s'efface quand tu maintiens la touche du détail d'or (Tab par défaut) et quand tu appuies sur ta touche de boutique (à régler au même endroit). La gold diff reste visible.",
+        "Section « Scoreboard & boutique » : coche « Masquer l'overlay pendant le scoreboard / la boutique » pour qu'il s'efface tant que tu maintiens la touche du détail d'or (Tab par défaut). La touche de boutique (à régler au même endroit) fonctionne comme un interrupteur : un appui masque l'overlay, un second le réaffiche. La gold diff reste visible.",
+        "Section « Blocs de l'overlay » : « Réinitialiser la position des blocs » les remet à leur place par défaut ; « Réafficher les blocs masqués de cette partie » fait revenir ceux fermés avec la croix ✕ ; « Recalibrer la minimap » oublie le calage actuel et t'en propose un nouveau en partie (voir « Calage de la minimap ») ; « Ajuster les timers de la minimap » règle la position et la taille des timers posés sur la minimap. Les deux boutons « Réafficher » et « Ajuster » ne marchent qu'en partie.",
         "Une option grisée avec la mention « Temporairement indisponible » est désactivée de notre côté pour le moment.",
       ],
       inGame: 'Une couche transparente posée sur ton écran de jeu, avec les blocs que tu as cochés.',
@@ -476,10 +481,10 @@ const fr: GuideDict = {
       name: 'Ton build en jeu',
       purpose: 'Garde ton build sous les yeux pendant la partie.',
       where:
-        "Onglet « Overlay » → « Build item en jeu ». Tes builds se règlent dans l'onglet « Builds Items ».",
+        "Onglet « Overlay » → « Build item en jeu ». Tes builds se règlent dans « Mes builds » (onglet « Builds Items »).",
       steps: [
         'Coche « Afficher le build actif du champion joué ».',
-        "Le build actif n°1 du champion que tu joues s'affiche tout seul ; l'ordre se règle dans « Builds Items » avec les flèches ↑ ↓.",
+        "Le build actif n°1 du champion que tu joues s'affiche tout seul ; l'ordre se règle dans « Mes builds » (onglet « Builds Items ») avec les flèches ↑ ↓.",
         "En partie, le menu de l'en-tête du panneau passe à un autre de tes builds actifs. L'en-tête sert aussi à déplacer le panneau ; le reste laisse passer tes clics vers le jeu.",
       ],
       inGame: 'Le panneau 🛡 avec les objets de ton build, bloc par bloc.',
@@ -537,7 +542,7 @@ const fr: GuideDict = {
     'sets-objets': {
       name: "Sets d'objets dans la boutique",
       purpose: 'Retrouve tes builds directement dans la boutique du jeu.',
-      where: "Automatique, à partir de tes builds actifs (onglet « Builds Items »).",
+      where: "Automatique, à partir de tes builds actifs (« Mes builds », onglet « Builds Items »).",
       steps: [
         'Active un ou plusieurs builds pour ton champion.',
         "Au moment de ton pick, l'app les ajoute aux sets d'objets de League.",
@@ -630,16 +635,17 @@ const en: GuideDict = {
         'Create a build: give it a name, pick a champion, then sort your items into blocks (starting items, core items…).',
         'Optionally add runes: on the site, tick the components to include (items, runes, skill order); in the app, use the “🔮 Runes” button.',
         'Builds are saved to your account: the ones made on the site show up in the app, and the other way round, as soon as you are signed in.',
-        'In the app, click “Activate” so a build is used in game. If several builds are active for the same champion, their order (↑ ↓ arrows) decides which one comes first.',
+        'In the app, click “Activate” in “My builds” (“Item Builds” tab) so a build is used in game. If several builds are active for the same champion, their order (↑ ↓ arrows) decides which one comes first.',
         'A build with no champion never shows in game: remember to pick one.',
       ],
       inGame:
         'Active build no. 1 for the champion you play shows in the overlay (see “Your build in game”). It is also used to fill in your runes and item sets when you pick.',
-      screenshot:
-        'The app’s “Item Builds” tab with a build marked “✓ Active” and the order arrows, next to the site’s build editor.',
+      screenshot: 'The site’s build editor and the app’s, with the app’s runes window.',
       shotAlts: [
         'The site’s build editor: the item grid with its filters, and the build in progress (starting items, core items, rest of the build).',
         'The rest of the site’s build editor: the runes (primary and secondary trees, stat shards) and the ability order level by level.',
+        'The app’s build editor: the item grid with its filters, the build’s name and champion, and its item blocks.',
+        'The app’s “Build runes” window: primary tree, secondary tree and stat shards.',
       ],
     },
     champions: {
@@ -729,10 +735,13 @@ const en: GuideDict = {
       purpose: 'Find your recent games and the details of each one.',
       where: 'App: “Home” tab. Site: dashboard → Home (“My recent games”) and each player’s page.',
       steps: [
-        'In the app, the “Home” tab recognises the account signed in to the League client and shows its history; open a game to see its details.',
+        'In the app, the “Home” tab recognises the account signed in to the League client and shows its history. With no client detected, it shows the last account viewed: the history stays visible.',
+        'The “Account:” menu lists the accounts detected on this PC and the accounts you follow; pick one to show its history. “↻ Refresh” runs the detection again and reloads the games.',
+        '“+ Follow” adds any EUW player by their Riot ID (Name#TAG) so you can view their history read-only, with no link to your account. The followed account is saved on this PC; “× Remove” takes it off the list.',
+        'Choose how many games to show (10, 25, 50, 100 or the current season). “Expand” shows a game’s details under its row; click the game to open its full page.',
         'On the site, your history shows once your Riot account is linked (see “Link your Riot account”).',
       ],
-      screenshot: 'The history in the app’s “Home” tab, with one game expanded.',
+      screenshot: 'The history in the app’s “Home” tab, with the account selector and the 10 / 25 / 50 / 100 / Current season filters.',
     },
 
     // ── Site ──────────────────────────────────────────────────────────────
@@ -824,7 +833,8 @@ const en: GuideDict = {
         'Start the app and leave it open: as soon as a game starts, the overlay shows up; it closes when the game ends.',
         'In the “Overlay” tab, tick the blocks you want to see. Each block is described below.',
         'The overlay lets your clicks through to the game: only its buttons and the areas used to move a block react to the mouse.',
-        '“Scoreboard & shop” section: tick “Hide the overlay during the scoreboard / the shop” so it fades away while you hold the gold detail key (Tab by default) and when you press your shop key (set in the same place). The gold diff stays visible.',
+        '“Scoreboard & shop” section: tick “Hide the overlay during the scoreboard / the shop” so it fades away while you hold the gold detail key (Tab by default). The shop key (set in the same place) works as a toggle: one press hides the overlay, a second one brings it back. The gold diff stays visible.',
+        '“Overlay blocks” section: “Reset block positions” puts them back in their default place; “Show blocks hidden in this game” brings back the ones closed with the ✕ button; “Recalibrate the minimap” forgets the current alignment and offers a new one in game (see “Minimap alignment”); “Adjust minimap timers” sets the position and size of the timers drawn on the minimap. The “Show” and “Adjust” buttons only work in game.',
         'An option greyed out with “Temporarily unavailable” has been switched off on our side for now.',
       ],
       inGame: 'A transparent layer on top of your game screen, with the blocks you ticked.',
@@ -938,10 +948,10 @@ const en: GuideDict = {
     'build-en-jeu': {
       name: 'Your build in game',
       purpose: 'Keep your build in sight during the game.',
-      where: '“Overlay” tab → “In-game item build”. Your builds are set in the “Item Builds” tab.',
+      where: '“Overlay” tab → “In-game item build”. Your builds are set in “My builds” (“Item Builds” tab).',
       steps: [
         'Tick “Show the active build of the champion played”.',
-        'Active build no. 1 for the champion you play shows by itself; set the order in “Item Builds” with the ↑ ↓ arrows.',
+        'Active build no. 1 for the champion you play shows by itself; set the order in “My builds” (“Item Builds” tab) with the ↑ ↓ arrows.',
         'In game, the menu in the panel’s header switches to another of your active builds. The header is also used to move the panel; the rest lets your clicks through to the game.',
       ],
       inGame: 'The 🛡 panel with your build’s items, block by block.',
@@ -996,7 +1006,7 @@ const en: GuideDict = {
     'sets-objets': {
       name: 'Item sets in the shop',
       purpose: 'Find your builds right in the in-game shop.',
-      where: 'Automatic, from your active builds (“Item Builds” tab).',
+      where: 'Automatic, from your active builds (“My builds”, “Item Builds” tab).',
       steps: [
         'Activate one or more builds for your champion.',
         'When you pick, the app adds them to League’s item sets.',
