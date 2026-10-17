@@ -42,9 +42,10 @@ export interface FlagRow {
  * `kit_sur_mesure_enabled` est le premier de ce genre.
  */
 export const LAUNCH_FLAG_KEYS: ReadonlySet<string> = new Set([
-  'ecailles_enabled',
+  // `ecailles_enabled` et `quests_enabled` n'y sont plus : lancés en PROD et passés
+  // kill switches (`kind = 'kill'`) le 2026-10-17, ils échouent ouverts. Même retrait
+  // dans `ColdStartClosed` de l'app WPF.
   'shop_enabled',
-  'quests_enabled',
   'cosmetics_enabled',
   'scenarios_enabled',
   // Service « Kit sur mesure » (migration 20260908000002). `surface='web'` :

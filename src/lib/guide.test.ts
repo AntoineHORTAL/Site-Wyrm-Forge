@@ -55,8 +55,10 @@ describe('structure du guide', () => {
 
   it('aucune trace des fonctionnalités exclues ou retirées', () => {
     // Comparaison par MOT (`workshop` n'est pas `shop`).
+    // `ecailles` et `quests` n'y sont plus : quêtes et Écailles sont lancées en PROD
+    // (kill switches depuis le 2026-10-17) et ont leur sous-section.
     const excluded = new Set([
-      'ecailles', 'shop', 'quests', 'cosmetics', 'scenarios', 'kit', 'tournois', 'tournaments', 'prac',
+      'shop', 'cosmetics', 'scenarios', 'kit', 'tournois', 'tournaments', 'prac',
     ])
     for (const id of [...GUIDE_ENTRY_IDS, ...guideFlagKeys()]) {
       for (const w of id.toLowerCase().split(/[-_]/)) expect(excluded.has(w), id).toBe(false)

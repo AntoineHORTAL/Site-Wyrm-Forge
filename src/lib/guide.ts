@@ -63,7 +63,7 @@ export type GuideGroupId = (typeof GUIDE_GROUP_IDS)[number]
 export const GUIDE_ENTRY_IDS = [
   // Commun
   'builds', 'champions', 'patch-notes', 'partie-en-direct', 'match-up',
-  'workshop-builds', 'workshop-jungle', 'historique-parties',
+  'workshop-builds', 'workshop-jungle', 'historique-parties', 'quetes-ecailles',
   // Site
   'recherche-joueur', 'liaison-riot', 'historique-stats', 'bilan-ia',
   'todo-site', 'accueil-dashboard',
@@ -90,6 +90,9 @@ export const GUIDE_STRUCTURE: readonly GuideSectionDef[] = [
       { id: 'workshop-builds',    flags: { all: ['workshop_builds_enabled'] } },
       { id: 'workshop-jungle',    flags: { all: ['workshop_jungle_enabled'] } },
       { id: 'historique-parties', flags: { all: ['riot_history_enabled'] } },
+      // `quests_enabled` est l'enfant d'`ecailles_enabled` : la résolution des
+      // parents suffirait, mais les deux sont nommés pour que la règle se lise ici.
+      { id: 'quetes-ecailles',    flags: { all: ['ecailles_enabled', 'quests_enabled'] } },
     ],
   },
   {
