@@ -11,6 +11,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { RIFT_MAP_LOCAL, applyRiftMapFallback } from '@/lib/rift-map'
 import { computeItemImpact, type ItemCatalog, type WindowStats } from '@/lib/item-impact'
 // DDragon : cartes + URLs partagées (Lot D3) — ce bloc était recopié à
 // l'identique ici, dans /summoner et dans /matches.
@@ -2405,10 +2406,7 @@ function DiffRow({ label, frames, get, format }: {
 // MapHeatmap : carte interactive Summoner's Rift avec points (kills ou wards).
 // Range slider pour filtrer la fenêtre de temps. Mode 'global' affiche tout.
 // ────────────────────────────────────────────────────────────────────────────────
-// Carte locale (pas de CORS, pas de version DDragon à gérer).
-// Si l'utilisateur n'a pas encore déposé le fichier, fallback automatique sur la
-// carte DDragon versionnée puis sur l'URL non versionnée.
-const RIFT_MAP_URL = '/icons/maps/summoners_rift.png'
+// Carte : `RIFT_MAP_LOCAL` + repli DDragon figé, source unique dans `@/lib/rift-map`.
 // La grille de Riot va de 0..14820 (approximatif). 0,0 = bottom-left.
 const RIFT_SIZE = 14820
 
@@ -2519,16 +2517,8 @@ function MapHeatmap({ detail, mode, champMap, version }: {
 
       {/* La carte */}
       <div style={{ position: 'relative', aspectRatio: '1 / 1', maxWidth: 600, margin: '0 auto' }}>
-        <img src={RIFT_MAP_URL} alt="Summoner's Rift"
-          onError={e => {
-            // Fallback 1 : DDragon versionné, sinon non versionné
-            const img = e.currentTarget as HTMLImageElement
-            if (img.src.endsWith('summoners_rift.png')) {
-              img.src = 'https://ddragon.leagueoflegends.com/cdn/14.24.1/img/map/map11.png'
-            } else if (img.src.includes('14.24.1')) {
-              img.src = 'https://ddragon.leagueoflegends.com/cdn/img/map/map11.png'
-            }
-          }}
+        <img src={RIFT_MAP_LOCAL} alt="Summoner's Rift"
+          onError={e => applyRiftMapFallback(e.currentTarget)}
           style={{ width: '100%', height: '100%', borderRadius: 6, display: 'block', opacity: 0.8, background: '#0a0612' }} />
         {/* Points avec tooltip détaillé au hover */}
         {filtered.map((e, i) => (
