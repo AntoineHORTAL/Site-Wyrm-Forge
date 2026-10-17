@@ -312,10 +312,12 @@ future par RPC ou Edge Function.
 #### Catalogue de flags — 44 lignes
 
 > 🔴 **Valeur réelle ≠ valeur de création.** En PROD, `ecailles_enabled` et
-> `quests_enabled` valent **`'true'`** depuis juin 2026 (`kind` resté `'launch'`) et restent
-> ouverts — décision HORTAL du 2026-10-17 : les joueurs accumulent des Écailles.
-> `shop_enabled` (ouvert le 2026-07-16) est refermé par HORTAL le 2026-10-17 depuis
-> l'AdminTab ; `cosmetics_enabled` reste `'false'`. Les deux bases ne sont PAS alignées
+> `quests_enabled` valent **`'true'`** depuis juin 2026 et restent ouverts — décision
+> HORTAL du 2026-10-17 : les joueurs accumulent des Écailles. Ils sont passés
+> `kind = 'kill'` le 2026-10-17 (SQL direct en PROD, sur feu vert HORTAL).
+> `shop_enabled` (ouvert le 2026-07-16) a été refermé le même jour par SQL direct, en
+> restant `kind = 'launch'` : l'AdminTab ne permettait pas de refermer un flag de
+> lancement ouvert. `cosmetics_enabled` reste `'false'`. Les deux bases ne sont PAS alignées
 > (TEST : les quatre à `'false'`). Ne jamais déduire l'état d'un flag de ce catalogue ni
 > de TEST : **interroger la PROD** (connexion PROD explicite, voir § Quelle base).
 
