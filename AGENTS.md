@@ -476,7 +476,7 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 - `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
 
 > 🔴 **`20261017000002` — la table obéit au flag `scenarios_enabled`.** Avant, le flag n'était qu'un rideau : le site cachait l'entrée de navigation mais `/?tab=scenarios` ouvrait l'onglet, l'app ne lisait pas le flag, et la base ne le regardait pas — tout compte connecté faisait son CRUD au `curl`. Désormais, flag fermé : SELECT → `[]`, INSERT → `42501`, UPDATE / DELETE → 0 ligne, pour tout compte non admin. Les lignes ne sont **pas supprimées**, elles réapparaissent à l'ouverture. Ouvrir le flag depuis l'AdminTab prend effet **à la requête suivante**, sans déploiement (la policy relit `app_settings`) ; les clients suivent à leur rythme (site 60 s, app 5 min).
-> - **Les deux clients cachent l'onglet** : le site (`resolveDashTab`, passe-droit admin) et l'app WPF (bouton `NavScenarios` et onglet gardés par `scenarios_enabled`, `Services/LaunchTabs.cs` — invisibles pour tout le monde flag fermé, l'app n'ayant pas de notion d'admin ; recette : flag ouvert sur TEST + canal preview).
+> - **Les deux clients cachent l'onglet** : le site (flag fermé, ni entrée de navigation ni onglet, `/?tab=scenarios` rend l'Accueil via `resolveDashTab` ; passe-droit admin) et l'app WPF (bouton `NavScenarios` et onglet gardés par `scenarios_enabled`, `Services/LaunchTabs.cs` — invisibles pour tout le monde flag fermé, l'app n'ayant pas de notion d'admin ; recette : flag ouvert sur TEST + canal preview).
 > - **Passe-droit admin** (décision HORTAL, 2026-10-17) : un admin lit et écrit **ses propres** scénarios flag fermé, pour recetter. Le prédicat de propriété reste obligatoire pour lui aussi.
 > - **`public.launch_flag_on(p_key text) → boolean`** : SECURITY DEFINER, STABLE, EXECUTE `authenticated` seul (règle des trois instructions ; `authenticated` est OBLIGATOIRE, les policies s'évaluent sous son rôle). Vrai si la ligne est un flag **public** (jamais une valeur de tuning : la fonction est appelable par tout compte connecté) valant `'true'`, ET tous ses ancêtres `parent_key` aussi. Ligne absente ⇒ `false` (repli fermé). Réutilisable pour la prochaine table à garder derrière un flag de lancement.
 > - La migration **se vérifie elle-même** (bloc `DO` : privilèges réels, et exactement 4 policies sur la table, toutes relisant le flag — une 5ᵉ policy permissive contournerait tout).
@@ -496,7 +496,7 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 > Correction éventuelle = policies avec jointure sur `profiles.tier`, dans une migration dédiée. **Non planifiée à ce jour.**
 
 ### Consommateurs
-- **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro), gardé par `scenarios_enabled` : flag fermé, ni entrée de navigation ni onglet, `/?tab=scenarios` rend l'Accueil (`resolveDashTab`) — l'admin garde tout.
+- **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro).
 - **App WPF** : `ScenarioService` (CRUD PostgREST sous **JWT user**, calqué sur `ForgeService`) — port en cours (Lot 0 : migration + modèles miroir + service ; Lot 1 : vue lecture seule `ScenariosTab`). Carte de fond = **même art que le site** (DDragon `map11` v14.24.1, `ScenarioService.MapImageUrl`), pas la minimap in-game — garantit l'alignement des tracés.
 
 ---
