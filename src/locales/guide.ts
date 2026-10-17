@@ -493,16 +493,17 @@ const fr: GuideDict = {
     'panneau-stats': {
       name: 'Panneau de stats',
       purpose: 'Suis tes stats clés en direct et compare-les à celles de ton adversaire de lane.',
-      where:
-        "Onglet « Stats » de l'app pour le contenu ; onglet « Overlay » → « Bloc de stats » pour l'afficher.",
+      where: "App : onglet « Overlay » → section « Bloc de stats ».",
       steps: [
-        "Dans l'onglet « Stats », coche les stats à afficher : CS, CS/min, Gold/min, KDA, Niveau, Score de vision.",
+        "Dans l'onglet « Overlay », section « Bloc de stats », coche « Afficher le bloc de stats ».",
+        "Juste en dessous, sous « Stats à afficher », coche celles que tu veux voir : CS, CS/min, Gold/min, KDA, Niveau, Score de vision.",
         "Coche « Comparer avec l'adversaire de lane » pour afficher ses valeurs à côté des tiennes.",
-        "Dans l'onglet « Overlay », coche « Afficher le bloc de stats ».",
+        "Ces options sont grisées tant que le bloc lui-même n'est pas affiché.",
       ],
       inGame:
         'Le bloc STATS affiche tes valeurs en direct et, si la comparaison est cochée, celles de ton adversaire de lane, en couleur selon que tu es devant ou derrière. Tu peux le déplacer.',
-      screenshot: "L'onglet « Stats » de l'app avec ses cases cochées, et le bloc STATS en jeu.",
+      screenshot:
+        "La section « Bloc de stats » de l'onglet « Overlay » de l'app avec ses cases cochées, et le bloc STATS en jeu.",
     },
     'todo-en-jeu': {
       name: 'To-do en jeu',
@@ -960,15 +961,17 @@ const en: GuideDict = {
     'panneau-stats': {
       name: 'Stats panel',
       purpose: 'Follow your key stats live and compare them with your lane opponent’s.',
-      where: 'The app’s “Stats” tab for the content; “Overlay” tab → “Stats block” to show it.',
+      where: 'App: “Overlay” tab → “Stats block” section.',
       steps: [
-        'In the “Stats” tab, tick the stats to show: CS, CS/min, Gold/min, KDA, Level, Vision score.',
+        'In the “Overlay” tab, “Stats block” section, tick “Show the stats block”.',
+        'Just below, under “Stats to display”, tick the ones you want to see: CS, CS/min, Gold/min, KDA, Level, Vision score.',
         'Tick “Compare with the lane opponent” to show their figures next to yours.',
-        'In the “Overlay” tab, tick “Show the stats block”.',
+        'These options are greyed out as long as the block itself is not shown.',
       ],
       inGame:
         'The STATS block shows your figures live and, if the comparison is ticked, your lane opponent’s, coloured depending on whether you are ahead or behind. You can move it.',
-      screenshot: 'The app’s “Stats” tab with its ticked boxes, and the STATS block in game.',
+      screenshot:
+        'The “Stats block” section of the app’s “Overlay” tab with its ticked boxes, and the STATS block in game.',
     },
     'todo-en-jeu': {
       name: 'In-game to-do',

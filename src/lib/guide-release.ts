@@ -15,7 +15,7 @@
 // `guide.test.ts` vérifie le format des deux valeurs, pas leur contenu.
 
 /** Version de l'app de bureau décrite par le guide — sans le « v ». */
-export const GUIDE_APP_VERSION = '1.0.17'
+export const GUIDE_APP_VERSION = '1.0.18'
 
 /** Date de dernière mise à jour du guide, ISO `AAAA-MM-JJ` (date LOCALE, pas UTC). */
-export const GUIDE_UPDATED = '2026-10-14'
+export const GUIDE_UPDATED = '2026-10-17'
