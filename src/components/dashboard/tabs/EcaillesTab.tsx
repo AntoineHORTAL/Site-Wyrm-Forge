@@ -48,6 +48,12 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
   const ecaillesEnabled = useFlag('ecailles_enabled')
   const shopEnabled     = useFlag('shop_enabled')
   const questsEnabled   = useFlag('quests_enabled')
+  // Équipement : flag de lancement `cosmetics_enabled` (enfant d'`ecailles_enabled`).
+  // Fermé, la sous-vue n'existe pas pour un non-admin — et la base refuse de toute
+  // façon l'équipement (`cosmetics_disabled`, migration 20261017000003) : la montrer
+  // ferait cliquer sur des boutons voués à l'échec.
+  const cosmeticsEnabled = useFlag('cosmetics_enabled')
+  const views = VIEWS.filter(v => v.id !== 'equipement' || cosmeticsEnabled || isAdmin)
   const { isLoading: flagsLoading } = useFeatureFlags()
 
   const accent = c ? '#EF9F27' : '#7F77DD'
@@ -79,7 +85,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
           La barre vivait ici en styles inline ; elle est extraite dans
           `SubViewTabs`, partagé avec le panneau admin. Rendu inchangé. */}
       <SubViewTabs
-        views={VIEWS.map(v => ({ id: v.id, label: v.label(d.ecailles) }))}
+        views={views.map(v => ({ id: v.id, label: v.label(d.ecailles) }))}
         active={view}
         onSelect={setView}
         accent={accent}
@@ -91,7 +97,7 @@ export default function EcaillesTab({ isAdmin = false, balance, balanceLoading, 
       {view === 'balance'    && <BalanceHistory balance={balance} balanceLoading={balanceLoading} />}
       {view === 'quetes'     && <QuestsPanel questsEnabled={questsEnabled} onBalanceChange={onRefreshBalance} />}
       {view === 'boutique'   && <ShopPanel shopEnabled={shopEnabled} onBalanceChange={onRefreshBalance} />}
-      {view === 'equipement' && <EquipmentPanel />}
+      {view === 'equipement' && (cosmeticsEnabled || isAdmin) && <EquipmentPanel />}
     </div>
   )
 }
