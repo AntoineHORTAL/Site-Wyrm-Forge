@@ -23,6 +23,15 @@ Application : assistant League of Legends (Next.js 16.2.4 + Supabase + Vercel). 
 
 ## 🔴 Quelle base Supabase le site interroge-t-il ? — bandeau « BASE DE TEST »
 
+> 🔴 **`.env.local` pointe sur TEST** (`gyjcdswpybrhesarompg`) au 2026-10-17. Toute lecture
+> faite avec ses variables (REST anon, `next dev`, scripts) décrit **TEST, jamais la PROD**,
+> et les deux bases ne sont pas alignées. Le 2026-10-17, des flags « relevés en PROD » par
+> ce chemin étaient en réalité ceux de TEST, et une décision a été prise sur ce faux constat.
+> **Tout relevé PROD passe par une connexion PROD explicite** : `supabase db query --linked`
+> depuis le dépôt principal, après avoir vérifié que `supabase/.temp/project-ref` vaut
+> `cuscgmgqakxnfwnsrhhv`, ou le SQL Editor du projet « Wyrm Forge » (pas « Wyrm Forge
+> Test »). Ne jamais écrire « en PROD » sans avoir vérifié le projet interrogé.
+
 Pendant web du mécanisme de l'app WPF (`Services/AppConfig.cs` + bandeau `TestDbBanner`, documenté dans l'`AGENTS.md` du repo `Logiciel-Assistant-LOL`, § Pièges connus n°7). Même principe, **implémentation différente** — les différences ci-dessous sont délibérées, ne pas « aligner » les deux par réflexe.
 
 - **Bascule** : par `.env.local` uniquement (`NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Pas d'équivalent du canal Vélopack — le site n'a **pas** d'environnement de déploiement de test (décision HORTAL, 2026-08-12) : aucune config Vercel n'est impliquée.
@@ -126,6 +135,8 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 - `TabDef` type : `{ id, label, shortLabel, icon, locked?, soon? }`
 - `locked: true` → nécessite `unlocked={isAdmin}` dans SidebarBtn pour être accessible
 - `soon: true` → non cliquable, badge "Bientôt", opacité réduite
+- **Onglets gardés par un flag de LANCEMENT** (`ecailles`, `kit`, `scenarios`, `jungle`) : une seule règle, `src/lib/launch-tabs.ts`, lue via `useLaunchTabFlags()` par la sidebar, le tiroir mobile ET le routeur d'onglets. Flag fermé, pour un non-admin : pas d'entrée de navigation, et l'URL directe (`?tab=…`) rend l'**Accueil** (`resolveDashTab`) — plus d'écran « bientôt », qui annonçait la feature à qui tapait l'URL. L'onglet demandé n'est pas réécrit : si le flag s'ouvre, le même `?tab=` l'affiche. L'admin voit tout (recette), marqué « Non lancé · admin ». Un nouvel onglet de lancement s'ajoute à `isAdminOnlyEntry` et à `useLaunchTabFlags`, nulle part ailleurs.
+- **La vitrine et le guide ne citent aucune fonctionnalité fermée en PROD** : `landing.test.ts` et `guide.test.ts` échouent sur Scénarios, Kit sur mesure, cosmétiques et la boutique d'Écailles (« boutique » seule reste permise : c'est la boutique du jeu). Quêtes et Écailles sont ouvertes en PROD (décision HORTAL du 2026-10-17) et ne sont pas visées. À la sortie d'une feature, retirer son motif du test en même temps qu'on écrit sa phrase.
 - **Overlay tab supprimé volontairement** — fonctionnalité réservée à l'app desktop, inutile sur le site
 
 ### Admin
@@ -307,12 +318,16 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 43 lignes
+#### Catalogue de flags — 44 lignes
 
-**Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
-`scenarios_enabled` ; `kit_sur_mesure_enabled` (migration `20260908000002`,
-`group_key = 'site'`, `sort_order = 630`) ; et `minimap_structure_detection_enabled`
+`scenarios_enabled` (lu par le site ET l'app, et par la RLS de `scenarios` depuis
+`20261017000002`, voir § table `scenarios`) ; `kit_sur_mesure_enabled` (migration `20260908000002`,
+`group_key = 'site'`, `sort_order = 630`) ; `jungle_path_web_enabled` (migration
+`20261017000001`, `surface = 'web'`, `group_key = 'site'`, `sort_order = 640` : la
+maquette de l'éditeur Jungle Path du SITE — rien à voir avec l'éditeur de l'app ni
+avec le Workshop Jungle) ; et `minimap_structure_detection_enabled`
 (migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
 capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_timers`
@@ -320,6 +335,20 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 `sort_order = 975`, 19ᵉ enfant d'`overlay_enabled` et SEUL flag de lancement parmi eux :
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
+
+> ⚠️ Migrations `20261017000001` (flag `jungle_path_web_enabled`) et `20261017000002`
+> (RLS `scenarios` ↔ `scenarios_enabled`) **appliquées sur TEST ET PROD** (2026-10-17),
+> **hors historique** des deux côtés (`supabase db query --linked -f`). Script
+> `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` vert 14/14 sur TEST ; en PROD,
+> contrôlé après coup : `launch_flag_on` présente (anon non, authenticated oui), 4 policies
+> `scn_*` relisant le flag, `jungle_path_web_enabled` à `false`.
+>
+> 🔴 **À FAIRE au push de `20261015000001`** (qui part avec la release de l'app, voir
+> ci-dessous) : inscrire les deux dans l'historique PROD, dans la même session —
+> `supabase migration repair --status applied 20261017000001 20261017000002 --linked`
+> (dépôt lié à PROD). Pas avant : tant que `20261015000001` n'est pas appliquée, les inscrire
+> créerait un trou dans l'historique et le `db push` suivant exigerait `--include-all`.
+> Retirer cette note une fois fait.
 
 > ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
 > **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
@@ -361,7 +390,9 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > ⚠️ `kit_sur_mesure_enabled` est le premier flag de lancement `surface = 'web'`.
 > Il est donc dans `LAUNCH_FLAG_KEYS` (`src/lib/feature-flags.ts`) **sans** pendant
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
-> aucune brique de ce service, elle ne peut pas le laisser fuir. Les sept autres
+> aucune brique de ce service, elle ne peut pas le laisser fuir. Même cas pour
+> `jungle_path_web_enabled` (2026-10-17) : l'éditeur de l'app est une autre
+> feature, livrée, qui ne lit pas ce flag. Les sept autres
 > restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
@@ -463,9 +494,17 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
   - Une seule liste, champ `phase` par élément (pas de listes séparées).
 - **Ennemis NON stockés** (rangée décorative fixe côté UI).
 
-### RLS scenarios (owner-based, migration 20260622000001)
-- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` (INSERT + UPDATE avec `WITH CHECK` pour bloquer la réassignation de `user_id`).
+### RLS scenarios (owner-based + flag de lancement, migrations 20260622000001 et 20261017000002)
+- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id` **ET** `(launch_flag_on('scenarios_enabled') OR is_admin())` (INSERT + UPDATE avec `WITH CHECK` sur le même prédicat, pour bloquer la réassignation de `user_id` et toute écriture flag fermé).
 - `anon` : aucun accès. GRANT `authenticated` sur la table (Data API).
+
+> 🔴 **`20261017000002` — la table obéit au flag `scenarios_enabled`.** Avant, le flag n'était qu'un rideau : le site cachait l'entrée de navigation mais `/?tab=scenarios` ouvrait l'onglet, l'app ne lisait pas le flag, et la base ne le regardait pas — tout compte connecté faisait son CRUD au `curl`. Désormais, flag fermé : SELECT → `[]`, INSERT → `42501`, UPDATE / DELETE → 0 ligne, pour tout compte non admin. Les lignes ne sont **pas supprimées**, elles réapparaissent à l'ouverture. Ouvrir le flag depuis l'AdminTab prend effet **à la requête suivante**, sans déploiement (la policy relit `app_settings`) ; les clients suivent à leur rythme (site 60 s, app 5 min).
+> - **Les deux clients cachent l'onglet** : le site (flag fermé, ni entrée de navigation ni onglet, `/?tab=scenarios` rend l'Accueil via `resolveDashTab` ; passe-droit admin) et l'app WPF (bouton `NavScenarios` et onglet gardés par `scenarios_enabled`, `Services/LaunchTabs.cs` — invisibles pour tout le monde flag fermé, l'app n'ayant pas de notion d'admin ; recette : flag ouvert sur TEST + canal preview).
+> - **Passe-droit admin** (décision HORTAL, 2026-10-17) : un admin lit et écrit **ses propres** scénarios flag fermé, pour recetter. Le prédicat de propriété reste obligatoire pour lui aussi.
+> - **`public.launch_flag_on(p_key text) → boolean`** : SECURITY DEFINER, STABLE, EXECUTE `authenticated` seul (règle des trois instructions ; `authenticated` est OBLIGATOIRE, les policies s'évaluent sous son rôle). Vrai si la ligne est un flag **public** (jamais une valeur de tuning : la fonction est appelable par tout compte connecté) valant `'true'`, ET tous ses ancêtres `parent_key` aussi. Ligne absente ⇒ `false` (repli fermé). Réutilisable pour la prochaine table à garder derrière un flag de lancement.
+> - La migration **se vérifie elle-même** (bloc `DO` : privilèges réels, et exactement 4 policies sur la table, toutes relisant le flag — une 5ᵉ policy permissive contournerait tout).
+> - Tests : `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` (14 lignes, `ROLLBACK` final, **TEST seulement** : le script bascule le flag dans sa transaction).
+> - ⚠️ Une app de bureau **antérieure** à la release qui lit le flag affiche encore l'onglet : flag fermé, elle y voit une liste vide et ses sauvegardes échouent (refus RLS, journalisé en debug, sans plantage). C'est la barrière qui fait son travail.
 
 > ✅ **`20260901000003` — jeu de policies ad-hoc retiré. APPLIQUÉE ET VALIDÉE sur test ET prod le 2026-09-01** (`db push` manuel, sondes vertes : la sonde `anon` est passée de `200 []` à `42501`, le CRUD utilisateur est resté inchangé). Elle retire les 4 policies `"Users can ..."` — sans clause `TO`, donc PUBLIC, `anon` compris — que `20260815000005` avait **reproduites** sans les nettoyer, pose le `REVOKE ALL ... FROM anon, authenticated` qui manquait depuis toujours, et supprime l'index `scenarios_user_idx` (préfixe strict de `idx_scenarios_user_time`). Les 4 policies `scn_*` restent seules en place.
 >
@@ -1339,7 +1378,7 @@ AND (NOT (EXISTS ( SELECT 1
 | Accueil | UI placeholder (pas de vraies données Riot) |
 | To-Do Lists | Fonctionnel (Supabase, Realtime actif) |
 | Stats | UI placeholder |
-| Jungle Path | Fonctionnel (données locales) |
+| Jungle Path | **Maquette** — parcours de démonstration en dur, dessin en mémoire perdu au rechargement, « Sauvegarder » sans action. Masquée par `jungle_path_web_enabled` (fermé) ; le vrai éditeur est celui de l'app |
 | Builds Items | Fonctionnel (données locales) |
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |

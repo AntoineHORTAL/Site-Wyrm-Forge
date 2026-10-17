@@ -8,7 +8,10 @@ import type { JungleCampKey, JunglePlacementKey } from '@/locales/dashboard/stra
 
 interface Point { x: number; y: number }
 /* ⚠️ Données de DÉMONSTRATION : liste en dur, sans persistance ni clic. Seuls les
-   noms viennent du dico (`jungle.demoPathNames`) — le champion est un nom propre. */
+   noms viennent du dico (`jungle.demoPathNames`) — le champion est un nom propre.
+   Tout l'onglet est une MAQUETTE, cachée derrière le flag de lancement
+   `jungle_path_web_enabled` (migration 20261017000001, `src/lib/launch-tabs.ts`) :
+   ne pas l'ouvrir au public tant que « Sauvegarder » n'écrit rien. */
 interface PathData { id: number; champion: string; points: Point[] }
 
 const savedPaths: PathData[] = [

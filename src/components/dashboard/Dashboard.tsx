@@ -17,8 +17,8 @@ import PostGameTab from './tabs/PostGameTab'
 import EcaillesTab from './tabs/EcaillesTab'
 import KitTab from './tabs/KitTab'
 import CheckoutReturn from './CheckoutReturn'
-import { ComingSoonScreen, UnavailableNotice } from './FeatureScreens'
-import { useFlag } from '@/components/providers/FeatureFlagsProvider'
+import { UnavailableNotice } from './FeatureScreens'
+import { useFlag, useLaunchTabFlags } from '@/components/providers/FeatureFlagsProvider'
 import DashboardAdRail from '@/components/ads/DashboardAdRail'
 import { shouldShowAds } from '@/lib/ads'
 import { isPaidTier } from '@/lib/subscription'
@@ -29,7 +29,7 @@ import { SUBSCRIPTIONS_ENABLED } from '@/lib/stripe/availability'
 import { useDashboard } from '@/locales/dashboard'
 import type { NavTabId, NavGroupId } from '@/locales/dashboard/nav'
 import type { DashTab, UserProfile } from '@/lib/session-types'
-import { isLaunchTabVisible, isAdminOnlyEntry } from '@/lib/launch-tabs'
+import { isLaunchTabVisible, isAdminOnlyEntry, resolveDashTab } from '@/lib/launch-tabs'
 
 /* ── Icons ── */
 const IconHome     = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -161,7 +161,7 @@ interface DashboardProps {
   forgeRequest?: number
 }
 
-export default function Dashboard({ activeTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, forgeRequest = 0 }: DashboardProps) {
+export default function Dashboard({ activeTab: requestedTab, onTabChange, isAdmin = false, profile, balance = 0, balanceLoading = false, onRefreshBalance, forgeRequest = 0 }: DashboardProps) {
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const router = useRouter()
@@ -176,13 +176,16 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
    * lui-même sa garde serait un onglet qu'on peut oublier de garder.
    *
    * Deux catégories, deux conventions (`off_behavior`) :
-   *  - LANCEMENT ('hidden')  → pas d'entrée de nav ; sur accès direct, l'écran
-   *                            « bientôt ». L'admin voit TOUJOURS tout.
+   *  - LANCEMENT ('hidden')  → pas d'entrée de nav, et sur accès direct
+   *                            (`?tab=`) l'Accueil : l'onglet n'existe pas
+   *                            (`resolveDashTab`). L'admin voit TOUJOURS tout.
    *  - KILL SWITCH ('notice') → l'entrée reste, le contenu devient un encart.
    */
-  const ecaillesEnabled  = useFlag('ecailles_enabled')
-  const scenariosEnabled = useFlag('scenarios_enabled')
-  const kitEnabled       = useFlag('kit_sur_mesure_enabled')
+  const launchFlags = useLaunchTabFlags()
+  // Onglet RENDU : l'onglet demandé, sauf s'il est gardé par un flag de lancement
+  // fermé — alors l'Accueil, URL directe comprise. Tout ce qui suit (titre,
+  // surlignage de la sidebar, contenu) lit cet onglet-ci, jamais `requestedTab`.
+  const activeTab = resolveDashTab(requestedTab, launchFlags, isAdmin)
   const adsEnabled       = useFlag('ads_enabled')
 
   const patchNotesEnabled     = useFlag('patch_notes_enabled')
@@ -272,7 +275,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
               // Convention 'hidden' des flags de LANCEMENT : l'entrée disparaît
               // purement et simplement. L'admin garde les deux, c'est ce qui lui
               // permet de recetter avant d'ouvrir au public.
-              .filter(tab => isLaunchTabVisible(tab.id, { ecaillesEnabled, scenariosEnabled, kitEnabled }, isAdmin))
+              .filter(tab => isLaunchTabVisible(tab.id, launchFlags, isAdmin))
               .map(tab => (
               <SidebarBtn
                 key={tab.id} tab={tab}
@@ -281,7 +284,7 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
                 active={activeTab === tab.id} c={c}
                 onClick={() => handleTabClick(tab)}
                 unlocked={isPro}
-                adminOnly={isAdminOnlyEntry(tab.id, { ecaillesEnabled, scenariosEnabled, kitEnabled })}
+                adminOnly={isAdminOnlyEntry(tab.id, launchFlags)}
               />
             ))}
           </div>
@@ -314,45 +317,34 @@ export default function Dashboard({ activeTab, onTabChange, isAdmin = false, pro
           </div>
         )}
 
-        {/* Kit sur mesure — flag de LANCEMENT, convention `'hidden'`.
-            L'entrée de sidebar a déjà disparu pour un non-admin ; cette garde
-            couvre le deep-link `?tab=kit`, qui contourne la navigation. L'admin
-            voit toujours l'onglet : c'est ce qui lui permet de recetter le
-            parcours client avant d'ouvrir le service au public.
+        {/* Kit sur mesure — flag de LANCEMENT : fermé, `activeTab` ne vaut jamais
+            'kit' pour un non-admin (`resolveDashTab`), deep-link compris.
             ⚠️ Ce n'est PAS la barrière : `kit_request_order` relit le flag en
             base, et c'est elle qui refuse un dépôt service fermé. */}
-        {activeTab === 'kit'              && (
-          !kitEnabled && !isAdmin
-            ? <ComingSoonScreen
-                title={d.kit.soonTitle}
-                text={d.kit.soonText}
-              />
-            : <KitTab />
-        )}
+        {activeTab === 'kit'              && <KitTab />}
         {activeTab === 'admin'            && <AdminTab />}
         {activeTab === 'accueil'          && <AccueilTab />}
         {activeTab === 'todo'             && <TodoTab />}
         {activeTab === 'stats'            && <StatsTab />}
+        {/* Éditeur Jungle Path du site — MAQUETTE (données de démonstration, rien
+            n'est sauvegardé), gardée par `jungle_path_web_enabled`. Le vrai
+            éditeur vit dans l'app de bureau. */}
         {activeTab === 'jungle'           && <JunglePathTab />}
         {activeTab === 'builds'           && <BuildsTab />}
         {/* Scénarios — DEUX verrous indépendants, dans cet ordre.
-            Le flag de LANCEMENT passe en premier : tant que la feature n'est pas
-            ouverte, proposer un écran « passe Pro » vendrait un accès qui n'existe
-            pour personne. Une fois lancée, le verrou commercial reprend la main. */}
+            Le flag de LANCEMENT passe en premier, dans `resolveDashTab` : fermé,
+            l'onglet n'est pas rendu du tout (et la RLS de `scenarios` refuse les
+            lignes, migration 20261017000002). Une fois lancé, le verrou commercial
+            reprend la main. */}
         {activeTab === 'scenarios'        && (
-          !scenariosEnabled && !isAdmin
-            ? <ComingSoonScreen
-                title={d.strategie.scenarios.soonTitle}
-                text={d.strategie.scenarios.soonText}
+          isPro
+            ? <ScenariosTab />
+            : <LockedScreen
+                title={tabTitles.scenarios.title}
+                subtitle={tabTitles.scenarios.subtitle}
+                labels={d.nav.locked}
+                c={c} badge={d.nav.badges.pro}
               />
-            : isPro
-              ? <ScenariosTab />
-              : <LockedScreen
-                  title={tabTitles.scenarios.title}
-                  subtitle={tabTitles.scenarios.subtitle}
-                  labels={d.nav.locked}
-                  c={c} badge={d.nav.badges.pro}
-                />
         )}
         {activeTab === 'workshop-builds'  && (workshopBuildsEnabled ? <WorkshopBuildsTab /> : notice)}
         {activeTab === 'workshop-jungle'  && (workshopJungleEnabled ? <WorkshopJungleTab /> : notice)}
