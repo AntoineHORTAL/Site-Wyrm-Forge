@@ -320,7 +320,17 @@ future par RPC ou Edge Function.
 
 #### Catalogue de flags — 44 lignes
 
-**Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, valeur `'false'` :
+> 🔴 **Valeur réelle ≠ valeur de création.** En PROD, `ecailles_enabled` et
+> `quests_enabled` valent **`'true'`** depuis juin 2026 et restent ouverts — décision
+> HORTAL du 2026-10-17 : les joueurs accumulent des Écailles. Ils sont passés
+> `kind = 'kill'` le 2026-10-17 (SQL direct en PROD, sur feu vert HORTAL).
+> `shop_enabled` (ouvert le 2026-07-16) a été refermé le même jour par SQL direct, en
+> restant `kind = 'launch'` : l'AdminTab ne permettait pas de refermer un flag de
+> lancement ouvert. `cosmetics_enabled` reste `'false'`. Les deux bases ne sont PAS alignées
+> (TEST : les quatre à `'false'`). Ne jamais déduire l'état d'un flag de ce catalogue ni
+> de TEST : **interroger la PROD** (connexion PROD explicite, voir § Quelle base).
+
+**Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, créés à `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
 `scenarios_enabled` (lu par le site ET l'app, et par la RLS de `scenarios` depuis
 `20261017000002`, voir § table `scenarios`) ; `kit_sur_mesure_enabled` (migration `20260908000002`,
@@ -345,10 +355,20 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 >
 > 🔴 **À FAIRE au push de `20261015000001`** (qui part avec la release de l'app, voir
 > ci-dessous) : inscrire les deux dans l'historique PROD, dans la même session —
-> `supabase migration repair --status applied 20261017000001 20261017000002 --linked`
+> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`
 > (dépôt lié à PROD). Pas avant : tant que `20261015000001` n'est pas appliquée, les inscrire
 > créerait un trou dans l'historique et le `db push` suivant exigerait `--include-all`.
 > Retirer cette note une fois fait.
+
+> ⚠️ Migration `20261017000003` (garde `cosmetics_enabled` sur `equip_cosmetic`,
+> `unequip_cosmetic`, `get_equipped_cosmetics`) **appliquée sur TEST ET PROD**
+> (2026-10-17), hors historique des deux côtés ; script
+> `supabase/tests/20261017000003_cosmetics_flag_guard_test.sql` vert 10/10 sur TEST. En PROD,
+> contrôlé après coup : les trois fonctions relisent `launch_flag_on('cosmetics_enabled')`,
+> equip/unequip lèvent `cosmetics_disabled`, privilèges inchangés, et
+> `get_equipped_cosmetics` appelée en `anon` rend une liste vide sans erreur. À inscrire dans
+> l'historique PROD avec `20261017000001/2` (même `migration repair`, même moment) :
+> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`.
 
 > ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
 > **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
@@ -926,9 +946,11 @@ Index unique partiel `uq_equipped_type` sur `(user_id, cosmetic_type) WHERE is_e
 
 | Fonction | GRANT | Description |
 |---|---|---|
-| `equip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe d'abord l'éventuel cosmétique du même type, puis équipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. |
-| `unequip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. |
-| `get_equipped_cosmetics(p_puuid TEXT)` | `anon, authenticated` | Retourne `(type, slug, name, image_url)` des cosmétiques équipés d'un joueur identifié par PUUID. Ne retourne jamais `user_id` ni UUID Wyrm Forge. |
+| `equip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe d'abord l'éventuel cosmétique du même type, puis équipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. **Depuis `20261017000003`** : `RAISE 'cosmetics_disabled'` en tête si `cosmetics_enabled` (ou son parent `ecailles_enabled`) est fermé, sauf `is_admin()`. |
+| `unequip_cosmetic(p_cosmetic_id BIGINT)` | `authenticated` | Déséquipe. RAISE EXCEPTION `'cosmetic_not_owned'` si non possédé. Même garde `cosmetics_disabled` que `equip_cosmetic`. |
+| `get_equipped_cosmetics(p_puuid TEXT)` | `anon, authenticated` | Retourne `(type, slug, name, image_url)` des cosmétiques équipés d'un joueur identifié par PUUID. Ne retourne jamais `user_id` ni UUID Wyrm Forge. **Depuis `20261017000003`** : liste VIDE (jamais d'erreur) tant que `cosmetics_enabled` ou son parent est fermé, sauf pour un admin connecté — la page publique ne doit pas annoncer la feature. |
+
+> Les LECTURES propriétaire (`get_balance`, `scales_ledger`, `user_cosmetics`, `quest_completions`, `quest_streaks`, `quest-status`) restent **ouvertes** flag fermé — décision HORTAL du 2026-10-17 : données de chacun, sans effet sur l'économie, lignes réelles en PROD. Seules les ÉCRITURES sont gardées (achat, quête, équipement).
 
 ### Fonction `purchase_cosmetic` (M5 — migration 20260606000005)
 
@@ -1906,7 +1928,8 @@ SECURITY DEFINER, `REVOKE FROM PUBLIC`, **aucun GRANT** → service_role uniquem
   - Modèle épinglé : `claude-sonnet-4-6`
   - Retourne `{ skipped: true }` si le patch est déjà en base (protection contre les doubles appels)
 - `patch-notes` : lecture publique des patch notes publiés (site + app desktop) — `verify_jwt = false`
-- `shop-purchase` : achat d'un cosmétique (POST, JWT obligatoire) — body `{ cosmetic_id: number }`. Vérifie `shop_enabled` via `isFeatureEnabled` avant le JWT, appelle `purchase_cosmetic` SECURITY DEFINER via service_role. Codes HTTP : 402 solde insuffisant, 404 cosmétique indisponible, 409 déjà possédé, 403 boutique désactivée.
+- 🔴 **`isFeatureEnabled` (`_shared/feature-flags.ts`) remonte `parent_key` depuis le 2026-10-17** (`_shared/flag-chain.ts`, module pur testé par `supabase/functions/flag-chain.test.ts`) : un flag n'est actif que si tous ses ancêtres le sont, comme `resolveFlags` côté clients et `launch_flag_on` en SQL. Avant, `shop-purchase` et `quest-claim` ne lisaient que leur propre ligne : `shop_enabled` ouvert sous `ecailles_enabled` fermé laissait passer un achat que les deux clients cachaient. Les autres EF lisent des kill switches sans parent : comportement inchangé.
+- `shop-purchase` : achat d'un cosmétique (POST, JWT obligatoire) — body `{ cosmetic_id: number }`. Vérifie `shop_enabled` (et son parent `ecailles_enabled`) via `isFeatureEnabled` avant le JWT, appelle `purchase_cosmetic` SECURITY DEFINER via service_role. Codes HTTP : 402 solde insuffisant, 404 cosmétique indisponible, 409 déjà possédé, 403 boutique désactivée.
   - ⚠️ **Pas d'`app_event` dans `shop-purchase`** : `shop-purchase` ne doit PAS émettre d'app_event (notamment `cosmetic_purchased`). Décision actée : la quête `app_buy_cosmetic` a été écartée (incitation perverse — dépenser des Écailles pour en regagner moins), donc aucun consommateur n'existe pour cet événement. Ne pas instrumenter, même si un ancien plan le mentionne.
 - `quest-claim` : réclamation d'une quête journalière (POST, JWT obligatoire) — body `{ quest_slug: string }`. Flow : `quests_enabled` flag → **rate limit IP** → auth → chargement pool complet → **garde-fou set du jour** (`selectDailySet`) → dédup préventif → vérification action data-driven (dispatch sur `criteria.type`) → `finalize_quest_claim` SECURITY DEFINER. Codes HTTP : 400 condition non remplie, 403 flag off / pas de compte Riot lié / quête hors set, 404 quête inconnue, 409 déjà réclamée, 429 rate limit Riot/IP.
   - Logique `criteria.type` : `'play'` (count matchs), `'win'` (count victoires, break-early), `'cs'` (threshold CS, break-early), `'app_event'` (count app_events du jour).
