@@ -296,6 +296,24 @@ ses 4 libellés + `surface` + `group_key` + `off_behavior`. C'est le filet qui r
 l'erreur de compilation perdue en sortant les libellés du dico typé — un flag muet est
 un échec d'INSERT, pas un interrupteur sans texte dans le panneau.
 
+#### 🔴 Écritures de l'AdminTab : un seul chemin, jamais silencieux (2026-10-17)
+
+Toute écriture du panneau sur `app_settings` passe par `writeAppSetting`
+(`AdminTab.tsx`) : `.update(…).eq('key', …).select('key')`, puis
+`flagWriteOutcome` (`lib/admin-flags.ts`). Un refus RLS ne lève **aucune**
+erreur et renvoie zéro ligne : sans le `.select()`, le panneau relisait le
+catalogue et ne disait rien. C'est ainsi que des clics « Lancer » du
+2026-10-17 n'ont rien écrit, sans aucun message. L'échec est affiché dans la
+modale ouverte (qui reste ouverte, motif conservé), sinon au-dessus des
+sous-onglets. `admin-flag-writes.test.ts` refuse toute seconde écriture sur
+cette table dans le fichier.
+
+**Annuler le lancement** : un flag de lancement ouvert (`kind = 'launch'`,
+`'true'`) porte, à côté de « Convertir en kill switch », un bouton qui le
+referme avec un motif obligatoire (`revertLaunchPatch` : `value` à `'false'`,
+`reason` posé, `kind` **inchangé**). Le convertir en kill switch avant de le
+couper l'aurait fait échouer ouvert au démarrage des clients, l'inverse du but.
+
 #### ⚠️ Sémantique de `updated_at` / `updated_by`
 
 Les deux triggers (`trg_app_settings_updated_at`, `trg_app_settings_actor`) portent

@@ -14,6 +14,7 @@ import { TIER_ORDER, isPaidTier } from '@/lib/subscription'
 import SettingToggle from '@/components/dashboard/SettingToggle'
 import KillSwitchModal from '@/components/dashboard/KillSwitchModal'
 import LaunchModal from '@/components/dashboard/LaunchModal'
+import WriteErrorNotice from '@/components/dashboard/WriteErrorNotice'
 import SubViewTabs from '@/components/dashboard/SubViewTabs'
 import CutBanner from '@/components/dashboard/CutBanner'
 import {
@@ -31,6 +32,7 @@ import {
   groupKillBySurface, SURFACE_ORDER, DEFAULT_KILL_SURFACE, isPendingLaunch,
   isLiveLegacyLaunch, missingCutReason,
   launchPatch, applyLaunch, type SurfaceKey,
+  flagWriteOutcome, canRevertLaunch, revertLaunchPatch, applyRevertLaunch,
   type FlagCatalogueRow,
 } from '@/lib/admin-flags'
 import {
@@ -239,6 +241,14 @@ export default function AdminTab() {
   const [cutReason, setCutReason]         = useState('')
   /** Lancement en attente de confirmation. Même patron que `confirmCutKey`. */
   const [confirmLaunchKey, setConfirmLaunchKey] = useState<string | null>(null)
+  /** Annulation d'un lancement en attente de confirmation. Partage `cutReason`. */
+  const [confirmRevertKey, setConfirmRevertKey] = useState<string | null>(null)
+  /**
+   * Échec de la dernière écriture sur `app_settings`, déjà rédigé. Affiché dans
+   * la modale ouverte, sinon en tête de la section des flags, jusqu'à la
+   * prochaine écriture réussie ou un clic sur « Fermer ».
+   */
+  const [flagWriteError, setFlagWriteError] = useState<string | null>(null)
 
   // Sous-onglet actif. Le panneau empilait trois blocs sans rapport ; ils sont
   // désormais commutés ici. ⚠️ Les quatre loaders restent au montage (voir le
@@ -314,11 +324,37 @@ export default function AdminTab() {
     const next = !settings[key]
     setSettings(prev => ({ ...prev, [key]: next }))
     setSettingsSaving(key)
-    await supabase
-      .from('app_settings')
-      .update({ value: next ? 'true' : 'false' })
-      .eq('key', key)
+    const ok = await writeAppSetting(key, { value: next ? 'true' : 'false' })
+    // Refus : l'interrupteur revient à la valeur que la base a gardée.
+    if (!ok) setSettings(prev => ({ ...prev, [key]: !next }))
     setSettingsSaving(null)
+  }
+
+  /**
+   * LE seul chemin d'écriture du panneau sur `app_settings`.
+   *
+   * `.select('key')` est obligatoire : un refus RLS ne lève aucune erreur et
+   * renvoie zéro ligne (voir `flagWriteOutcome`). Renvoie `true` si la base a
+   * réellement écrit ; sinon pose `flagWriteError`, que l'appelant laisse
+   * affiché. `admin-tab-writes.test.ts` vérifie qu'aucune autre écriture sur
+   * cette table ne vit dans le fichier.
+   */
+  async function writeAppSetting(key: string, patch: Record<string, string | null>): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .update(patch)
+      .eq('key', key)
+      .select('key')
+    const outcome = flagWriteOutcome({ data, error })
+    if (outcome.ok) {
+      setFlagWriteError(null)
+      return true
+    }
+    console.error('[AdminTab] écriture app_settings refusée', key, outcome)
+    setFlagWriteError(outcome.reason === 'error'
+      ? F.writeError.replace('{message}', outcome.message)
+      : F.writeNoRows)
+    return false
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -367,16 +403,18 @@ export default function AdminTab() {
         : r))
     setSettingsSaving(key)
 
-    await supabase
-      .from('app_settings')
-      .update({ value: next ? 'true' : 'false', reason: next ? null : reason })
-      .eq('key', key)
+    const ok = await writeAppSetting(key, { value: next ? 'true' : 'false', reason: next ? null : reason })
 
     setSettingsSaving(null)
-    setConfirmCutKey(null)
-    setCutReason('')
+    // Échec : la modale de coupure reste ouverte avec son motif et l'erreur.
+    if (ok) {
+      setConfirmCutKey(null)
+      setCutReason('')
+    }
     // Relecture : `updated_at` et `updated_by` sont posés par les triggers, le
     // client ne peut pas les deviner — et ce sont eux qu'affiche la carte coupée.
+    // En cas d'échec, elle annule la mise à jour optimiste ; l'erreur, elle,
+    // reste affichée.
     await loadCatalogue()
   }
 
@@ -398,13 +436,41 @@ export default function AdminTab() {
     setCatalogue(prev => prev.map(r => (r.key === key ? applyLaunch(r) : r)))
     setSettingsSaving(key)
 
-    await supabase.from('app_settings').update(launchPatch()).eq('key', key)
+    const ok = await writeAppSetting(key, { ...launchPatch() })
 
     setSettingsSaving(null)
-    setConfirmLaunchKey(null)
+    if (ok) setConfirmLaunchKey(null)
     // Relecture : le flag doit ressortir en kill switch, dans son groupe de
     // surface, avec l'`updated_by` posé par le trigger.
     await loadCatalogue()
+  }
+
+  /**
+   * Annulation du lancement d'un flag de lancement OUVERT : `value` à `'false'`
+   * avec son motif, `kind` inchangé (voir `revertLaunchPatch`). Même friction
+   * qu'une coupure — motif obligatoire, refusé ici aussi s'il est vide.
+   */
+  async function revertLaunch(key: string) {
+    if (!canSubmitCut(cutReason)) return
+    const reason = cutReason
+    setCatalogue(prev => prev.map(r => (r.key === key ? applyRevertLaunch(r, reason) : r)))
+    setSettingsSaving(key)
+
+    const ok = await writeAppSetting(key, { ...revertLaunchPatch(reason) })
+
+    setSettingsSaving(null)
+    if (ok) {
+      setConfirmRevertKey(null)
+      setCutReason('')
+    }
+    await loadCatalogue()
+  }
+
+  /** Le bouton « Annuler le lancement » n'écrit rien : il ouvre la confirmation. */
+  function onRevertRequest(key: string) {
+    setFlagWriteError(null)
+    setCutReason('')
+    setConfirmRevertKey(key)
   }
 
   /**
@@ -421,6 +487,7 @@ export default function AdminTab() {
     if (!row) return
 
     if (isOn(row) && row.kind === 'kill') {
+      setFlagWriteError(null)
       setConfirmCutKey(key)
       setCutReason('')
       return
@@ -430,6 +497,7 @@ export default function AdminTab() {
 
   /** Le bouton « Lancer » n'écrit rien : il ouvre la confirmation. */
   function onLaunchRequest(key: string) {
+    setFlagWriteError(null)
     setConfirmLaunchKey(key)
   }
 
@@ -715,6 +783,14 @@ export default function AdminTab() {
     ? (catalogue.find(r => r.key === confirmLaunchKey) ?? null)
     : null
 
+  /** Flag visé par l'annulation de lancement, ou `null`. */
+  const revertTarget = confirmRevertKey
+    ? (catalogue.find(r => r.key === confirmRevertKey) ?? null)
+    : null
+
+  /** Une modale de flag est ouverte : l'erreur s'y affiche, pas dans le panneau. */
+  const flagModalOpen = confirmCutKey !== null || confirmLaunchKey !== null || confirmRevertKey !== null
+
   /** Flag visé par la modale de confirmation, ou `null` si elle est fermée. */
   const cutTarget = confirmCutKey
     ? (catalogue.find(r => r.key === confirmCutKey) ?? null)
@@ -904,6 +980,18 @@ export default function AdminTab() {
           lang={lang}
           labels={{ bannerOne: F.bannerOne, bannerOther: F.bannerOther, bannerJump: F.bannerJump }}
           onJump={() => setSubTab(CUT_BANNER_TARGET)}
+        />
+      )}
+
+      {/* ── Échec d'écriture sur app_settings ────────────────────────────
+          Au-dessus des sous-onglets : il concerne aussi le réglage de la carte
+          Patch notes. Quand une modale de flag est ouverte, c'est elle qui
+          l'affiche, pour que l'admin le lise là où il a cliqué. */}
+      {flagWriteError && !flagModalOpen && (
+        <WriteErrorNotice
+          message={flagWriteError}
+          onDismiss={() => setFlagWriteError(null)}
+          dismissLabel={F.writeDismiss}
         />
       )}
 
@@ -1665,6 +1753,9 @@ export default function AdminTab() {
                 variant="launch"
                 stateLabel={isOn(row) ? F.stateLive : F.stateNotLaunched}
                 actionLabel={isPendingLaunch(row) ? (isLiveLegacyLaunch(row) ? F.convertAction : F.launchAction) : undefined}
+                // Lancement ouvert : on peut aussi le refermer, sans le convertir.
+                secondaryActionLabel={canRevertLaunch(row) ? F.revertAction : undefined}
+                onSecondaryAction={onRevertRequest}
                 indented={row.parent_key !== null}
               />
             ))}
@@ -1918,9 +2009,10 @@ export default function AdminTab() {
           flagLabel={flagLabel(cutTarget, lang)}
           reason={cutReason}
           saving={settingsSaving === cutTarget.key}
+          error={flagWriteError}
           onReasonChange={setCutReason}
           onConfirm={() => confirmCut(cutTarget.key)}
-          onCancel={() => { setConfirmCutKey(null); setCutReason('') }}
+          onCancel={() => { setConfirmCutKey(null); setCutReason(''); setFlagWriteError(null) }}
           labels={{
             cutTitle:             F.cutTitle,
             cutReasonLabel:       F.cutReasonLabel,
@@ -1935,6 +2027,32 @@ export default function AdminTab() {
         document.body,
       )}
 
+      {/* ── Modale d'annulation d'un lancement ───────────────────────────
+          Même modale que la coupure (motif obligatoire), autres libellés : on
+          referme une feature ouverte, le flag reste un flag de lancement. */}
+      {mounted && revertTarget && createPortal(
+        <KillSwitchModal
+          flagLabel={flagLabel(revertTarget, lang)}
+          reason={cutReason}
+          saving={settingsSaving === revertTarget.key}
+          error={flagWriteError}
+          onReasonChange={setCutReason}
+          onConfirm={() => void revertLaunch(revertTarget.key)}
+          onCancel={() => { setConfirmRevertKey(null); setCutReason(''); setFlagWriteError(null) }}
+          labels={{
+            cutTitle:             F.revertTitle,
+            cutReasonLabel:       F.cutReasonLabel,
+            cutReasonHint:        F.revertReasonHint,
+            cutReasonPlaceholder: F.cutReasonPlaceholder,
+            cutConfirm:           F.revertConfirm,
+            cutCancel:            F.revertCancel,
+            impactLabel:          F.revertImpactLabel,
+            impactText:           F.revertImpactText,
+          }}
+        />,
+        document.body,
+      )}
+
       {/* ── Modale de confirmation d'un lancement ────────────────────────
           Même portalisation que la coupure. Le bouton « Lancer » de la carte
           n'écrit RIEN : il pose `confirmLaunchKey`, l'écriture n'a lieu qu'ici. */}
@@ -1942,8 +2060,9 @@ export default function AdminTab() {
         <LaunchModal
           flagLabel={flagLabel(launchTarget, lang)}
           saving={settingsSaving === launchTarget.key}
+          error={flagWriteError}
           onConfirm={() => void launchFlag(launchTarget.key)}
-          onCancel={() => setConfirmLaunchKey(null)}
+          onCancel={() => { setConfirmLaunchKey(null); setFlagWriteError(null) }}
           labels={isLiveLegacyLaunch(launchTarget) ? {
             // Déjà en ligne : on convertit, on ne lance rien (voir isLiveLegacyLaunch).
             launchTitle:        F.convertModalTitle,

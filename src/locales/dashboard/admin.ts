@@ -340,6 +340,21 @@ export const adminFr = {
     convertImpactText:  'aucun changement pour les joueurs. Le flag passe dans les kill switches et pourra être coupé.',
     convertConfirm:     'Convertir',
 
+    /* Annuler le lancement d'un flag de lancement OUVERT : il redevient fermé et
+       reste un flag de lancement (jamais converti en kill switch). Motif obligatoire. */
+    revertAction:       'Annuler le lancement',
+    revertTitle:        'Annuler le lancement de « {label} » ?',
+    revertImpactLabel:  'Après annulation :',
+    revertImpactText:   'la fonctionnalité redevient invisible pour les joueurs. Le flag reste un flag de lancement, fermé, et pourra être relancé.',
+    revertReasonHint:   'Conservé avec le flag : dis pourquoi le lancement est annulé.',
+    revertConfirm:      'Annuler le lancement',
+    revertCancel:       'Garder en ligne',
+
+    /* Échec d'écriture — affiché tel quel, jamais remplacé par une relecture silencieuse. */
+    writeError:   'La base a refusé l’écriture : {message}. Rien n’a changé.',
+    writeNoRows:  'Aucune ligne modifiée : la base a refusé l’écriture (droits insuffisants, ou flag absent). Rien n’a changé.',
+    writeDismiss: 'Fermer',
+
     /* États affichés en pastille sur chaque carte. */
     stateNotLaunched: 'pas encore lancé',
     stateLive:        'en ligne',
@@ -580,6 +595,18 @@ export const adminEn: AdminDict = {
     convertImpactLabel: 'Already live:',
     convertImpactText:  'nothing changes for players. The flag moves to the kill switches and can be turned off.',
     convertConfirm:     'Convert',
+
+    revertAction:       'Undo launch',
+    revertTitle:        'Undo the launch of "{label}"?',
+    revertImpactLabel:  'After undoing:',
+    revertImpactText:   'the feature is hidden from players again. The flag stays a launch flag, off, and can be launched again.',
+    revertReasonHint:   'Kept with the flag: say why the launch is undone.',
+    revertConfirm:      'Undo launch',
+    revertCancel:       'Keep it live',
+
+    writeError:   'The database refused the write: {message}. Nothing changed.',
+    writeNoRows:  'No row updated: the database refused the write (insufficient rights, or missing flag). Nothing changed.',
+    writeDismiss: 'Close',
 
     stateNotLaunched: 'not launched yet',
     stateLive:        'live',
