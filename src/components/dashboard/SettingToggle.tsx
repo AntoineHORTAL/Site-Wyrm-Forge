@@ -55,6 +55,13 @@ interface SettingToggleProps {
    * contrôle change.
    */
   actionLabel?: string
+  /**
+   * Second bouton, à côté de l'action principale (« Annuler le lancement » d'un
+   * flag de lancement ouvert). Bordé et non plein : c'est le geste de retrait,
+   * il ne doit pas se confondre avec l'action principale de la carte.
+   */
+  secondaryActionLabel?: string
+  onSecondaryAction?: (key: string) => void
   /** Contenu additionnel sous la description (impact, auteur de la coupure, motif). */
   children?:   ReactNode
 }
@@ -62,7 +69,7 @@ interface SettingToggleProps {
 export default function SettingToggle({
   label, description, settingKey, value, saving, loading, onToggle, border, bg,
   variant = 'setting', stateLabel, locked = false, lockedHint, indented = false,
-  actionLabel, children,
+  actionLabel, secondaryActionLabel, onSecondaryAction, children,
 }: SettingToggleProps) {
   const accent = VARIANT_ACCENT[variant]
   const disabled = saving || loading || locked
@@ -112,8 +119,26 @@ export default function SettingToggle({
         {children}
       </div>
       {actionLabel ? (
-        // Bouton d'action : pas d'`aria-pressed`, qui décrirait un état
-        // basculable. Ce bouton DÉCLENCHE quelque chose, il ne reflète rien.
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+        {secondaryActionLabel && onSecondaryAction && (
+          <button
+            type="button"
+            onClick={() => onSecondaryAction(settingKey)}
+            disabled={disabled}
+            aria-label={`${secondaryActionLabel} — ${label}`}
+            style={{
+              padding: '8px 14px', borderRadius: 6,
+              fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+              background: 'transparent', border: `1px solid ${accent}`, color: accent,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: saving || loading ? 0.6 : 1,
+            }}
+          >
+            {secondaryActionLabel}
+          </button>
+        )}
+        {/* Bouton d'action : pas d'`aria-pressed`, qui décrirait un état
+            basculable. Ce bouton DÉCLENCHE quelque chose, il ne reflète rien. */}
         <button
           type="button"
           onClick={() => onToggle(settingKey)}
@@ -131,6 +156,7 @@ export default function SettingToggle({
         >
           {saving ? '…' : actionLabel}
         </button>
+        </div>
       ) : (
       <button
         onClick={() => onToggle(settingKey)}
