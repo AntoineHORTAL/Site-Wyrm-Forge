@@ -1929,7 +1929,7 @@ function ItemImpact({ me, detail, version }: {
           </div>
         )}
         <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
-          Part d&apos;or par item (build final)
+          Part d’or par item (build final)
         </div>
         {!itemLoaded ? (
           <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Chargement…</div>
@@ -2069,7 +2069,7 @@ function ItemImpact({ me, detail, version }: {
       <div>
         {/* Libellé d'honnêteté — NON négociable */}
         <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
-          Stats du joueur <span style={{ color: 'var(--text-muted)' }}>pendant que cet item était actif dans son inventaire</span> — corrélation temporelle, <b>pas un impact causal</b> (la fenêtre « après » cumule aussi les autres achats, les niveaux et l&apos;état de la partie).
+          Stats du joueur <span style={{ color: 'var(--text-muted)' }}>pendant que cet item était actif dans son inventaire</span> — corrélation temporelle, <b>pas un impact causal</b> (la fenêtre « après » cumule aussi les autres achats, les niveaux et l’état de la partie).
         </div>
 
         {!hasPlayerStats && (
@@ -2140,7 +2140,7 @@ function ItemImpact({ me, detail, version }: {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-        Impact d&apos;items
+        Impact d’items
       </div>
       <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
         {([

@@ -399,7 +399,7 @@ export default function RiotLinkBlock({ theme }: Props) {
       {step === 'pending' && targetIconId !== null && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Change ton icône d&apos;invocateur pour :
+            Change ton icône d’invocateur pour :
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -440,7 +440,7 @@ export default function RiotLinkBlock({ theme }: Props) {
 
       {/* ── Verify en cours ── */}
       {step === 'verify_loading' && (
-        <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Vérification de l&apos;icône en cours…</div>
+        <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Vérification de l’icône en cours…</div>
       )}
     </div>
   )

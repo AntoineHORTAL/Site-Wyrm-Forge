@@ -59,7 +59,7 @@ export const cgvFr = {
       (paliers Forgeron et Maître) à toute personne physique agissant à des fins non
       professionnelles. Elles complètent les{' '}
       <Link href="/cgu" style={{ color: 'var(--gold-pale)' }}>conditions générales
-      d&apos;utilisation</Link>, qui régissent l&apos;usage du service lui-même. Tu les acceptes
+      d’utilisation</Link>, qui régissent l’usage du service lui-même. Tu les acceptes
       au moment de ta souscription ; la version applicable est celle en vigueur à cette date.
     </>
   ),
@@ -98,9 +98,9 @@ export const cgvFr = {
         <>
           <SubscriptionOffer />
           <p style={{ marginTop: 10 }}>
-            Le service est accessible depuis un navigateur web récent et, pour l&apos;application de
+            Le service est accessible depuis un navigateur web récent et, pour l’application de
             bureau, sous Windows 10 ou 11. Certaines fonctionnalités nécessitent de lier un compte
-            Riot Games et dépendent de la disponibilité de l&apos;API de Riot Games.
+            Riot Games et dépendent de la disponibilité de l’API de Riot Games.
           </p>
         </>
       ),
@@ -126,14 +126,14 @@ export const cgvFr = {
               tarifaire ;</li>
             <li>connexion à ton compte Wyrm Forge, ou création de ce compte ;</li>
             <li>récapitulatif du palier, du prix et des conditions de renouvellement, et
-              confirmation de ta demande d&apos;accès immédiat au service (voir l&apos;article 6) —
+              confirmation de ta demande d’accès immédiat au service (voir l’article 6) —
               sans cette confirmation, le paiement ne peut pas être lancé ;</li>
             <li>paiement sur la page sécurisée de Stripe, où tu peux saisir un code promotionnel et
               vérifier le montant exact avant de valider.</li>
           </List>
           <p style={{ marginTop: 10 }}>
             Le contrat est conclu à la validation du paiement. Ton palier est activé dans les
-            instants qui suivent, sur le site comme dans l&apos;application.
+            instants qui suivent, sur le site comme dans l’application.
           </p>
           {/* Art. L221-13 — confirmation sur support durable, envoyée par l'EF
               `subscription-emails` (gabarit `order_confirmation`, supabase/functions/
@@ -146,10 +146,10 @@ export const cgvFr = {
               preuve de consentement de la commande (`checkout_consent_log.locale`) —
               voir AGENTS.md § E-mails transactionnels › Langue des e-mails. */}
           <p style={{ marginTop: 10 }}>
-            Une confirmation de ta commande t&apos;est adressée par e-mail dans les minutes qui
+            Une confirmation de ta commande t’est adressée par e-mail dans les minutes qui
             suivent le paiement : elle reprend le palier, le prix, la périodicité, la date du
             premier prélèvement et de la prochaine échéance, ton droit de rétractation et le
-            texte exact de ta demande d&apos;accès immédiat, avec un lien vers les présentes
+            texte exact de ta demande d’accès immédiat, avec un lien vers les présentes
             conditions.
           </p>
         </>
@@ -168,10 +168,10 @@ export const cgvFr = {
           <p style={{ marginTop: 16 }}><strong>Abonnement annuel — information avant le
             renouvellement</strong></p>
           <p>
-            Pour un abonnement annuel, nous t&apos;informons par écrit, par un e-mail envoyé au plus
+            Pour un abonnement annuel, nous t’informons par écrit, par un e-mail envoyé au plus
             tôt trois mois et au plus tard un mois avant la fin de ta période annuelle, de la date à
             laquelle il sera renouvelé et de la possibilité de ne pas le reconduire (article L215-1
-            du Code de la consommation). Si cette information ne t&apos;a pas été adressée dans ces
+            du Code de la consommation). Si cette information ne t’a pas été adressée dans ces
             délais, tu peux résilier gratuitement ton abonnement à tout moment à compter de la date
             de renouvellement : les sommes versées pour la période postérieure à la résiliation te
             sont alors remboursées dans un délai de trente jours.
@@ -187,7 +187,7 @@ export const cgvFr = {
       body: (
         <>
           <p>
-            Tu disposes d&apos;un délai de <strong>14 jours</strong> à compter de la conclusion du
+            Tu disposes d’un délai de <strong>14 jours</strong> à compter de la conclusion du
             contrat pour te rétracter, sans avoir à justifier ta décision ni à payer de pénalité
             (articles L221-18 et suivants du Code de la consommation).
           </p>
@@ -202,26 +202,26 @@ export const cgvFr = {
             donc de confirmer expressément, en cochant une case, que tu souhaites que le service
             commence immédiatement, avant la fin du délai de rétractation. Cette demande ne te fait
             pas perdre ton droit de rétractation : si tu te rétractes dans les 14 jours, tu restes
-            redevable du <strong>montant correspondant au service fourni jusqu&apos;à ta
+            redevable du <strong>montant correspondant au service fourni jusqu’à ta
             rétractation</strong>, proportionnel au prix de la période souscrite. Ce montant est
             calculé au jour près : prix de la période × nombre de jours écoulés entre la
             souscription et la réception de ta décision ÷ nombre de jours de la période. Le
-            surplus t&apos;est remboursé.
+            surplus t’est remboursé.
           </p>
           <p style={{ marginTop: 10 }}>
             Exemple : un abonnement annuel à 60 € dont tu te rétractes au bout de 5 jours donne
             lieu à un remboursement de 60 € − (60 € × 5 ÷ 365), soit 59,18 €.
           </p>
           <p style={{ marginTop: 10 }}>
-            Conformément à l&apos;article L221-28 du Code de la consommation, le droit de
+            Conformément à l’article L221-28 du Code de la consommation, le droit de
             rétractation ne peut plus être exercé une fois le service pleinement fourni avant la fin
             du délai, ce que tu reconnais en cochant la case.
           </p>
 
           <p style={{ marginTop: 16 }}><strong>Comment te rétracter</strong></p>
           <p>
-            Informe-nous de ta décision avant l&apos;expiration du délai, par une déclaration
-            dénuée d&apos;ambiguïté — un e-mail à {mail} suffit —, ou en nous adressant le
+            Informe-nous de ta décision avant l’expiration du délai, par une déclaration
+            dénuée d’ambiguïté — un e-mail à {mail} suffit —, ou en nous adressant le
             formulaire ci-dessous (annexe), par e-mail ou par courrier au 5 Rue du 23 Janvier,
             21000 Dijon. Il suffit que ta décision soit envoyée avant la fin du délai.
           </p>
@@ -257,19 +257,19 @@ export const cgvFr = {
           }}>
             <p><strong>Garantie légale de conformité — contenus et services numériques</strong></p>
             <p style={{ marginTop: 8 }}>
-              Le consommateur dispose d&apos;un délai de deux ans à compter de la fourniture du
+              Le consommateur dispose d’un délai de deux ans à compter de la fourniture du
               contenu numérique ou du service numérique pour obtenir la mise en œuvre de la garantie
-              légale de conformité en cas d&apos;apparition d&apos;un défaut de conformité. Durant
-              un délai d&apos;un an à compter de la date de fourniture, le consommateur n&apos;est
-              tenu d&apos;établir que l&apos;existence du défaut de conformité et non la date
-              d&apos;apparition de celui-ci.
+              légale de conformité en cas d’apparition d’un défaut de conformité. Durant
+              un délai d’un an à compter de la date de fourniture, le consommateur n’est
+              tenu d’établir que l’existence du défaut de conformité et non la date
+              d’apparition de celui-ci.
             </p>
             <p style={{ marginTop: 8 }}>
               Lorsque le contrat prévoit la fourniture continue du contenu numérique ou du service
-              numérique pendant une durée donnée, la garantie légale s&apos;applique pendant toute
-              la durée de fourniture ; durant ce délai, le consommateur n&apos;est tenu
-              d&apos;établir que l&apos;existence du défaut de conformité affectant le contenu
-              numérique ou le service numérique et non la date d&apos;apparition de celui-ci.
+              numérique pendant une durée donnée, la garantie légale s’applique pendant toute
+              la durée de fourniture ; durant ce délai, le consommateur n’est tenu
+              d’établir que l’existence du défaut de conformité affectant le contenu
+              numérique ou le service numérique et non la date d’apparition de celui-ci.
             </p>
             <p style={{ marginTop: 8 }}>
               La garantie légale de conformité emporte obligation pour le professionnel, le cas
@@ -300,29 +300,29 @@ export const cgvFr = {
             </List>
             <p style={{ marginTop: 8 }}>
               Le consommateur a également droit à une réduction du prix ou à la résolution du
-              contrat lorsque le défaut de conformité est si grave qu&apos;il justifie que la
+              contrat lorsque le défaut de conformité est si grave qu’il justifie que la
               réduction du prix ou la résolution du contrat soit immédiate. Le consommateur
-              n&apos;est alors pas tenu de demander la mise en conformité du contenu numérique ou du
+              n’est alors pas tenu de demander la mise en conformité du contenu numérique ou du
               service numérique au préalable.
             </p>
             <p style={{ marginTop: 8 }}>
-              Dans les cas où le défaut de conformité est mineur, le consommateur n&apos;a droit à
-              l&apos;annulation du contrat que si le contrat ne prévoit pas le paiement d&apos;un
+              Dans les cas où le défaut de conformité est mineur, le consommateur n’a droit à
+              l’annulation du contrat que si le contrat ne prévoit pas le paiement d’un
               prix.
             </p>
             <p style={{ marginTop: 8 }}>
-              Toute période d&apos;indisponibilité du contenu numérique ou du service numérique en
-              vue de sa remise en conformité suspend la garantie qui restait à courir jusqu&apos;à la
+              Toute période d’indisponibilité du contenu numérique ou du service numérique en
+              vue de sa remise en conformité suspend la garantie qui restait à courir jusqu’à la
               fourniture du contenu numérique ou du service numérique de nouveau conforme.
             </p>
             <p style={{ marginTop: 8 }}>
-              Ces droits résultent de l&apos;application des articles L. 224-25-1 à L. 224-25-31 du
+              Ces droits résultent de l’application des articles L. 224-25-1 à L. 224-25-31 du
               code de la consommation.
             </p>
             <p style={{ marginTop: 8 }}>
               Le professionnel qui fait obstacle de mauvaise foi à la mise en œuvre de la garantie
-              légale de conformité encourt une amende civile d&apos;un montant maximal de
-              300 000 euros, qui peut être porté jusqu&apos;à 10 % du chiffre d&apos;affaires moyen
+              légale de conformité encourt une amende civile d’un montant maximal de
+              300 000 euros, qui peut être porté jusqu’à 10 % du chiffre d’affaires moyen
               annuel (article L. 242-18-1 du code de la consommation).
             </p>
             <p style={{ marginTop: 8 }}>
@@ -335,8 +335,8 @@ export const cgvFr = {
             </p>
           </div>
           <p style={{ marginTop: 12 }}>
-            Pour mettre en œuvre l&apos;une de ces garanties, écris-nous en suivant la procédure de
-            réclamation de l&apos;article 8, en décrivant le défaut constaté.
+            Pour mettre en œuvre l’une de ces garanties, écris-nous en suivant la procédure de
+            réclamation de l’article 8, en décrivant le défaut constaté.
           </p>
         </>
       ),
@@ -347,7 +347,7 @@ export const cgvFr = {
         <p>
           Pour toute réclamation relative à ton abonnement — facturation, accès à ton palier,
           défaut de fonctionnement —, écris-nous à {mail}, ou par courrier au 5 Rue du 23 Janvier,
-          21000 Dijon, en indiquant l&apos;adresse e-mail de ton compte et l&apos;objet de ta
+          21000 Dijon, en indiquant l’adresse e-mail de ton compte et l’objet de ta
           demande. Nous accusons réception de ta réclamation et y répondons dans les meilleurs
           délais, et au plus tard sous 30 jours.
         </p>
@@ -361,9 +361,9 @@ export const cgvFr = {
               informations ici, dans les CGU § 13 et dans les mentions légales § 7,
               DANS LES DEUX LANGUES. */}
           <p>
-            Si ta réclamation écrite n&apos;a pas abouti, tu peux recourir gratuitement à un
-            médiateur de la consommation en vue d&apos;une résolution amiable (articles L612-1 et
-            suivants du Code de la consommation), dans un délai d&apos;un an à compter de ta
+            Si ta réclamation écrite n’a pas abouti, tu peux recourir gratuitement à un
+            médiateur de la consommation en vue d’une résolution amiable (articles L612-1 et
+            suivants du Code de la consommation), dans un délai d’un an à compter de ta
             réclamation :
           </p>
           <List>
@@ -379,7 +379,7 @@ export const cgvFr = {
       body: (
         <p>
           Les données nécessaires à la gestion de ton abonnement, ainsi que la preuve de ta
-          demande d&apos;accès immédiat, sont traitées comme décrit dans notre{' '}
+          demande d’accès immédiat, sont traitées comme décrit dans notre{' '}
           <Link href="/confidentialite" style={{ color: 'var(--gold-pale)' }}>politique de
           confidentialité</Link>.
         </p>
@@ -390,7 +390,7 @@ export const cgvFr = {
       body: (
         <p>
           Les présentes conditions sont soumises au droit français. À défaut de résolution
-          amiable, le litige peut être porté, au choix du consommateur, devant l&apos;une des
+          amiable, le litige peut être porté, au choix du consommateur, devant l’une des
           juridictions territorialement compétentes en vertu du Code de procédure civile, ou
           devant la juridiction du lieu où il demeurait au moment de la conclusion du contrat ou
           de la survenance du fait dommageable (article R631-3 du Code de la consommation).
@@ -415,7 +415,7 @@ export const cgvFr = {
             border: '1px dashed var(--border)', fontSize: 14,
           }}>
             <p>
-              À l&apos;attention de Wyrm Forge, 5 Rue du 23 Janvier, 21000 Dijon, France —
+              À l’attention de Wyrm Forge, 5 Rue du 23 Janvier, 21000 Dijon, France —
               contact@wyrm-forge.com :
             </p>
             <p style={{ marginTop: 8 }}>
@@ -517,7 +517,7 @@ export const cgvEn: CgvDict = {
             <li>a summary of the tier, of the price and of the renewal conditions, and confirmation
               of your request for immediate access to the service (see article 6) — without that
               confirmation, payment cannot be started;</li>
-            <li>payment on Stripe&apos;s secure page, where you can enter a promotional code and
+            <li>payment on Stripe’s secure page, where you can enter a promotional code and
               check the exact amount before confirming.</li>
           </List>
           <p style={{ marginTop: 10 }}>
@@ -661,7 +661,7 @@ export const cgvEn: CgvDict = {
               <li>the bringing into conformity of the digital content or the digital service causes
                 a major inconvenience for the consumer;</li>
               <li>the lack of conformity of the digital content or the digital service persists
-                despite the trader&apos;s unsuccessful attempt to bring it into conformity.</li>
+                despite the trader’s unsuccessful attempt to bring it into conformity.</li>
             </List>
             <p style={{ marginTop: 8 }}>
               The consumer is also entitled to a reduction in the price or to termination of the
@@ -749,7 +749,7 @@ export const cgvEn: CgvDict = {
       body: (
         <p>
           These terms are governed by French law. Failing an amicable resolution, the dispute may be
-          brought, at the consumer&apos;s choice, before one of the courts having territorial
+          brought, at the consumer’s choice, before one of the courts having territorial
           jurisdiction under the French Code of Civil Procedure, or before the court of the place
           where the consumer was living when the contract was concluded or when the harmful event
           occurred (article R631-3 of the French Consumer Code).

@@ -47,7 +47,7 @@ export default function AboutPage() {
           fontSize: 20, fontWeight: 700, marginBottom: 10,
           color: c ? 'var(--gold-pale)' : 'var(--text)',
         }}>
-          L&apos;application Windows
+          L’application Windows
         </h2>
         <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 20 }}>
           Une application de bureau WPF pour Windows, connectée en temps réel à Wyrm Forge.
@@ -58,7 +58,7 @@ export default function AboutPage() {
           href={WINDOWS_DOWNLOAD_URL}
           download
         >
-          Télécharger l&apos;application
+          Télécharger l’application
         </a>
       </div>
 
@@ -74,8 +74,8 @@ export default function AboutPage() {
           Le site web
         </h2>
         <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-          L&apos;interface web de Wyrm Forge — construis tes builds, explore les jungle paths,
-          consulte tes statistiques et prépare tes parties depuis n&apos;importe quel appareil.
+          L’interface web de Wyrm Forge — construis tes builds, explore les jungle paths,
+          consulte tes statistiques et prépare tes parties depuis n’importe quel appareil.
         </p>
       </div>
 

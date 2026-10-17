@@ -40,16 +40,16 @@ export const subscriptionFr = {
   /* ── Paliers, contenu et prix ── */
   offerIntro: "Wyrm Forge propose trois paliers, sur le site comme dans l'application de bureau :",
   offerFree: (
-    <><strong>Apprenti — gratuit.</strong> Accès au site et à l&apos;application de bureau,
-      avec des limites d&apos;usage. Cette offre gratuite reste disponible en permanence.</>
+    <><strong>Apprenti — gratuit.</strong> Accès au site et à l’application de bureau,
+      avec des limites d’usage. Cette offre gratuite reste disponible en permanence.</>
   ),
   offerForgeron: ((monthly, annual) => (
-    <><strong>Forgeron — {monthly} par mois, ou {annual} par an.</strong> Limites d&apos;usage
+    <><strong>Forgeron — {monthly} par mois, ou {annual} par an.</strong> Limites d’usage
       relevées.</>
   )) as PricedClause,
   offerMaitre: ((monthly, annual) => (
-    <><strong>Maître — {monthly} par mois, ou {annual} par an.</strong> Limites d&apos;usage
-      les plus larges, et un modèle d&apos;intelligence artificielle plus avancé pour les
+    <><strong>Maître — {monthly} par mois, ou {annual} par an.</strong> Limites d’usage
+      les plus larges, et un modèle d’intelligence artificielle plus avancé pour les
       analyses.</>
   )) as PricedClause,
   /** `{months}` = `FREE_MONTHS_ON_ANNUAL`. */
@@ -57,11 +57,11 @@ export const subscriptionFr = {
     'Le tarif annuel équivaut à {months} mois offerts par rapport au tarif mensuel.',
   offerAiCredits: (
     <>
-      <strong>Analyses par intelligence artificielle</strong> — chaque palier dispose d&apos;une
+      <strong>Analyses par intelligence artificielle</strong> — chaque palier dispose d’une
       réserve hebdomadaire de crédits (« Chaleur de la Forge »), commune à toutes les analyses
       IA : <strong>15 crédits</strong> pour Apprenti, <strong>65</strong> pour Forgeron,{' '}
       <strong>135</strong> pour Maître. Chaque analyse consomme un nombre de crédits qui dépend
-      de son type, indiqué dans l&apos;interface. La réserve se renouvelle chaque lundi à
+      de son type, indiqué dans l’interface. La réserve se renouvelle chaque lundi à
       0 h (UTC) ; les crédits non utilisés ne sont pas reportés.
     </>
   ),
@@ -76,7 +76,7 @@ export const subscriptionFr = {
   ),
   paymentProcessor: (
     <>Le paiement est traité par notre prestataire <strong>Stripe</strong>, sur une page de
-      paiement sécurisée. Aucune donnée de carte bancaire n&apos;est transmise à Wyrm Forge ni
+      paiement sécurisée. Aucune donnée de carte bancaire n’est transmise à Wyrm Forge ni
       conservée par nous.</>
   ),
   paymentMethods: (
@@ -87,86 +87,86 @@ export const subscriptionFr = {
   paymentPromo: (
     <>Un <strong>code promotionnel</strong> peut être saisi sur la page de paiement. Le
       montant de la réduction, sa durée et ses éventuelles conditions y sont affichés avant la
-      validation du paiement ; à l&apos;issue de la durée de la réduction, le prix normal
-      s&apos;applique.</>
+      validation du paiement ; à l’issue de la durée de la réduction, le prix normal
+      s’applique.</>
   ),
   paymentSchedule: (
     <>Le prix de la première période est prélevé <strong>à la souscription</strong>.
-      L&apos;abonnement est ensuite renouvelé automatiquement <strong>à la date anniversaire
+      L’abonnement est ensuite renouvelé automatiquement <strong>à la date anniversaire
       de la souscription</strong> — chaque mois ou chaque année selon la périodicité
       choisie — et le prix de la nouvelle période est prélevé ce jour-là sur le moyen de
       paiement enregistré.</>
   ),
   paymentReceipts: (
     <>Chaque paiement donne lieu à un reçu émis par Stripe.{' '}
-      <Todo>confirmer l&apos;envoi automatique des reçus par e-mail dans le Dashboard Stripe
+      <Todo>confirmer l’envoi automatique des reçus par e-mail dans le Dashboard Stripe
         (mode live)</Todo></>
   ),
 
   /* ── Durée, absence d'engagement, chemin de résiliation ── */
   cancelNoCommitment: (
-    <><strong>Aucune durée minimale d&apos;engagement.</strong> L&apos;abonnement se
-      poursuit par périodes successives d&apos;un mois ou d&apos;un an, tant qu&apos;il
-      n&apos;est pas résilié.</>
+    <><strong>Aucune durée minimale d’engagement.</strong> L’abonnement se
+      poursuit par périodes successives d’un mois ou d’un an, tant qu’il
+      n’est pas résilié.</>
   ),
   cancelPath: (
     <><strong>Résiliable à tout moment, en quelques clics</strong> : depuis ta page{' '}
       <Link href="/profil" style={{ color: 'var(--gold-pale)' }}>Profil</Link>, section
       « Abonnement », bouton <strong>« Résilier mon abonnement »</strong>, qui ouvre
-      directement l&apos;écran de résiliation de la page sécurisée de Stripe, puis
+      directement l’écran de résiliation de la page sécurisée de Stripe, puis
       confirmation. Tu peux aussi nous écrire à{' '}
       <a href="mailto:contact@wyrm-forge.com" style={{ color: 'var(--gold-pale)' }}>
         contact@wyrm-forge.com</a>.</>
   ),
   cancelEffect: (
     <>La résiliation prend effet <strong>à la fin de la période déjà payée</strong> :
-      aucun nouveau prélèvement n&apos;a lieu, et tu conserves l&apos;accès à ton palier
-      jusqu&apos;à cette date. Tant qu&apos;elle n&apos;est pas atteinte, tu peux annuler ta
+      aucun nouveau prélèvement n’a lieu, et tu conserves l’accès à ton palier
+      jusqu’à cette date. Tant qu’elle n’est pas atteinte, tu peux annuler ta
       résiliation depuis le portail.</>
   ),
   cancelConfirmationEmail: (
-    <>Ta résiliation t&apos;est confirmée par e-mail, avec la date jusqu&apos;à laquelle
+    <>Ta résiliation t’est confirmée par e-mail, avec la date jusqu’à laquelle
       ton accès reste actif.</>
   ),
   cancelPortal: (
     <>Le bouton « Moyen de paiement et factures » ouvre le même portail pour consulter tes
       factures, changer de moyen de paiement ou réactiver un abonnement résilié avant son
-      échéance. S&apos;il te propose de changer de palier ou de périodicité, le prix et la
-      date d&apos;effet du changement te sont indiqués avant validation.</>
+      échéance. S’il te propose de changer de palier ou de périodicité, le prix et la
+      date d’effet du changement te sont indiqués avant validation.</>
   ),
 
   /* ── Politique d'impayé ── */
   unpaidRetries: (
     <>Si un prélèvement échoue, Stripe procède à <strong>de nouvelles tentatives pendant
-      environ une semaine</strong>, et t&apos;invite à mettre à jour ton moyen de paiement.
+      environ une semaine</strong>, et t’invite à mettre à jour ton moyen de paiement.
       <strong> Ton accès à ton palier est maintenu pendant cette période.</strong></>
   ),
   unpaidRevoked: (
-    <>Si le paiement n&apos;a toujours pas abouti au terme de ces tentatives,
-      l&apos;abonnement est suspendu pour impayé et ton compte <strong>repasse au palier
+    <>Si le paiement n’a toujours pas abouti au terme de ces tentatives,
+      l’abonnement est suspendu pour impayé et ton compte <strong>repasse au palier
       gratuit Apprenti</strong>. Tes contenus sont conservés ; seules les limites du palier
-      gratuit s&apos;appliquent de nouveau. Tu peux souscrire de nouveau à tout moment.</>
+      gratuit s’appliquent de nouveau. Tu peux souscrire de nouveau à tout moment.</>
   ),
   unpaidPending: (
-    <>L&apos;accès payant n&apos;est pas ouvert tant qu&apos;un premier paiement attend
+    <>L’accès payant n’est pas ouvert tant qu’un premier paiement attend
       encore sa validation (par exemple une authentification auprès de ta banque), ni pendant
-      une éventuelle suspension de l&apos;abonnement, et il prend fin à la date d&apos;effet
-      d&apos;une résiliation.</>
+      une éventuelle suspension de l’abonnement, et il prend fin à la date d’effet
+      d’une résiliation.</>
   ),
   unpaidFallback: (
-    <>Dans toute autre situation technique non prévue ci-dessus, l&apos;accès déjà payé est
-      conservé jusqu&apos;à la fin de la période en cours.</>
+    <>Dans toute autre situation technique non prévue ci-dessus, l’accès déjà payé est
+      conservé jusqu’à la fin de la période en cours.</>
   ),
 
   /* ── Évolution des prix et du contenu d'un abonnement en cours ── */
   priceChanges: (
     <>
       Nous pouvons faire évoluer nos prix et le contenu de nos paliers. Un nouveau prix ne
-      s&apos;applique à un abonnement en cours qu&apos;à partir d&apos;un renouvellement, et
-      seulement après que tu en as été informé par e-mail au moins 30 jours à l&apos;avance ;
+      s’applique à un abonnement en cours qu’à partir d’un renouvellement, et
+      seulement après que tu en as été informé par e-mail au moins 30 jours à l’avance ;
       tu peux résilier avant cette date sans frais. Une modification qui réduirait de manière
       significative le contenu de ton palier est soumise à la même information préalable et
-      t&apos;ouvre le même droit de résilier sans frais.
+      t’ouvre le même droit de résilier sans frais.
     </>
   ),
 }
@@ -242,7 +242,7 @@ export const subscriptionEn: SubscriptionDict = {
     <><strong>Cancellable at any time, in a few clicks</strong>: from your{' '}
       <Link href="/profil" style={{ color: 'var(--gold-pale)' }}>Profile</Link> page,
       “Subscription” section, button <strong>“Cancel my subscription”</strong>, which opens the
-      cancellation screen of Stripe&apos;s secure page directly, then confirmation. You may also
+      cancellation screen of Stripe’s secure page directly, then confirmation. You may also
       write to us at{' '}
       <a href="mailto:contact@wyrm-forge.com" style={{ color: 'var(--gold-pale)' }}>
         contact@wyrm-forge.com</a>.</>

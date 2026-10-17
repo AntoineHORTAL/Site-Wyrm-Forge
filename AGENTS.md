@@ -1323,6 +1323,12 @@ AND (NOT (EXISTS ( SELECT 1
 - Erreurs Supabase traduites manuellement en français (ex: `'Invalid login credentials'` → `'Email ou mot de passe incorrect.'`)
 - Nouveaux profils insérés avec `{ id, username, email, tier: 'apprenti', certified: false }` via AuthModal
 - `clamp()` pour les font-sizes responsive (ex: `clamp(36px, 8vw, 64px)`)
+- **Pas d'entité HTML dans le texte JSX** (`&apos;`, `&quot;`…) : écrire le caractère
+  (’, “ ”, « »). Le SWC de Next 16.2.4 supprime l'espace de tête d'un texte JSX
+  multi-lignes qui contient une entité (« La difficultéest », 49 phrases touchées,
+  corrigées le 2026-10-15). Babel/esbuild n'ont pas le défaut : un test de rendu
+  vitest ne le voit pas. Garde : `src/lib/jsx-whitespace.test.ts`, qui compile avec
+  le SWC de Next.
 
 ---
 

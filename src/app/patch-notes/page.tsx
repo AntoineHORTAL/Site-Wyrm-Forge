@@ -95,7 +95,7 @@ export default async function PatchNotesPage() {
             Patch Notes
           </h1>
           <p style={{ color: '#A79FB7', fontSize: 15, margin: 0, fontStyle: 'italic' }}>
-            Résumés des mises à jour League of Legends rédigés en français par l&apos;IA Wyrm Forge.
+            Résumés des mises à jour League of Legends rédigés en français par l’IA Wyrm Forge.
           </p>
         </div>
 
@@ -106,7 +106,7 @@ export default async function PatchNotesPage() {
             border: '2px dashed rgba(157,139,245,0.25)',
           }}>
             <p style={{ color: '#A79FB7', fontSize: 15, margin: 0 }}>
-              Aucun patch notes publié pour l&apos;instant.
+              Aucun patch notes publié pour l’instant.
             </p>
           </div>
         ) : (

@@ -205,7 +205,7 @@ export default function LiveGamePage() {
           <h3 style={{ fontSize: 18, fontWeight: 600, color: '#F5F2FA', marginBottom: 8 }}>
             {stateMessage(state)}
           </h3>
-          <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>Reste à l&apos;affût — ça arrive bientôt.</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>Reste à l’affût — ça arrive bientôt.</p>
         </div>
       )}
 
