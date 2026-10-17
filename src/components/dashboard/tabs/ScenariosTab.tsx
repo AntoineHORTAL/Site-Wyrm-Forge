@@ -19,6 +19,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { useDashboard, useLang } from '@/locales/dashboard'
 import { ddragonLocale, intlLocale } from '@/lib/intl'
+import { RIFT_MAP_LOCAL, applyRiftMapFallback } from '@/lib/rift-map'
 import type { ScenarioToolKey } from '@/locales/dashboard/strategie'
 
 const supabase = createClient()
@@ -82,7 +83,6 @@ const WARD_COLORS = {
 const PING_COLORS = {
   danger: '#E24B4A', help: '#5DCAA5', fight: '#EF9F27',
 }
-const SR_MAP = '/icons/maps/summoners_rift.png'
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
@@ -615,12 +615,8 @@ export default function ScenariosTab() {
               cursor: activeTool === 'select' ? 'default' : 'crosshair',
               userSelect: 'none',
             }}>
-            <img src={SR_MAP} alt="Summoner's Rift"
-              onError={e => {
-                const img = e.currentTarget as HTMLImageElement
-                if (img.src.endsWith('summoners_rift.png'))
-                  img.src = 'https://ddragon.leagueoflegends.com/cdn/14.24.1/img/map/map11.png'
-              }}
+            <img src={RIFT_MAP_LOCAL} alt="Summoner's Rift"
+              onError={e => applyRiftMapFallback(e.currentTarget)}
               style={{
                 width: '100%', height: '100%', borderRadius: 6, display: 'block',
                 background: '#0a0612', opacity: 0.85, pointerEvents: 'none',

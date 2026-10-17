@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useDashboard } from '@/locales/dashboard'
+import { RIFT_MAP_LOCAL, applyRiftMapFallback } from '@/lib/rift-map'
 import type { JungleCampKey, JunglePlacementKey } from '@/locales/dashboard/strategie'
 
 interface Point { x: number; y: number }
@@ -170,16 +171,9 @@ export default function JunglePathTab() {
         }}>
           {/* Vraie carte SR en arrière-plan (image locale + fallbacks DDragon) */}
           <img
-            src="/icons/maps/summoners_rift.png"
+            src={RIFT_MAP_LOCAL}
             alt="Summoner's Rift"
-            onError={e => {
-              const img = e.currentTarget as HTMLImageElement
-              if (img.src.endsWith('summoners_rift.png')) {
-                img.src = 'https://ddragon.leagueoflegends.com/cdn/14.24.1/img/map/map11.png'
-              } else if (img.src.includes('14.24.1')) {
-                img.src = 'https://ddragon.leagueoflegends.com/cdn/img/map/map11.png'
-              }
-            }}
+            onError={e => applyRiftMapFallback(e.currentTarget)}
             style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%',
               objectFit: 'cover', opacity: 0.85, pointerEvents: 'none',
