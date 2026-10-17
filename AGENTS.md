@@ -327,6 +327,13 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
+> ⚠️ Migrations `20261017000001` (flag `jungle_path_web_enabled`) et `20261017000002`
+> (RLS `scenarios` ↔ `scenarios_enabled`) **appliquées sur TEST seulement** (2026-10-17),
+> hors historique (`supabase db query --linked -f` depuis un worktree lié à TEST), script
+> `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` vert 14/14. **PROD sur feu vert
+> d'HORTAL uniquement**, avant ou avec le déploiement du site. Retirer cette ligne une fois
+> appliquées en PROD.
+
 > ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
 > **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
 > l'app** qui embarque le lot 2 « overlay fenêtré » — sans la ligne, le kill switch vaut
