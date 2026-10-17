@@ -318,19 +318,24 @@ describe('formatage des prix', () => {
 })
 
 describe('la vitrine n\'annonce aucune fonctionnalité pas encore lancée', () => {
-  // Une feature gardée par un flag de LANCEMENT fermé (Écailles, boutique,
-  // cosmétiques, quêtes, Scénarios, Kit sur mesure, éditeur Jungle Path du site)
-  // est invisible dans le dashboard : la vitrine ne doit pas la promettre non plus.
-  // La carte « Routine et progression » citait « scénarios de macro » et « quêtes
-  // quotidiennes » jusqu'au 2026-10-17. Le jour où l'une ouvre, retirer son motif
-  // d'ici en même temps qu'on réécrit la phrase.
+  // Une feature gardée par un flag de LANCEMENT FERMÉ EN PROD (Scénarios, Kit sur
+  // mesure, cosmétiques, boutique d'Écailles, éditeur Jungle Path du site) est
+  // invisible dans le dashboard : la vitrine ne doit pas la promettre non plus. La
+  // carte « Routine et progression » citait « scénarios de macro » jusqu'au
+  // 2026-10-17. Le jour où l'une ouvre, retirer son motif d'ici en même temps qu'on
+  // écrit la phrase.
   //
-  // ⚠️ « boutique » / « shop » ne sont PAS dans la liste : la vitrine et le guide
-  // parlent de la boutique DU JEU (sets d'objets), qui n'a rien à voir.
+  // Les quêtes quotidiennes et les Écailles sont OUVERTES en PROD (décision HORTAL
+  // du 2026-10-17) : elles ne sont pas dans la liste.
+  //
+  // ⚠️ « boutique » / « shop » seuls ne sont PAS dans la liste : la vitrine et le
+  // guide parlent de la boutique DU JEU (sets d'objets). Seules les formes qui
+  // désignent la boutique d'Écailles sont visées.
   const INTERDITS = [
-    /écailles?/i, /\bscales\b/i, /cosmétiques?/i, /\bcosmetics?\b/i,
-    /quêtes?/i, /\bquests?\b/i, /scénarios?/i, /\bscenarios?\b/i,
+    /cosmétiques?/i, /\bcosmetics?\b/i,
+    /scénarios?/i, /\bscenarios?\b/i,
     /kit sur mesure/i, /custom kit/i, /coaching/i,
+    /boutique d['’]écailles/i, /\bscales? shop\b/i, /\bshop of scales\b/i,
   ]
 
   it.each([['FR', landingFr], ['EN', landingEn]] as const)('%s', (_, dict) => {

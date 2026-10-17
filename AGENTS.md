@@ -23,6 +23,15 @@ Application : assistant League of Legends (Next.js 16.2.4 + Supabase + Vercel). 
 
 ## 🔴 Quelle base Supabase le site interroge-t-il ? — bandeau « BASE DE TEST »
 
+> 🔴 **`.env.local` pointe sur TEST** (`gyjcdswpybrhesarompg`) au 2026-10-17. Toute lecture
+> faite avec ses variables (REST anon, `next dev`, scripts) décrit **TEST, jamais la PROD**,
+> et les deux bases ne sont pas alignées. Le 2026-10-17, des flags « relevés en PROD » par
+> ce chemin étaient en réalité ceux de TEST, et une décision a été prise sur ce faux constat.
+> **Tout relevé PROD passe par une connexion PROD explicite** : `supabase db query --linked`
+> depuis le dépôt principal, après avoir vérifié que `supabase/.temp/project-ref` vaut
+> `cuscgmgqakxnfwnsrhhv`, ou le SQL Editor du projet « Wyrm Forge » (pas « Wyrm Forge
+> Test »). Ne jamais écrire « en PROD » sans avoir vérifié le projet interrogé.
+
 Pendant web du mécanisme de l'app WPF (`Services/AppConfig.cs` + bandeau `TestDbBanner`, documenté dans l'`AGENTS.md` du repo `Logiciel-Assistant-LOL`, § Pièges connus n°7). Même principe, **implémentation différente** — les différences ci-dessous sont délibérées, ne pas « aligner » les deux par réflexe.
 
 - **Bascule** : par `.env.local` uniquement (`NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Pas d'équivalent du canal Vélopack — le site n'a **pas** d'environnement de déploiement de test (décision HORTAL, 2026-08-12) : aucune config Vercel n'est impliquée.
@@ -127,7 +136,7 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 - `locked: true` → nécessite `unlocked={isAdmin}` dans SidebarBtn pour être accessible
 - `soon: true` → non cliquable, badge "Bientôt", opacité réduite
 - **Onglets gardés par un flag de LANCEMENT** (`ecailles`, `kit`, `scenarios`, `jungle`) : une seule règle, `src/lib/launch-tabs.ts`, lue via `useLaunchTabFlags()` par la sidebar, le tiroir mobile ET le routeur d'onglets. Flag fermé, pour un non-admin : pas d'entrée de navigation, et l'URL directe (`?tab=…`) rend l'**Accueil** (`resolveDashTab`) — plus d'écran « bientôt », qui annonçait la feature à qui tapait l'URL. L'onglet demandé n'est pas réécrit : si le flag s'ouvre, le même `?tab=` l'affiche. L'admin voit tout (recette), marqué « Non lancé · admin ». Un nouvel onglet de lancement s'ajoute à `isAdminOnlyEntry` et à `useLaunchTabFlags`, nulle part ailleurs.
-- **La vitrine et le guide ne citent aucune fonctionnalité fermée** : `landing.test.ts` et `guide.test.ts` échouent sur Écailles, cosmétiques, quêtes, Scénarios, Kit sur mesure. À la sortie d'une feature, retirer son motif du test en même temps qu'on écrit sa phrase.
+- **La vitrine et le guide ne citent aucune fonctionnalité fermée en PROD** : `landing.test.ts` et `guide.test.ts` échouent sur Scénarios, Kit sur mesure, cosmétiques et la boutique d'Écailles (« boutique » seule reste permise : c'est la boutique du jeu). Quêtes et Écailles sont ouvertes en PROD (décision HORTAL du 2026-10-17) et ne sont pas visées. À la sortie d'une feature, retirer son motif du test en même temps qu'on écrit sa phrase.
 - **Overlay tab supprimé volontairement** — fonctionnalité réservée à l'app desktop, inutile sur le site
 
 ### Admin

@@ -266,14 +266,17 @@ describe('bouton « retour au sommaire » — quand l’afficher', () => {
 
 describe('le texte du guide ne décrit aucune fonctionnalité pas encore lancée', () => {
   // Complément de « aucun flag de LANCEMENT dans le guide » : ce test-là contrôle la
-  // STRUCTURE, celui-ci le TEXTE. Écailles, cosmétiques, quêtes, Scénarios, Kit sur
-  // mesure et l'éditeur Jungle Path du site sont fermés : aucune sous-section ne
-  // doit en parler. (« boutique » / « shop » restent permis : c'est la boutique du
-  // JEU, celle des sets d'objets. L'éditeur « Jungle Path » cité est celui de l'APP.)
+  // STRUCTURE, celui-ci le TEXTE. Cosmétiques, boutique d'Écailles, Scénarios, Kit
+  // sur mesure et l'éditeur Jungle Path du site sont fermés en PROD : aucune
+  // sous-section ne doit en parler. Les quêtes et les Écailles sont ouvertes
+  // (décision HORTAL du 2026-10-17) et peuvent y figurer. (« boutique » / « shop »
+  // seuls restent permis : c'est la boutique du JEU, celle des sets d'objets.
+  // L'éditeur « Jungle Path » cité est celui de l'APP.)
   const INTERDITS = [
-    /écailles?/i, /\bscales\b/i, /cosmétiques?/i, /\bcosmetics?\b/i,
-    /quêtes?/i, /\bquests?\b/i, /scénarios?/i, /\bscenarios?\b/i,
+    /cosmétiques?/i, /\bcosmetics?\b/i,
+    /scénarios?/i, /\bscenarios?\b/i,
     /kit sur mesure/i, /custom kit/i,
+    /boutique d['’]écailles/i, /\bscales? shop\b/i, /\bshop of scales\b/i,
   ]
 
   it.each(['fr', 'en'] as const)('%s', lang => {
