@@ -9,6 +9,16 @@
       "src": "/guide/builds-2.webp",
       "width": 1600,
       "height": 699
+    },
+    {
+      "src": "/guide/builds-3.webp",
+      "width": 1362,
+      "height": 706
+    },
+    {
+      "src": "/guide/builds-4.webp",
+      "width": 699,
+      "height": 1232
     }
   ],
   "champions": [
@@ -21,6 +31,13 @@
       "src": "/guide/champions-2.webp",
       "width": 1334,
       "height": 1169
+    }
+  ],
+  "historique-parties": [
+    {
+      "src": "/guide/historique-parties-1.webp",
+      "width": 1357,
+      "height": 665
     }
   ],
   "historique-stats": [
