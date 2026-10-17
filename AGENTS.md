@@ -320,8 +320,14 @@ future par RPC ou Edge Function.
 
 #### Catalogue de flags — 44 lignes
 
-**Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, valeur `'false'` :
-`ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
+> ✅ **`ecailles_enabled` et `quests_enabled` sont LANCÉS** : passés `kind = 'kill'` en
+> PROD le 2026-10-17 (ouverts depuis juin 2026), retirés de `LAUNCH_FLAG_KEYS` et de
+> `ColdStartClosed` (app WPF), et décrits par la sous-section `quetes-ecailles` du guide.
+> Ils comptent désormais parmi les kill switches ci-dessous. TEST n'a pas suivi : les
+> deux y sont encore `kind = 'launch'`, valeur `'false'`.
+
+**Catégorie 1, lancement (7)** — `off_behavior = 'hidden'`, valeur `'false'` :
+`shop_enabled` et `cosmetics_enabled`, enfants du kill switch `ecailles_enabled` ;
 `scenarios_enabled` (lu par le site ET l'app, et par la RLS de `scenarios` depuis
 `20261017000002`, voir § table `scenarios`) ; `kit_sur_mesure_enabled` (migration `20260908000002`,
 `group_key = 'site'`, `sort_order = 630`) ; `jungle_path_web_enabled` (migration
@@ -392,15 +398,17 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > dans `ColdStartClosed` de `Services/FeatureFlagService.cs` — l'app WPF n'embarque
 > aucune brique de ce service, elle ne peut pas le laisser fuir. Même cas pour
 > `jungle_path_web_enabled` (2026-10-17) : l'éditeur de l'app est une autre
-> feature, livrée, qui ne lit pas ce flag. Les sept autres
-> restent la liste partagée entre les deux clients. Ne pas « réaligner » les deux
+> feature, livrée, qui ne lit pas ce flag. Les autres
+> restent la liste partagée entre les deux clients (cinq depuis la sortie
+> d'`ecailles_enabled` et `quests_enabled`, le 2026-10-17). Ne pas « réaligner » les deux
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
 
-**Catégorie 2, kill switches (35)** — valeur `'true'` :
+**Catégorie 2, kill switches (37)** — valeur `'true'` :
 
 | group_key | clés |
 |---|---|
+| `ecailles` | `ecailles_enabled` (parent de la boutique, des quêtes et des cosmétiques), `quests_enabled` — lancés le 2026-10-17 |
 | `riot` | `riot_history_enabled` (EF riot-matches / riot-match-detail / riot-rank), `live_game_enabled`, `riot_link_enabled` |
 | `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; le seul autre est `overlay_game_window_follow_enabled`), `postgame_ai_enabled` |
 | `contenu` | `patch_notes_enabled`, `workshop_builds_enabled`, `workshop_jungle_enabled` |

@@ -270,6 +270,21 @@ const fr: GuideDict = {
       screenshot:
         "L'historique de l'onglet « Accueil » de l'app, avec le sélecteur de compte et les filtres 10 / 25 / 50 / 100 / Saison actuelle.",
     },
+    'quetes-ecailles': {
+      name: 'Quêtes et Écailles',
+      purpose: 'Accomplis des quêtes chaque jour pour gagner des Écailles, la monnaie de Wyrm Forge.',
+      where:
+        "Site : tableau de bord → La Forge → « Quêtes » ; ton solde et son historique sont dans « Solde & Historique ». App : section « La Forge » → onglet « Quêtes » ; ton solde s'affiche en haut de la fenêtre. Il faut être connecté à ton compte Wyrm Forge.",
+      steps: [
+        'Chaque jour, trois quêtes te sont proposées : par exemple jouer ou gagner une partie classée, ou consulter le détail d’une partie.',
+        'Les quêtes LoL demandent un compte Riot lié (onglet Accueil du site) : c’est ton historique de parties qui permet de vérifier qu’elles sont faites.',
+        'Une fois la condition remplie, clique sur « Réclamer » : les Écailles arrivent sur ton solde, le même sur le site et dans l’app.',
+        'Les gains sont plafonnés chaque jour : le compteur « x / y Écailles » indique où tu en es. Les quêtes changent chaque jour à minuit UTC.',
+        'Complète au moins une quête par jour pour faire grandir ton streak.',
+      ],
+      note: 'Les Écailles ne s’échangent pas contre de l’argent réel.',
+      screenshot: 'La liste des quêtes du jour, avec le compteur d’Écailles et le streak.',
+    },
 
     // ── Site ──────────────────────────────────────────────────────────────
     'recherche-joueur': {
@@ -743,6 +758,21 @@ const en: GuideDict = {
         'On the site, your history shows once your Riot account is linked (see “Link your Riot account”).',
       ],
       screenshot: 'The history in the app’s “Home” tab, with the account selector and the 10 / 25 / 50 / 100 / Current season filters.',
+    },
+    'quetes-ecailles': {
+      name: 'Quests and Scales',
+      purpose: 'Complete quests every day to earn Scales, Wyrm Forge’s currency.',
+      where:
+        'Site: dashboard → The Forge → “Quests”; your balance and its history are under “Balance & History”. App: “The Forge” section → “Quests” tab; your balance shows at the top of the window. You need to be signed in to your Wyrm Forge account.',
+      steps: [
+        'Each day you get three quests, for example play or win a ranked game, or open a match’s details.',
+        'LoL quests need a linked Riot account (the site’s Home tab): your match history is what confirms they are done.',
+        'Once the condition is met, click “Claim”: the Scales go to your balance, the same on the site and in the app.',
+        'Earnings are capped each day: the “x / y Scales” counter shows where you stand. Quests change every day at midnight UTC.',
+        'Complete at least one quest a day to grow your streak.',
+      ],
+      note: 'Scales cannot be exchanged for real money.',
+      screenshot: 'Today’s quest list, with the Scales counter and the streak.',
     },
 
     // ── Site ──────────────────────────────────────────────────────────────
