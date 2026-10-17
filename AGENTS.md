@@ -346,17 +346,20 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 >
 > 🔴 **À FAIRE au push de `20261015000001`** (qui part avec la release de l'app, voir
 > ci-dessous) : inscrire les deux dans l'historique PROD, dans la même session —
-> `supabase migration repair --status applied 20261017000001 20261017000002 --linked`
+> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`
 > (dépôt lié à PROD). Pas avant : tant que `20261015000001` n'est pas appliquée, les inscrire
 > créerait un trou dans l'historique et le `db push` suivant exigerait `--include-all`.
 > Retirer cette note une fois fait.
 
 > ⚠️ Migration `20261017000003` (garde `cosmetics_enabled` sur `equip_cosmetic`,
-> `unequip_cosmetic`, `get_equipped_cosmetics`) **appliquée sur TEST seulement**
-> (2026-10-17), hors historique ; script `supabase/tests/20261017000003_cosmetics_flag_guard_test.sql`
-> vert 10/10. **PROD sur feu vert d'HORTAL.** À inscrire dans l'historique PROD avec
-> `20261017000001/2` (même `migration repair`, même moment). Retirer cette ligne une fois
-> appliquée en PROD.
+> `unequip_cosmetic`, `get_equipped_cosmetics`) **appliquée sur TEST ET PROD**
+> (2026-10-17), hors historique des deux côtés ; script
+> `supabase/tests/20261017000003_cosmetics_flag_guard_test.sql` vert 10/10 sur TEST. En PROD,
+> contrôlé après coup : les trois fonctions relisent `launch_flag_on('cosmetics_enabled')`,
+> equip/unequip lèvent `cosmetics_disabled`, privilèges inchangés, et
+> `get_equipped_cosmetics` appelée en `anon` rend une liste vide sans erreur. À inscrire dans
+> l'historique PROD avec `20261017000001/2` (même `migration repair`, même moment) :
+> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`.
 
 > ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
 > **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
