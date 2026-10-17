@@ -147,16 +147,20 @@ describe('politique de repli asymétrique', () => {
     // pas la laisser fuir. Les sept autres restent la liste partagée, dont
     // `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
     // (`surface='app'`).
+    // `ecailles_enabled` et `quests_enabled` en sont sortis le 2026-10-17 : lancés,
+    // passés kill switches en PROD, et retirés de `ColdStartClosed` côté app.
     expect([...LAUNCH_FLAG_KEYS].sort()).toEqual([
-      'cosmetics_enabled', 'ecailles_enabled', 'jungle_path_web_enabled', 'kit_sur_mesure_enabled',
+      'cosmetics_enabled', 'jungle_path_web_enabled', 'kit_sur_mesure_enabled',
       'minimap_structure_detection_enabled', 'overlay_show_nexus_turret_timers',
-      'quests_enabled', 'scenarios_enabled', 'shop_enabled',
+      'scenarios_enabled', 'shop_enabled',
     ])
     // Premier flag de LANCEMENT parmi les enfants d'overlay_enabled : fermé par défaut,
     // contrairement à ses 18 frères, kill switches ouverts.
     expect(flagFallback('overlay_show_nexus_turret_timers')).toBe(false)
     expect(flagFallback('overlay_show_inhib_timers')).toBe(true)
-    expect(flagFallback('ecailles_enabled')).toBe(false)
+    expect(flagFallback('ecailles_enabled')).toBe(true)
+    expect(flagFallback('quests_enabled')).toBe(true)
+    expect(flagFallback('shop_enabled')).toBe(false)
     expect(flagFallback('overlay_enabled')).toBe(true)
     // Son parent, la détection de la minimap, reste un kill switch ouvert par défaut.
     expect(flagFallback('minimap_structure_detection_enabled')).toBe(false)
@@ -342,10 +346,14 @@ describe('migration des lectures directes — comportement préservé', () => {
     expect(decideEcaillesScreen(flags, false)).toBe('forge')
   })
 
-  it('pendant le chargement, un non-admin ne voit PAS la Forge', () => {
-    // Le repli fail-closed des flags de lancement couvre la fenêtre de chargement :
-    // même si l'onglet ne gardait pas son `isLoading`, rien ne fuiterait.
-    expect(decideEcaillesScreen({}, false)).toBe('bientôt')
+  it('pendant le chargement, la Forge est ouverte mais la boutique reste fermée', () => {
+    // `ecailles_enabled` est un kill switch depuis son lancement (2026-10-17) : son
+    // repli est OUVERT, comme pour tout ce qui est en production. La boutique, encore
+    // un flag de lancement, garde un repli fermé : rien ne fuite pendant le chargement.
+    expect(decideEcaillesScreen({}, false)).toBe('forge')
+    expect(readFlag({}, 'quests_enabled')).toBe(true)
+    expect(readFlag({}, 'shop_enabled')).toBe(false)
+    expect(readFlag({}, 'cosmetics_enabled')).toBe(false)
   })
 
   it('couper les Écailles éteint boutique ET quêtes, sans les toucher', () => {

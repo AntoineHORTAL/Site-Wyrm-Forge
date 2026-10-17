@@ -78,9 +78,9 @@ interface NavProps {
 
 export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, onNavigateToForge }: NavProps) {
   const { theme } = useTheme()
-  // Flag de LANCEMENT `ecailles_enabled` (off_behavior 'hidden') : sans lui, ni chip
-  // de solde ni entrée « Écailles » dans la navigation. L'admin voit toujours tout —
-  // c'est le mécanisme de recette avant lancement.
+  // `ecailles_enabled` (off_behavior 'hidden', kill switch depuis son lancement le
+  // 2026-10-17) : coupé, ni chip de solde ni entrée « Écailles » dans la navigation.
+  // L'admin voit toujours tout.
   //
   // Lu ici plutôt que reçu en prop depuis SiteHeader : la source de vérité est
   // FeatureFlagsProvider. Le faire transiter par la session avait deux défauts —
