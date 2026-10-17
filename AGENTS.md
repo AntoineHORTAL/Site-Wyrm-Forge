@@ -311,11 +311,13 @@ future par RPC ou Edge Function.
 
 #### Catalogue de flags — 44 lignes
 
-> 🔴 **Valeur réelle ≠ valeur de création.** Relevé en PROD le 2026-10-17 :
-> `ecailles_enabled`, `shop_enabled` et `quests_enabled` valent **`'true'`** (posés en
-> juin–juillet 2026, `kind` resté `'launch'`), `cosmetics_enabled` vaut `'false'`. Les
-> deux bases ne sont PAS alignées (TEST : les quatre à `'false'`). Ne jamais déduire l'état
-> d'un flag de ce catalogue ni de TEST : **interroger la PROD**.
+> 🔴 **Valeur réelle ≠ valeur de création.** En PROD, `ecailles_enabled` et
+> `quests_enabled` valent **`'true'`** depuis juin 2026 (`kind` resté `'launch'`) et restent
+> ouverts — décision HORTAL du 2026-10-17 : les joueurs accumulent des Écailles.
+> `shop_enabled` (ouvert le 2026-07-16) est refermé par HORTAL le 2026-10-17 depuis
+> l'AdminTab ; `cosmetics_enabled` reste `'false'`. Les deux bases ne sont PAS alignées
+> (TEST : les quatre à `'false'`). Ne jamais déduire l'état d'un flag de ce catalogue ni
+> de TEST : **interroger la PROD** (connexion PROD explicite, voir § Quelle base).
 
 **Catégorie 1, lancement (9)** — `off_behavior = 'hidden'`, créés à `'false'` :
 `ecailles_enabled` (parent) → `shop_enabled`, `quests_enabled`, `cosmetics_enabled` ;
