@@ -328,11 +328,18 @@ timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app,
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
 > ⚠️ Migrations `20261017000001` (flag `jungle_path_web_enabled`) et `20261017000002`
-> (RLS `scenarios` ↔ `scenarios_enabled`) **appliquées sur TEST seulement** (2026-10-17),
-> hors historique (`supabase db query --linked -f` depuis un worktree lié à TEST), script
-> `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` vert 14/14. **PROD sur feu vert
-> d'HORTAL uniquement**, avant ou avec le déploiement du site. Retirer cette ligne une fois
-> appliquées en PROD.
+> (RLS `scenarios` ↔ `scenarios_enabled`) **appliquées sur TEST ET PROD** (2026-10-17),
+> **hors historique** des deux côtés (`supabase db query --linked -f`). Script
+> `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` vert 14/14 sur TEST ; en PROD,
+> contrôlé après coup : `launch_flag_on` présente (anon non, authenticated oui), 4 policies
+> `scn_*` relisant le flag, `jungle_path_web_enabled` à `false`.
+>
+> 🔴 **À FAIRE au push de `20261015000001`** (qui part avec la release de l'app, voir
+> ci-dessous) : inscrire les deux dans l'historique PROD, dans la même session —
+> `supabase migration repair --status applied 20261017000001 20261017000002 --linked`
+> (dépôt lié à PROD). Pas avant : tant que `20261015000001` n'est pas appliquée, les inscrire
+> créerait un trou dans l'historique et le `db push` suivant exigerait `--include-all`.
+> Retirer cette note une fois fait.
 
 > ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
 > **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
