@@ -2,6 +2,7 @@
 
 import { IconX } from '@tabler/icons-react'
 import { canSubmitCut } from '@/lib/admin-flags'
+import WriteErrorNotice from './WriteErrorNotice'
 
 /**
  * Confirmation d'une coupure de kill switch.
@@ -40,12 +41,17 @@ export interface KillSwitchModalLabels {
 }
 
 export default function KillSwitchModal({
-  flagLabel, labels, reason, saving, onReasonChange, onConfirm, onCancel,
+  flagLabel, labels, reason, saving, error = null, onReasonChange, onConfirm, onCancel,
 }: {
   flagLabel: string
   labels: KillSwitchModalLabels
   reason: string
   saving: boolean
+  /**
+   * Échec de la dernière écriture, déjà rédigé. La modale reste ouverte avec le
+   * motif saisi : fermer en silence laisserait croire que la coupure a eu lieu.
+   */
+  error?: string | null
   onReasonChange: (value: string) => void
   onConfirm: () => void
   onCancel: () => void
@@ -123,6 +129,8 @@ export default function KillSwitchModal({
         <div style={{ fontSize: 11, color: '#A5A3AE', fontStyle: 'italic', marginBottom: 20 }}>
           {labels.cutReasonHint}
         </div>
+
+        {error && <WriteErrorNotice message={error} />}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button

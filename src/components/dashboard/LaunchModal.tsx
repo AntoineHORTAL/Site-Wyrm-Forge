@@ -1,6 +1,7 @@
 'use client'
 
 import { IconX } from '@tabler/icons-react'
+import WriteErrorNotice from './WriteErrorNotice'
 
 /**
  * Confirmation du LANCEMENT d'une feature.
@@ -39,11 +40,13 @@ export interface LaunchModalLabels {
 }
 
 export default function LaunchModal({
-  flagLabel, labels, saving, onConfirm, onCancel,
+  flagLabel, labels, saving, error = null, onConfirm, onCancel,
 }: {
   flagLabel: string
   labels: LaunchModalLabels
   saving: boolean
+  /** Échec de la dernière écriture, déjà rédigé. La modale reste ouverte. */
+  error?: string | null
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -94,6 +97,8 @@ export default function LaunchModal({
         }}>
           {labels.launchIrreversible}
         </div>
+
+        {error && <WriteErrorNotice message={error} />}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button

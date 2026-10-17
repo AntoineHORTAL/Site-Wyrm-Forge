@@ -341,3 +341,58 @@ export function launchPatch(): LaunchPatch {
 export function applyLaunch(row: FlagCatalogueRow): FlagCatalogueRow {
   return { ...row, ...launchPatch() }
 }
+
+/**
+ * Verdict d'une écriture sur `app_settings`, depuis la réponse de
+ * `.update(…).eq('key', …).select('key')`.
+ *
+ * ⚠️ Trois issues, pas deux. Une écriture refusée par la RLS (`as_update_admin`,
+ * `USING is_admin()`) ne lève AUCUNE erreur : PostgREST répond 200 avec zéro
+ * ligne. Sans le `.select()` et ce test, le panneau relisait le catalogue, voyait
+ * l'ancienne valeur et ne disait rien — c'est ainsi qu'un « Lancer » du
+ * 2026-10-17 a échoué sans laisser de trace. Même garde que `save()` d'AdminTab
+ * sur `profiles`.
+ */
+export type FlagWriteOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'error'; message: string }
+  | { ok: false; reason: 'no_rows' }
+
+export function flagWriteOutcome(res: {
+  data: readonly unknown[] | null
+  error: { message: string } | null
+}): FlagWriteOutcome {
+  if (res.error) return { ok: false, reason: 'error', message: res.error.message }
+  if (!res.data || res.data.length === 0) return { ok: false, reason: 'no_rows' }
+  return { ok: true }
+}
+
+/**
+ * Un flag de lancement OUVERT peut-il être refermé ? Seul cet état l'autorise :
+ * un kill switch se coupe (avec motif) par son interrupteur, et un lancement
+ * fermé n'a rien à refermer.
+ */
+export function canRevertLaunch(row: FlagCatalogueRow): boolean {
+  return isLiveLegacyLaunch(row)
+}
+
+/**
+ * Ce qui est écrit pour ANNULER un lancement : la valeur repasse à `'false'`,
+ * le motif est conservé, et `kind` n'est PAS dans le patch — le flag reste un
+ * flag de lancement. Le convertir en kill switch le ferait échouer OUVERT au
+ * démarrage des clients (`flagFallback`, `ColdStartClosed`), soit l'inverse de
+ * ce qu'on cherche en refermant une feature.
+ */
+export interface RevertLaunchPatch {
+  value: 'false'
+  reason: string
+}
+
+export function revertLaunchPatch(reason: string): RevertLaunchPatch {
+  return { value: 'false', reason: reason.trim() }
+}
+
+/** Applique l'annulation à une ligne, pour la mise à jour optimiste du panneau. */
+export function applyRevertLaunch(row: FlagCatalogueRow, reason: string): FlagCatalogueRow {
+  return { ...row, ...revertLaunchPatch(reason) }
+}
