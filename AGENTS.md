@@ -366,46 +366,30 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
-> ⚠️ Migrations `20261017000001` (flag `jungle_path_web_enabled`) et `20261017000002`
-> (RLS `scenarios` ↔ `scenarios_enabled`) **appliquées sur TEST ET PROD** (2026-10-17),
-> **hors historique** des deux côtés (`supabase db query --linked -f`). Script
-> `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` vert 14/14 sur TEST ; en PROD,
-> contrôlé après coup : `launch_flag_on` présente (anon non, authenticated oui), 4 policies
-> `scn_*` relisant le flag, `jungle_path_web_enabled` à `false`.
+> ✅ **Historique PROD aligné sur le dépôt au 2026-10-17** (`supabase migration list
+> --linked` : 104 migrations, aucun écart). Ce jour-là, dans cet ordre :
+> - `20261017000001` (flag `jungle_path_web_enabled`), `20261017000002` (RLS `scenarios` ↔
+>   `scenarios_enabled`) et `20261017000003` (garde `cosmetics_enabled` sur
+>   `equip_cosmetic`, `unequip_cosmetic`, `get_equipped_cosmetics`) avaient été appliquées
+>   en PROD **hors historique** (`supabase db query --linked -f`), puis contrôlées : voir
+>   § table `scenarios` et § Fonctions cosmétiques. Elles ont été inscrites par
+>   `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003`.
+> - `20261015000001` (kill switch `overlay_game_window_follow_enabled`, enfant
+>   d'`overlay_enabled`, `'degraded'`) a ensuite été poussée par `db push --include-all`,
+>   seule en attente (vérifié par `--dry-run`). `--include-all` était nécessaire puisqu'elle
+>   est antérieure aux trois migrations inscrites juste avant. Elle devait précéder la
+>   release de l'app qui embarque le lot 2 « overlay fenêtré » : sans la ligne, l'app
+>   applique le repli d'un kill switch (ouvert) et le suivi de fenêtre ne peut pas être coupé.
 >
-> 🔴 **À FAIRE au push de `20261015000001`** (qui part avec la release de l'app, voir
-> ci-dessous) : inscrire les deux dans l'historique PROD, dans la même session —
-> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`
-> (dépôt lié à PROD). Pas avant : tant que `20261015000001` n'est pas appliquée, les inscrire
-> créerait un trou dans l'historique et le `db push` suivant exigerait `--include-all`.
-> Retirer cette note une fois fait.
+> Tests : `supabase/tests/20261017000002_scenarios_flag_rls_test.sql` (14/14) et
+> `20261017000003_cosmetics_flag_guard_test.sql` (10/10), joués sur TEST seulement.
+> Sur TEST, ces quatre migrations restent **hors historique** (voir la dette ci-dessous).
 
-> ⚠️ Migration `20261017000003` (garde `cosmetics_enabled` sur `equip_cosmetic`,
-> `unequip_cosmetic`, `get_equipped_cosmetics`) **appliquée sur TEST ET PROD**
-> (2026-10-17), hors historique des deux côtés ; script
-> `supabase/tests/20261017000003_cosmetics_flag_guard_test.sql` vert 10/10 sur TEST. En PROD,
-> contrôlé après coup : les trois fonctions relisent `launch_flag_on('cosmetics_enabled')`,
-> equip/unequip lèvent `cosmetics_disabled`, privilèges inchangés, et
-> `get_equipped_cosmetics` appelée en `anon` rend une liste vide sans erreur. À inscrire dans
-> l'historique PROD avec `20261017000001/2` (même `migration repair`, même moment) :
-> `supabase migration repair --status applied 20261017000001 20261017000002 20261017000003 --linked`.
-
-> ⚠️ Migration `20261015000001` (kill switch `overlay_game_window_follow_enabled`)
-> **appliquée sur TEST seulement** (2026-10-15), pas en PROD : PROD **avant la release de
-> l'app** qui embarque le lot 2 « overlay fenêtré » — sans la ligne, le kill switch vaut
-> `true` et ne peut pas être coupé. Sur TEST, exécutée **hors historique** (`supabase db
-> query --linked -f` depuis un worktree lié à TEST ; le dépôt principal reste lié à PROD).
-> Retirer cette ligne une fois appliquée en PROD.
-
-> ⚠️ Migration `20261013000001` **appliquée sur TEST seulement** (2026-10-13), pas en
-> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
-> appliquée en PROD. Sur TEST, exécutée **hors historique** comme `20261012000001` :
-> voir la dette ci-dessous.
-
-> ⚠️ Migration `20261012000001` **appliquée sur TEST seulement** (2026-10-12), pas en
-> PROD : PROD seulement après validation sur l'AdminTab. Retirer cette ligne une fois
-> appliquée en PROD. Sur TEST, elle a été exécutée **hors historique** (fichier seul,
-> pas de `db push`) : voir la dette « TEST en retard sur PROD » ci-dessous.
+> ✅ `20261012000001` et `20261013000001` sont **inscrites dans l'historique PROD** et leurs
+> lignes existent (relevé PROD du 2026-10-17) : `minimap_structure_detection_enabled`
+> (`launch`, `'false'`) et `overlay_show_nexus_turret_timers`, **déjà lancé** (`kill`,
+> `'true'`). Les notes qui les disaient « TEST seulement » étaient périmées. Sur TEST,
+> elles restent hors historique : voir la dette ci-dessous.
 
 > 🟡 **Dette connue — le projet TEST (`gyjcdswpybrhesarompg`) n'est pas aligné sur
 > PROD.** Constaté le 2026-10-12, **non traité** :
