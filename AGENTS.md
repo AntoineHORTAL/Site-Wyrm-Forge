@@ -676,10 +676,13 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
     jamais été écrit, UPDATE sinon, DELETE après confirmation — chacun suivi de
     `.select()` ; 0 ligne = erreur affichée (`writeErrorKey`, messages dans
     `locales/dashboard/strategie.ts` › `jungle.errors`).
-  - ⚠️ **Une suppression faite sur le site ne se propage PAS à l'app** tant que le lot 3
-    ne le prévoit pas : le merge de l'app est additif (patron `item_builds`), il repousse
-    au login suivant tout path local absent du distant. La confirmation du site ne
-    promet donc rien côté app.
+  - **Une suppression faite sur le site atteint l'app à sa prochaine connexion** (règle
+    HORTAL du 2026-10-18, `JunglePathSyncService`) : un path local synchronisé pour le
+    compte connecté et absent de la base y est supprimé, après copie dans
+    `junglepaths.deleted.backup.json`. Exceptions, voulues : un path modifié dans l'app
+    hors ligne depuis (`IsSynced=false`) y est **repoussé** ; une lecture distante qui
+    échoue ne supprime rien. Nécessite la release de l'app qui embarque ce service — une
+    app antérieure repousse le path supprimé. La confirmation du site l'annonce.
 - **App WPF** : `Services/JunglePathSyncService.cs` (lot 3 du chantier, calqué sur
   `ItemBuildSyncService`) — voir l'`AGENTS.md` de `Logiciel-Assistant-LOL`.
 

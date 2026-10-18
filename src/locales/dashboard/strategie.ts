@@ -96,7 +96,9 @@ const jungleFr = {
   save: 'Sauvegarder',
   saving: 'Sauvegarde…',
   delete: 'Supprimer',
-  deleteConfirm: 'Supprimer « {name} » ? Cette action est définitive.',
+  /* La suppression atteint l'app à sa prochaine connexion (JunglePathSyncService, app
+     WPF) : un path synchronisé et absent de la base y est supprimé, après copie de secours. */
+  deleteConfirm: 'Supprimer « {name} » ? Il disparaîtra aussi de l’app à sa prochaine connexion. Cette action est définitive.',
   unsaved: 'Modifications non sauvegardées',
   discardConfirm: 'Les modifications non sauvegardées de ce path seront perdues. Continuer ?',
   saved: 'Path sauvegardé.',
@@ -337,7 +339,7 @@ export const strategieEn: StrategieDict = {
     save: 'Save',
     saving: 'Saving…',
     delete: 'Delete',
-    deleteConfirm: 'Delete “{name}”? This cannot be undone.',
+    deleteConfirm: 'Delete “{name}”? It will also disappear from the app the next time it signs in. This cannot be undone.',
     unsaved: 'Unsaved changes',
     discardConfirm: 'This path’s unsaved changes will be lost. Continue?',
     saved: 'Path saved.',
