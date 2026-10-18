@@ -367,8 +367,13 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
-> ✅ **Historique PROD aligné sur le dépôt au 2026-10-17** (`supabase migration list
-> --linked` : 104 migrations, aucun écart). Ce jour-là, dans cet ordre :
+> ✅ **Historique PROD aligné sur le dépôt au 2026-10-18** (`supabase migration list
+> --linked` : 105 migrations, aucun écart). Le 2026-10-18, `20261018000001` (table
+> `jungle_paths` + kill switch `jungle_path_sync_enabled`) a été poussée par `db push`, seule
+> en attente (vérifié par `--dry-run`, sans `--include-all` : postérieure à la dernière
+> migration PROD), puis contrôlée : voir § table `jungle_paths`.
+>
+> Le 2026-10-17 (104 migrations, aucun écart), dans cet ordre :
 > - `20261017000001` (flag `jungle_path_web_enabled`), `20261017000002` (RLS `scenarios` ↔
 >   `scenarios_enabled`) et `20261017000003` (garde `cosmetics_enabled` sur
 >   `equip_cosmetic`, `unequip_cosmetic`, `get_equipped_cosmetics`) avaient été appliquées
@@ -649,9 +654,18 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
   inconnu bien formé accepté, `anon` en `42501`, privilèges réels, policies, FK CASCADE.
 - **TEST : appliquée le 2026-10-18, 25/25** (rejouée après l'ajout du kill switch), **hors historique** (`supabase db query -f`,
   comme les autres migrations récentes sur TEST — voir la dette d'alignement de TEST).
-- **PROD : NON appliquée.** Elle doit passer **avant** la release de l'app qui embarque
-  `JunglePathSyncService` (sans la table, chaque upsert de l'app échoue et les paths
-  restent `IsSynced=false`, sans dégât mais sans synchro).
+- **PROD : appliquée le 2026-10-18** par `supabase db push` (project-ref
+  `cuscgmgqakxnfwnsrhhv` vérifié, seule migration en attente au `--dry-run`), **inscrite dans
+  l'historique**. Le bloc `DO` d'auto-vérification n'a rien levé. Contrôlé ensuite par lecture
+  du catalogue (`supabase db query --linked`) : 11 colonnes, 4 contraintes de forme/taille
+  (plus longueurs, `side`, PK, FK), `idx_jungle_paths_user_time`, `trg_jungle_paths_updated_at`
+  → `fn_set_updated_at`, RLS active, exactement 4 policies `TO authenticated` à prédicat
+  `(select auth.uid())`, `anon` sans aucun privilège, `authenticated` limité à S/I/U/D,
+  `jungle_path_sync_enabled = 'true'` (`kind = 'kill'`), `jungle_path_web_enabled` toujours
+  `'false'`. Le script de test n'a **pas** été joué en PROD (il écrit : TEST seulement).
+  Elle devait passer **avant** la release de l'app qui embarque `JunglePathSyncService`
+  (sans la table, chaque upsert de l'app échoue et les paths restent `IsSynced=false`, sans
+  dégât mais sans synchro).
 
 ### Consommateurs
 - **Site React** : `src/components/dashboard/tabs/JunglePathTab.tsx`, CRUD direct sous RLS,
