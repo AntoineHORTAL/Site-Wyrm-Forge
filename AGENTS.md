@@ -683,6 +683,12 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
     hors ligne depuis (`IsSynced=false`) y est **repoussé** ; une lecture distante qui
     échoue ne supprime rien. Nécessite la release de l'app qui embarque ce service — une
     app antérieure repousse le path supprimé. La confirmation du site l'annonce.
+  - **Une modification faite sur le site atteint aussi l'app** à sa prochaine connexion
+    (même règle, même release) : l'app compare le `updated_at` de la ligne au dernier
+    qu'elle a reçu du serveur, prend la version de la base et garde son activation
+    locale. En cas de conflit (path modifié aussi dans l'app avant synchro), **la version
+    de l'app gagne** et écrase celle du site. `updated_at` est donc un CONTRAT : il doit
+    rester posé par le trigger `trg_jungle_paths_updated_at`, jamais par un client.
 - **App WPF** : `Services/JunglePathSyncService.cs` (lot 3 du chantier, calqué sur
   `ItemBuildSyncService`) — voir l'`AGENTS.md` de `Logiciel-Assistant-LOL`.
 
