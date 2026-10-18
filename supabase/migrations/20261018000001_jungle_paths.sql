@@ -160,6 +160,35 @@ CREATE POLICY "jp_delete_own"
   ON public.jungle_paths FOR DELETE TO authenticated
   USING ((SELECT auth.uid()) = user_id);
 
+-- ── Kill switch de la synchro de l'app : `jungle_path_sync_enabled` ──────────────
+-- Coupe, côté app WPF, TOUTE la synchro des jungle paths (envoi, lecture, fusion,
+-- suppression, mise à jour) sans release. Le travail local continue : les
+-- modifications restent `IsSynced=false` et partent à la réouverture.
+--   kind = 'kill', value 'true' → la synchro est livrée ouverte ; côté app, une clé
+--                          absente vaut déjà `true` (repli fail-open d'un kill switch) :
+--                          cette ligne rend la COUPURE possible, elle n'allume rien.
+--   surface = 'shared'    → porte sur une donnée des deux clients ; seule l'app la lit.
+--                          L'onglet du site, lui, reste gardé par `jungle_path_web_enabled`.
+--   group_key = 'app', sort_order = 740 → après la détection minimap (730/735).
+--   off_behavior = 'degraded' → repli DÉJÀ ÉCRIT : l'app d'avant la synchro (paths locaux).
+--   is_public = true      → tout flag est public (lisible par l'app sans compte).
+-- ON CONFLICT ne touche NI `value` NI `reason` : la valeur appartient à l'admin, rejouer
+-- la migration ne rallume ni n'éteint rien (convention 20260905000001 § 5).
+INSERT INTO public.app_settings
+  (key, value, kind, surface, group_key, parent_key, off_behavior, is_public,
+   sort_order, label_fr, label_en, desc_fr, desc_en)
+VALUES
+  ('jungle_path_sync_enabled', 'true', 'kill', 'shared', 'app', NULL, 'degraded', true, 740,
+   'Synchro des jungle paths (app ↔ site)', 'Jungle path sync (app ↔ site)',
+   'L''app envoie et reçoit les jungle paths du compte (table jungle_paths). Coupé : les jungle paths restent locaux dans l''app, sans synchro ; les modifications partent à la réouverture.',
+   'The app sends and receives the account''s jungle paths (jungle_paths table). Off: jungle paths stay local in the app, with no sync; changes are sent when it is turned back on.')
+ON CONFLICT (key) DO UPDATE SET
+  kind = EXCLUDED.kind, surface = EXCLUDED.surface, group_key = EXCLUDED.group_key,
+  parent_key = EXCLUDED.parent_key, off_behavior = EXCLUDED.off_behavior,
+  is_public = EXCLUDED.is_public, sort_order = EXCLUDED.sort_order,
+  label_fr = EXCLUDED.label_fr, label_en = EXCLUDED.label_en,
+  desc_fr = EXCLUDED.desc_fr, desc_en = EXCLUDED.desc_en;
+
 -- ── Auto-vérification : fait échouer l'application si l'état visé n'est pas atteint ──
 -- Les privilèges RÉELS sont interrogés (un REVOKE qui ne révoque rien passe la
 -- relecture de code — 20260909000002), dans les deux sens.
@@ -208,6 +237,13 @@ BEGIN
                                         'jungle_paths_elements_size', 'jungle_paths_strokes_size');
   IF v_n <> 4 THEN
     RAISE EXCEPTION 'jungle_paths : % contraintes de forme/taille sur 4', v_n;
+  END IF;
+
+  -- Le kill switch existe, est un kill switch, et est lisible sans compte.
+  PERFORM 1 FROM public.app_settings
+   WHERE key = 'jungle_path_sync_enabled' AND kind = 'kill' AND is_public;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'jungle_path_sync_enabled absent, ou pas un kill switch public';
   END IF;
 END
 $$;

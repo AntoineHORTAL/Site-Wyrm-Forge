@@ -298,6 +298,18 @@ SELECT 23, 'T23 — FK user_id → auth.users ON DELETE CASCADE',
  WHERE conrelid = 'public.jungle_paths'::regclass AND contype = 'f'
    AND confrelid = 'auth.users'::regclass;
 
+-- T24 — kill switch de la synchro de l'app : métadonnées complètes, ouvert par défaut
+INSERT INTO t_res
+SELECT 24, 'T24 — jungle_path_sync_enabled : kill switch public, ouvert, dégradé',
+       'kill / shared / app / degraded / public / 4 libellés',
+       coalesce(max(format('%s / %s / %s / %s / %s / value=%s / libellés=%s',
+         kind, surface, group_key, off_behavior, CASE WHEN is_public THEN 'public' ELSE 'privé' END, value,
+         (label_fr <> '' AND label_en <> '' AND desc_fr <> '' AND desc_en <> ''))), '(ligne absente)'),
+       coalesce(bool_and(kind = 'kill' AND surface = 'shared' AND group_key = 'app'
+         AND off_behavior = 'degraded' AND is_public AND parent_key IS NULL
+         AND label_fr <> '' AND label_en <> '' AND desc_fr <> '' AND desc_en <> ''), false)
+  FROM public.app_settings WHERE key = 'jungle_path_sync_enabled';
+
 SELECT ordre, CASE WHEN ok THEN '✅' ELSE '❌' END AS r, test, attendu, obtenu
   FROM t_res ORDER BY ordre;
 

@@ -336,7 +336,7 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 44 lignes
+#### Catalogue de flags — 45 lignes
 
 > ✅ **`ecailles_enabled` et `quests_enabled` sont LANCÉS** : passés `kind = 'kill'` en
 > PROD le 2026-10-17 (ouverts depuis juin 2026, décision HORTAL : les joueurs accumulent des
@@ -423,16 +423,16 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
 
-**Catégorie 2, kill switches (37)** — valeur `'true'` :
+**Catégorie 2, kill switches (38)** — valeur `'true'` :
 
 | group_key | clés |
 |---|---|
 | `ecailles` | `ecailles_enabled` (parent de la boutique, des quêtes et des cosmétiques), `quests_enabled` — lancés le 2026-10-17 |
 | `riot` | `riot_history_enabled` (EF riot-matches / riot-match-detail / riot-rank), `live_game_enabled`, `riot_link_enabled` |
-| `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; le seul autre est `overlay_game_window_follow_enabled`), `postgame_ai_enabled` |
+| `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; les autres sont `overlay_game_window_follow_enabled` et `jungle_path_sync_enabled`), `postgame_ai_enabled` |
 | `contenu` | `patch_notes_enabled`, `workshop_builds_enabled`, `workshop_jungle_enabled` |
 | `site` | `ads_enabled`, `player_search_enabled`, `prac_enabled` |
-| `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` |
+| `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` ; `jungle_path_sync_enabled` (migration `20261018000001`, `surface = 'shared'`, `sort_order = 740`, **`'degraded'`** : coupe TOUTE la synchro des jungle paths de l'app — envoi, lecture, fusion, suppression ; les paths restent locaux et les modifications partent à la réouverture. Ne touche pas l'onglet du site, gardé par `jungle_path_web_enabled`) |
 | `overlay` | `overlay_enabled` (maître) + **18 enfants**, parité 1:1 avec les propriétés `Show*` de `Models/OverlayConfig.cs` (app WPF) ; + `overlay_game_window_follow_enabled` (migration `20261015000001`, `sort_order = 990`, **`'degraded'`**), enfant du maître mais **pas un bloc** : overlay calé sur la fenêtre du jeu + per-monitor v2 (lot 2 « overlay fenêtré »). Coupé : overlay sur l'écran principal, comme avant ; le suivi s'arrête en direct, le DPI au démarrage suivant de l'app |
 
 > ⚠️ Les deux clés en gras gardent les seules features qui écrivent **hors du périmètre
@@ -642,12 +642,12 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
 > l'app). Ce n'est pas une fuite : la propriété reste exigée sur les quatre opérations.
 
 ### Tests et état d'application
-- `supabase/tests/20261018000001_jungle_paths_test.sql` — 24 lignes, `ROLLBACK` final :
+- `supabase/tests/20261018000001_jungle_paths_test.sql` — 25 lignes (T24 : le kill switch `jungle_path_sync_enabled`, ajouté à la même migration), `ROLLBACK` final :
   CRUD propriétaire, défaut `user_id`, path réel de l'app accepté, accès à la ligne d'autrui
   refusé (lecture 0, écriture 0 ligne, réassignation / insert au nom d'autrui / upsert sur
   son id en `42501`), 17 cas de forme refusés en `23514` (dont `"Type":"Ward"`), un type
   inconnu bien formé accepté, `anon` en `42501`, privilèges réels, policies, FK CASCADE.
-- **TEST : appliquée le 2026-10-18, 24/24**, **hors historique** (`supabase db query -f`,
+- **TEST : appliquée le 2026-10-18, 25/25** (rejouée après l'ajout du kill switch), **hors historique** (`supabase db query -f`,
   comme les autres migrations récentes sur TEST — voir la dette d'alignement de TEST).
 - **PROD : NON appliquée.** Elle doit passer **avant** la release de l'app qui embarque
   `JunglePathSyncService` (sans la table, chaque upsert de l'app échoue et les paths
