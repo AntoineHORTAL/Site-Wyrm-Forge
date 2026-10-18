@@ -35,7 +35,7 @@ describe('visibilité des entrées gardées par un flag de lancement', () => {
     const kitSeul = { ...fermes, kitEnabled: true }
     expect(isLaunchTabVisible('kit', kitSeul, false)).toBe(true)
     expect(isLaunchTabVisible('scenarios', kitSeul, false)).toBe(false)
-    // Ouvrir les Scénarios n'ouvre pas la maquette Jungle Path, et inversement.
+    // Ouvrir les Scénarios n'ouvre pas l'éditeur Jungle Path, et inversement.
     const scenariosSeuls = { ...fermes, scenariosEnabled: true }
     expect(isLaunchTabVisible('scenarios', scenariosSeuls, false)).toBe(true)
     expect(isLaunchTabVisible('jungle', scenariosSeuls, false)).toBe(false)

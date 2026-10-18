@@ -326,9 +326,8 @@ export default function Dashboard({ activeTab: requestedTab, onTabChange, isAdmi
         {activeTab === 'accueil'          && <AccueilTab />}
         {activeTab === 'todo'             && <TodoTab />}
         {activeTab === 'stats'            && <StatsTab />}
-        {/* Éditeur Jungle Path du site — MAQUETTE (données de démonstration, rien
-            n'est sauvegardé), gardée par `jungle_path_web_enabled`. Le vrai
-            éditeur vit dans l'app de bureau. */}
+        {/* Éditeur Jungle Path du site — paths personnels partagés avec l'app (table
+            `jungle_paths`), gardé par `jungle_path_web_enabled` jusqu'au lancement. */}
         {activeTab === 'jungle'           && <JunglePathTab />}
         {activeTab === 'builds'           && <BuildsTab />}
         {/* Scénarios — DEUX verrous indépendants, dans cet ordre.

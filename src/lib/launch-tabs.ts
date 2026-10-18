@@ -10,7 +10,7 @@ export interface LaunchTabFlags {
   ecaillesEnabled: boolean
   scenariosEnabled: boolean
   kitEnabled: boolean
-  /** `jungle_path_web_enabled` — l'éditeur Jungle Path du SITE, encore une maquette. */
+  /** `jungle_path_web_enabled` — l'éditeur Jungle Path du SITE (table `jungle_paths`, partagée avec l'app). */
   jungleEnabled: boolean
 }
 

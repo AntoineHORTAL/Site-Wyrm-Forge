@@ -654,8 +654,32 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
   restent `IsSynced=false`, sans dégât mais sans synchro).
 
 ### Consommateurs
-- **Site React** : `JunglePathTab.tsx` (lot 2 du chantier, CRUD direct sous RLS), derrière
-  `jungle_path_web_enabled`.
+- **Site React** : `src/components/dashboard/tabs/JunglePathTab.tsx`, CRUD direct sous RLS,
+  derrière `jungle_path_web_enabled`. Toute la logique est dans le module PUR
+  **`src/lib/jungle-path.ts`** (`jungle-path.test.ts`) — format, conversion, positions des
+  camps, édition, verdict d'écriture. À tenir :
+  - **Aller-retour sans perte** : un path de l'app rouvert puis resauvegardé sur le site
+    garde à l'identique ce que le site ne sait ni afficher ni éditer — sorts
+    (`Spell:…`), éléments de type Stroke, types inconnus, coordonnées hors cadre, clés
+    inconnues, `creator`, `is_from_workshop`, `created_at`. La lecture ne normalise rien ;
+    le bornage 0–1 et l'arrondi à 4 décimales ne touchent que les coordonnées que le site
+    produit. Verrouillé par un test sur l'extrait réel Bel'Veth. « Tout effacer » et la
+    gomme ne retirent que camps, marqueurs et tracés.
+  - **Numérotation** : seuls les camps reçoivent un `Order` (ordre des clics) ; retirer un
+    camp (bouton ✕ ou gomme) renumérote les autres. Re-cliquer un camp bascule
+    `HasSmite`, comme dans l'app.
+  - **Camps** : `CAMP_POSITIONS` est une COPIE de `CampPositionService.EditorPositions`,
+    figée par test. Modifier l'une sans l'autre décale les camps en jeu, sans erreur.
+  - **Carte** : conteneur `.jungle-map` (`globals.css`), toujours carré, image et SVG calés
+    dessus — le repère 0–1 est celui de l'app à toutes les largeurs.
+  - **Écritures** : INSERT (id généré par le client, `crypto.randomUUID()`) si le path n'a
+    jamais été écrit, UPDATE sinon, DELETE après confirmation — chacun suivi de
+    `.select()` ; 0 ligne = erreur affichée (`writeErrorKey`, messages dans
+    `locales/dashboard/strategie.ts` › `jungle.errors`).
+  - ⚠️ **Une suppression faite sur le site ne se propage PAS à l'app** tant que le lot 3
+    ne le prévoit pas : le merge de l'app est additif (patron `item_builds`), il repousse
+    au login suivant tout path local absent du distant. La confirmation du site ne
+    promet donc rien côté app.
 - **App WPF** : `Services/JunglePathSyncService.cs` (lot 3 du chantier, calqué sur
   `ItemBuildSyncService`) — voir l'`AGENTS.md` de `Logiciel-Assistant-LOL`.
 
@@ -1517,7 +1541,7 @@ AND (NOT (EXISTS ( SELECT 1
 | Accueil | UI placeholder (pas de vraies données Riot) |
 | To-Do Lists | Fonctionnel (Supabase, Realtime actif) |
 | Stats | UI placeholder |
-| Jungle Path | **Maquette** — parcours de démonstration en dur, dessin en mémoire perdu au rechargement, « Sauvegarder » sans action. Masquée par `jungle_path_web_enabled` (fermé) ; le vrai éditeur est celui de l'app |
+| Jungle Path | Fonctionnel (Supabase, table `jungle_paths` partagée avec l'app WPF) — Mes paths, création, rechargement, modification, suppression, 14 camps numérotés, marqueurs, tracés ; aller-retour sans perte avec les paths de l'app. Toujours masqué par `jungle_path_web_enabled` (fermé) jusqu'au lancement par HORTAL. Voir § table `jungle_paths` |
 | Builds Items | Fonctionnel (données locales) |
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |
