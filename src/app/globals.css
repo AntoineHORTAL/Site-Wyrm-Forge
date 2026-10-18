@@ -288,6 +288,14 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
 
 .dash-grid-builds  { display: grid; grid-template-columns: 72px 3fr 2fr; gap: 14px; height: 640px; align-items: stretch; }
 .dash-grid-jungle  { display: grid; grid-template-columns: 200px 1fr 220px; gap: 14px; }
+/* Carte de l'éditeur Jungle Path : TOUJOURS carrée, image et SVG calés sur le même
+   carré. C'est ce qui fait coïncider le repère 0–1 du site avec celui de l'app à toutes
+   les largeurs, mobile compris : l'ancien couple `object-fit: cover` + `minHeight` rognait
+   l'image dès que la colonne passait sous 480 px, et les tracés glissaient par rapport au
+   fond. `min-width: 0` laisse la colonne `1fr` rétrécir sous la largeur de l'image. */
+.jungle-map        { position: relative; width: 100%; aspect-ratio: 1; min-width: 0; }
+.jungle-map > img,
+.jungle-map > svg  { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .dash-grid-todo    { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
 .dash-items-grid   { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 5px; }
 .shop-grid         { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }

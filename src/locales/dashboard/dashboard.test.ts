@@ -20,6 +20,7 @@ import {
 } from './admin'
 import { ADMIN_SUBTAB_IDS } from '@/lib/admin-subtabs'
 import { KIT_STATUS_CHAIN } from '@/lib/kit-orders'
+import { CAMP_BASES, PLACEMENT_TYPES, type JunglePathErrorKey } from '@/lib/jungle-path'
 import { KIT_FORMULAS } from '@/lib/kit-snapshot'
 import { kitProgressMessage, kitRpcError } from './kit'
 import { queueLabel } from './common'
@@ -76,7 +77,7 @@ const INVARIANTS = new Set<string>([
   '{count} items',
   // Lot 4 — noms propres de la Faille (camps, monstres) et vocabulaire de jungle
   // employé tel quel en français.
-  'Gromp', 'Rift Scuttler', 'Dragon', 'Krug', 'Raptor', 'Baron',
+  'Gromp', 'Rift Scuttler', 'Dragon', 'Krug', 'Raptor', 'Baron', 'Raptors', 'Krugs',
   'Smite', 'Ward', 'Invade', 'Gank',
   // Exemples de champions dans un placeholder — noms propres Riot.
   'Vi, Hecarim...',
@@ -369,33 +370,26 @@ describe('dico builder — libellés appariés aux tables de structure', () => {
  * un cycle d'import.
  */
 describe('dico stratégie — libellés appariés aux tables de structure', () => {
-  /* Union de `campsBlu` et `campsRed` (JunglePathTab.tsx) — `scuttler` est dans les
-     deux colonnes et n'a donc qu'une seule entrée de dico. */
-  const CLÉS_CAMPS = [
-    'baron', 'blueSentinel', 'dragon', 'gromp', 'krug',
-    'raptors', 'redBrambleback', 'scuttler', 'wolves',
-  ]
-
-  /* Recopié depuis `placements` (JunglePathTab.tsx). */
-  const CLÉS_PLACEMENTS = ['smite', 'ward', 'invade', 'gank']
-
-  it('a un nom pour chaque camp affiché, et aucun nom orphelin', () => {
-    expect(Object.keys(dashboardFr.strategie.jungle.camps).sort()).toEqual([...CLÉS_CAMPS].sort())
+  /* Les 7 camps de l'app (`CAMP_BASES`), une entrée pour les deux équipes : le suffixe
+     `_Blue` / `_Red` de la clé désigne la jungle, pas un autre camp. */
+  it('a un nom pour chaque camp de l\'app, et aucun nom orphelin (ni Dragon ni Baron)', () => {
+    expect(Object.keys(dashboardFr.strategie.jungle.camps).sort()).toEqual([...CAMP_BASES].sort())
   })
 
+  /* Indexés par le `Label` écrit en base (`PlacementType`). */
   it('a un libellé pour chaque marqueur posable', () => {
     expect(Object.keys(dashboardFr.strategie.jungle.placements).sort())
-      .toEqual([...CLÉS_PLACEMENTS].sort())
+      .toEqual([...PLACEMENT_TYPES].sort())
   })
 
-  /**
-   * `savedPaths` (JunglePathTab.tsx) est une liste de DÉMONSTRATION en dur, rendue par
-   * index : `demoPathNames[i]`. Un tableau plus court côté dico afficherait une carte
-   * vide, sans erreur. Le parcours générique garantit déjà FR ↔ EN de même longueur ;
-   * ici on verrouille l'accord avec le nombre de cartes réellement rendues.
-   */
-  it('a autant de noms de démonstration que de paths de démonstration', () => {
-    expect(dashboardFr.strategie.jungle.demoPathNames).toHaveLength(2)
+  /* Une erreur sans texte s'afficherait vide : l'écriture échouerait en silence, ce
+     que l'onglet existe précisément pour éviter. */
+  it('a un message pour chaque erreur d\'écriture ou de lecture', () => {
+    const CLÉS_ERREURS: JunglePathErrorKey[] = [
+      'needName', 'network', 'forbidden', 'invalid', 'conflict',
+      'notSaved', 'notDeleted', 'loadFailed', 'generic',
+    ]
+    expect(Object.keys(dashboardFr.strategie.jungle.errors).sort()).toEqual([...CLÉS_ERREURS].sort())
   })
 
   /**

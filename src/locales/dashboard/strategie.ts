@@ -27,31 +27,34 @@
 /* ── Jungle Path ─────────────────────────────────────────────────────────────── */
 
 /**
- * Camps de jungle, indexés par une clé INTERNE et non par leur nom affiché.
- * `scuttler` apparaît dans les deux colonnes (bleue et rouge) : une seule entrée
- * pour les deux, la composition des colonnes vit dans `JunglePathTab`.
+ * Camps de jungle, indexés par la BASE de leur clé dans le contrat partagé avec l'app
+ * (`Gromp_Blue` → `Gromp`, cf. `CAMP_BASES` dans `src/lib/jungle-path.ts`). Les deux
+ * équipes partagent un libellé : le suffixe désigne la jungle, pas un autre camp.
+ * Mêmes noms que l'app (`I18n/Dict.cs`, `JungleCampsDict`). Dragon et Baron n'y sont
+ * pas : l'app ne leur connaît aucune position, un path ne peut pas les porter.
+ *
+ * ⚠️ La CLÉ ne se traduit pas : `Gromp_Blue` est écrit tel quel dans
+ * `jungle_paths.elements[].Label`. Seul le libellé affiché change de langue.
  */
 const campsFr = {
-  gromp:          'Gromp',
-  wolves:         'Loups',
-  blueSentinel:   'Gardien',
-  scuttler:       'Rift Scuttler',
-  dragon:         'Dragon',
-  krug:           'Krug',
-  raptors:        'Raptor',
-  redBrambleback: 'Fantôme Rouge',
-  baron:          'Baron',
+  BlueBuff: 'Gardien bleu',
+  Gromp:    'Gromp',
+  Wolves:   'Loups',
+  Raptors:  'Raptors',
+  RedBuff:  'Fantôme rouge',
+  Krugs:    'Krugs',
+  Scuttler: 'Rift Scuttler',
 }
 
 export type JungleCampKey = keyof typeof campsFr
 
-/* Marqueurs posables sur la map. Clé interne ; la couleur reste dans le composant,
-   c'est du style, pas du texte. */
+/* Marqueurs posables sur la map, indexés par le `Label` écrit en base (`PlacementType`).
+   La couleur reste dans le composant, c'est du style, pas du texte. */
 const placementsFr = {
-  smite:  'Smite',
-  ward:   'Ward',
-  invade: 'Invade',
-  gank:   'Gank',
+  Smite:  'Smite',
+  Ward:   'Ward',
+  Invade: 'Invade',
+  Gank:   'Gank',
 }
 
 export type JunglePlacementKey = keyof typeof placementsFr
@@ -74,22 +77,51 @@ const jungleFr = {
   toolErase: 'Gomme',
   colorLabel: 'Couleur :',
   thicknessLabel: 'Épais. :',
-  clear: 'Annuler',
+  clear: 'Tout effacer',
+  /* Les sorts posés dans l'app ne sont pas effacés : le site ne sait pas les reposer. */
+  clearConfirm: 'Effacer les camps, marqueurs et tracés de ce path ? Les sorts posés dans l’app sont conservés.',
 
   /* ── Colonnes latérales ── */
   myPaths: 'Mes paths',
-  campsBlueTitle: 'Camps Bleu',
-  campsRedTitle: 'Camps Rouge',
+  newPath: '+ Nouveau',
+  loadingPaths: 'Chargement…',
+  noPaths: 'Aucun path pour l’instant. Dessine, nomme, puis sauvegarde.',
+  /* `{team}` reçoit `sideBlue` / `sideRed`. */
+  campsTeamTitle: 'Camps {team}',
+  campHint: 'Clic : ajouter au parcours · re-clic : à smiter',
+  removeCamp: 'Retirer {camp} du parcours',
   placeTitle: 'Placer',
-  placeHint: 'Clique sur la map pour placer un marqueur',
+  placeHint: 'Choisis un marqueur, puis clique sur la map',
+  placePending: 'Clique sur la map pour poser : {marker}',
   save: 'Sauvegarder',
+  saving: 'Sauvegarde…',
+  delete: 'Supprimer',
+  /* La suppression atteint l'app à sa prochaine connexion (JunglePathSyncService, app
+     WPF) : un path synchronisé et absent de la base y est supprimé, après copie de secours. */
+  deleteConfirm: 'Supprimer « {name} » ? Il disparaîtra aussi de l’app à sa prochaine connexion. Cette action est définitive.',
+  unsaved: 'Modifications non sauvegardées',
+  discardConfirm: 'Les modifications non sauvegardées de ce path seront perdues. Continuer ?',
+  saved: 'Path sauvegardé.',
+  deleted: 'Path supprimé.',
+  /* Info-bulle d'un sort posé dans l'app — `{spell}` reçoit son nom. */
+  spellMarker: 'Sort : {spell} (posé dans l’app)',
 
   /**
-   * ⚠️ DONNÉES DE DÉMONSTRATION, pas des paths réels : `savedPaths` est un tableau
-   * en dur dans `JunglePathTab`, sans persistance ni clic. Ces noms sont ici parce
-   * qu'ils sont AFFICHÉS ; ils disparaîtront avec le branchement de la vraie liste.
+   * Erreurs de lecture et d'écriture, indexées par `JunglePathErrorKey`
+   * (`src/lib/jungle-path.ts`). Aucune écriture n'échoue en silence : une écriture que
+   * la RLS écarte renvoie 0 ligne SANS erreur, d'où `notSaved` / `notDeleted`.
    */
-  demoPathNames: ['Full clear côté bleu', 'Invade côté rouge'],
+  errors: {
+    needName: 'Donne un nom à ton path avant de le sauvegarder.',
+    network: 'Connexion impossible. Vérifie ta connexion puis réessaie.',
+    forbidden: 'Action refusée : ce path n’appartient pas à ton compte, ou ta session a expiré.',
+    invalid: 'Ce path est trop volumineux ou mal formé pour être sauvegardé.',
+    conflict: 'Un path porte déjà cet identifiant. Recharge la page puis réessaie.',
+    notSaved: 'Rien n’a été sauvegardé : ce path n’existe plus ou n’appartient pas à ton compte.',
+    notDeleted: 'Rien n’a été supprimé : ce path n’existe plus ou n’appartient pas à ton compte.',
+    loadFailed: 'Impossible de charger tes paths.',
+    generic: 'Erreur inattendue, rien n’a été enregistré.',
+  },
 }
 
 /* ── Scénarios ───────────────────────────────────────────────────────────────── */
@@ -228,22 +260,20 @@ export const strategieFr = {
 export type StrategieDict = typeof strategieFr
 
 const campsEn: Record<JungleCampKey, string> = {
-  gromp:          'Gromp',
-  wolves:         'Wolves',
-  blueSentinel:   'Blue Sentinel',
-  scuttler:       'Rift Scuttler',
-  dragon:         'Dragon',
-  krug:           'Krug',
-  raptors:        'Raptor',
-  redBrambleback: 'Red Brambleback',
-  baron:          'Baron',
+  BlueBuff: 'Blue Sentinel',
+  Gromp:    'Gromp',
+  Wolves:   'Wolves',
+  Raptors:  'Raptors',
+  RedBuff:  'Red Brambleback',
+  Krugs:    'Krugs',
+  Scuttler: 'Rift Scuttler',
 }
 
 const placementsEn: Record<JunglePlacementKey, string> = {
-  smite:  'Smite',
-  ward:   'Ward',
-  invade: 'Invade',
-  gank:   'Gank',
+  Smite:  'Smite',
+  Ward:   'Ward',
+  Invade: 'Invade',
+  Gank:   'Gank',
 }
 
 const phasesEn: Record<ScenarioPhaseKey, string> = {
@@ -293,16 +323,40 @@ export const strategieEn: StrategieDict = {
     toolErase: 'Eraser',
     colorLabel: 'Colour:',
     thicknessLabel: 'Width:',
-    clear: 'Clear',
+    clear: 'Clear all',
+    clearConfirm: 'Clear this path’s camps, markers and strokes? Spells placed in the app are kept.',
 
     myPaths: 'My paths',
-    campsBlueTitle: 'Blue camps',
-    campsRedTitle: 'Red camps',
+    newPath: '+ New',
+    loadingPaths: 'Loading…',
+    noPaths: 'No paths yet. Draw, name it, then save.',
+    campsTeamTitle: '{team} camps',
+    campHint: 'Click: add to the route · click again: smite it',
+    removeCamp: 'Remove {camp} from the route',
     placeTitle: 'Place',
-    placeHint: 'Click on the map to drop a marker',
+    placeHint: 'Pick a marker, then click on the map',
+    placePending: 'Click on the map to drop: {marker}',
     save: 'Save',
+    saving: 'Saving…',
+    delete: 'Delete',
+    deleteConfirm: 'Delete “{name}”? It will also disappear from the app the next time it signs in. This cannot be undone.',
+    unsaved: 'Unsaved changes',
+    discardConfirm: 'This path’s unsaved changes will be lost. Continue?',
+    saved: 'Path saved.',
+    deleted: 'Path deleted.',
+    spellMarker: 'Spell: {spell} (placed in the app)',
 
-    demoPathNames: ['Blue side full clear', 'Red side invade'],
+    errors: {
+      needName: 'Name your path before saving it.',
+      network: 'Could not connect. Check your connection and try again.',
+      forbidden: 'Action denied: this path does not belong to your account, or your session has expired.',
+      invalid: 'This path is too large or malformed to be saved.',
+      conflict: 'A path already uses this identifier. Reload the page and try again.',
+      notSaved: 'Nothing was saved: this path no longer exists or does not belong to your account.',
+      notDeleted: 'Nothing was deleted: this path no longer exists or does not belong to your account.',
+      loadFailed: 'Could not load your paths.',
+      generic: 'Unexpected error, nothing was saved.',
+    },
   },
 
   scenarios: {

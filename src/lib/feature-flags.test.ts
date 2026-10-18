@@ -165,6 +165,8 @@ describe('politique de repli asymétrique', () => {
     // Son parent, la détection de la minimap, reste un kill switch ouvert par défaut.
     expect(flagFallback('minimap_structure_detection_enabled')).toBe(false)
     expect(flagFallback('minimap_detection_enabled')).toBe(true)
+    // Synchro des jungle paths de l'app (20261018000001) : kill switch, donc ouvert à froid.
+    expect(flagFallback('jungle_path_sync_enabled')).toBe(true)
 
     // Le point de ce flag : tant qu'il n'est pas lancé, un catalogue absent ou
     // une panne réseau ne doit PAS ouvrir un service payant.

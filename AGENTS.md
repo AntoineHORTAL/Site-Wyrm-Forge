@@ -336,7 +336,7 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 44 lignes
+#### Catalogue de flags — 45 lignes
 
 > ✅ **`ecailles_enabled` et `quests_enabled` sont LANCÉS** : passés `kind = 'kill'` en
 > PROD le 2026-10-17 (ouverts depuis juin 2026, décision HORTAL : les joueurs accumulent des
@@ -357,7 +357,8 @@ future par RPC ou Edge Function.
 `group_key = 'site'`, `sort_order = 630`) ; `jungle_path_web_enabled` (migration
 `20261017000001`, `surface = 'web'`, `group_key = 'site'`, `sort_order = 640` : la
 maquette de l'éditeur Jungle Path du SITE — rien à voir avec l'éditeur de l'app ni
-avec le Workshop Jungle) ; et `minimap_structure_detection_enabled`
+avec le Workshop Jungle. ⚠️ Il ne cache que l'ONGLET du site : la table `jungle_paths`
+(`20261018000001`) ne le lit pas, voir § table `jungle_paths`) ; et `minimap_structure_detection_enabled`
 (migration `20261012000001`, `surface = 'app'`, `group_key = 'app'`, `sort_order = 735`,
 enfant du kill switch `minimap_detection_enabled` — couper le parent coupe toute
 capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_timers`
@@ -366,8 +367,13 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
 est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
 
-> ✅ **Historique PROD aligné sur le dépôt au 2026-10-17** (`supabase migration list
-> --linked` : 104 migrations, aucun écart). Ce jour-là, dans cet ordre :
+> ✅ **Historique PROD aligné sur le dépôt au 2026-10-18** (`supabase migration list
+> --linked` : 105 migrations, aucun écart). Le 2026-10-18, `20261018000001` (table
+> `jungle_paths` + kill switch `jungle_path_sync_enabled`) a été poussée par `db push`, seule
+> en attente (vérifié par `--dry-run`, sans `--include-all` : postérieure à la dernière
+> migration PROD), puis contrôlée : voir § table `jungle_paths`.
+>
+> Le 2026-10-17 (104 migrations, aucun écart), dans cet ordre :
 > - `20261017000001` (flag `jungle_path_web_enabled`), `20261017000002` (RLS `scenarios` ↔
 >   `scenarios_enabled`) et `20261017000003` (garde `cosmetics_enabled` sur
 >   `equip_cosmetic`, `unequip_cosmetic`, `get_equipped_cosmetics`) avaient été appliquées
@@ -422,16 +428,16 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 > listes par réflexe : c'est la règle énoncée dans `feature-flags.ts` appliquée
 > dans l'autre sens.
 
-**Catégorie 2, kill switches (37)** — valeur `'true'` :
+**Catégorie 2, kill switches (38)** — valeur `'true'` :
 
 | group_key | clés |
 |---|---|
 | `ecailles` | `ecailles_enabled` (parent de la boutique, des quêtes et des cosmétiques), `quests_enabled` — lancés le 2026-10-17 |
 | `riot` | `riot_history_enabled` (EF riot-matches / riot-match-detail / riot-rank), `live_game_enabled`, `riot_link_enabled` |
-| `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; le seul autre est `overlay_game_window_follow_enabled`), `postgame_ai_enabled` |
+| `ia` | `matchup_ai_enabled` (**`'degraded'`** — le repli stats+radar existe déjà ; les autres sont `overlay_game_window_follow_enabled` et `jungle_path_sync_enabled`), `postgame_ai_enabled` |
 | `contenu` | `patch_notes_enabled`, `workshop_builds_enabled`, `workshop_jungle_enabled` |
 | `site` | `ads_enabled`, `player_search_enabled`, `prac_enabled` |
-| `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` |
+| `app` | `champ_select_advisor_enabled`, **`item_set_export_enabled`**, **`rune_page_apply_enabled`**, `minimap_detection_enabled` ; `jungle_path_sync_enabled` (migration `20261018000001`, `surface = 'shared'`, `sort_order = 740`, **`'degraded'`** : coupe TOUTE la synchro des jungle paths de l'app — envoi, lecture, fusion, suppression ; les paths restent locaux et les modifications partent à la réouverture. Ne touche pas l'onglet du site, gardé par `jungle_path_web_enabled`) |
 | `overlay` | `overlay_enabled` (maître) + **18 enfants**, parité 1:1 avec les propriétés `Show*` de `Models/OverlayConfig.cs` (app WPF) ; + `overlay_game_window_follow_enabled` (migration `20261015000001`, `sort_order = 990`, **`'degraded'`**), enfant du maître mais **pas un bloc** : overlay calé sur la fenêtre du jeu + per-monitor v2 (lot 2 « overlay fenêtré »). Coupé : overlay sur l'écran principal, comme avant ; le suivi s'arrête en direct, le DPI au démarrage suivant de l'app |
 
 > ⚠️ Les deux clés en gras gardent les seules features qui écrivent **hors du périmètre
@@ -547,6 +553,158 @@ Le modèle C# miroir vit dans `Logiciel-Assistant-LOL/Models/Scenario.cs`. Ne ja
 ### Consommateurs
 - **Site React** : CRUD client Supabase direct (`supabase.from('scenarios')`, pas d'Edge Function). Onglet `locked: true` (admin / tier Pro).
 - **App WPF** : `ScenarioService` (CRUD PostgREST sous **JWT user**, calqué sur `ForgeService`) — port en cours (Lot 0 : migration + modèles miroir + service ; Lot 1 : vue lecture seule `ScenariosTab`). Carte de fond = **même art que le site** (DDragon `map11` **16.20.1**, `ScenarioService.MapImageUrl` côté app, `src/lib/rift-map.ts` côté site), pas la minimap in-game. ⚠️ Corrigé le 2026-10-17 : ce document disait 14.24.1 et prétendait l'image locale du site absente ; elle était servie depuis le 2026-05-12, si bien que site et app n'affichaient déjà plus le même dessin. L'alignement des tracés tient au **cadrage**, identique de 14.24.1 à 16.20.1 (bases, coins, contour) : seuls les murs de jungle diffèrent.
+
+---
+
+## 🟡 Base de données — table `jungle_paths` (migration 20261018000001)
+
+Jungle paths **personnels**, partagés entre l'éditeur du site (onglet « Jungle Path »,
+`src/components/dashboard/tabs/JunglePathTab.tsx`) et celui de l'app WPF
+(`Views/JunglePathTab.xaml.cs`, fichier local `junglepaths.json`). Synchronisation sur le
+patron d'`item_builds` : l'app reste hors ligne d'abord (merge additif par id), le site fait
+son CRUD en direct sous la RLS. ⚠️ Ne pas confondre avec `workshop_junglepaths` (paths
+PUBLIÉS, sans propriétaire identifiable).
+
+| Colonne | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | `uuid` | NOT NULL | PK. **Fourni par le client** : c'est le `Guid` de l'app, pour que les deux côtés gardent le même identifiant (défaut `gen_random_uuid()` en filet) |
+| `user_id` | `uuid` | NOT NULL | FK → `auth.users` ON DELETE CASCADE, défaut `auth.uid()` |
+| `name` | `text` | NOT NULL | 1 à 100 caractères |
+| `champion` | `text` | NOT NULL | défaut `''`, ≤ 50. Nom d'affichage libre (« Bel'Veth ») : l'app le rapproche de la clé DDragon par `LiveGameService.ChampionKey` |
+| `side` | `text` | NOT NULL | `'Blue'` \| `'Red'` — valeurs de l'app, **casse comprise** (CHECK). Le site affiche « bleu/rouge » et convertit |
+| `elements` | `jsonb` | NOT NULL | défaut `'[]'`, ≤ 64 Ko, forme vérifiée (voir contrat) |
+| `strokes` | `jsonb` | NOT NULL | défaut `'[]'`, ≤ 512 Ko, forme vérifiée |
+| `creator` | `text` | NOT NULL | défaut `''` — `JunglePath.Creator` (auteur d'un path importé du Workshop) |
+| `is_from_workshop` | `boolean` | NOT NULL | défaut `false` — `JunglePath.IsFromWorkshop`. Sans elle, un path du Workshop perdrait son marquage sur la seconde machine, et `JungleWorkshopService.IsAlreadySaved` le croirait absent (doublon à l'enregistrement) |
+| `created_at` / `updated_at` | `timestamptz` | NOT NULL | `updated_at` par `trg_jungle_paths_updated_at` → `fn_set_updated_at()` |
+
+Index `idx_jungle_paths_user_time (user_id, created_at DESC)`.
+
+> 🔴 **`IsActive` (clé JSON historique `"IsFavorite"`) n'est PAS une colonne, et ne doit jamais
+> le devenir.** C'est un choix LOCAL au poste (« quel path l'overlay affiche en jeu sur CE PC »),
+> exactement comme `IsActive` d'`item_builds`. L'app ne l'envoie jamais et ne le laisse jamais
+> écraser par le distant.
+
+### Contrat JSONB (partagé site ↔ app WPF — noms FIGÉS, au caractère près)
+Le format partagé est la **sérialisation `System.Text.Json` par défaut** de
+`Logiciel-Assistant-LOL/Models/JunglePath.cs`, **mesurée** le 2026-10-18 (pas supposée) :
+clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"}`.
+
+```json
+"elements": [ { "Type": 0, "Label": "Gromp_Blue", "X": 0.15, "Y": 0.43, "Order": 2, "HasSmite": false } ]
+"strokes":  [ { "Points": [ { "X": 0.1, "Y": 0.2 } ], "Color": "#FF0000", "Thickness": 3 } ]
+```
+
+- **`Type`** : `0` Camp · `1` Smite · `2` Ward · `3` Invade · `4` Gank · `5` Stroke · `6` Spell.
+- **`Label`** : clé de camp `{Camp}_{Blue|Red}` pour un camp (les 14 de
+  `CampPositionService.EditorPositions`, côté = jungle de l'ÉQUIPE, pas côté de la carte) ;
+  nom du type pour un placement ; `Spell:{nom}:{urlImage}` pour un sort.
+- **`Order`** : seuls les **camps** sont numérotés (ordre de passage, à partir de 1). Les
+  placements restent à `-1`, comme dans l'app — l'overlay ne trie que les camps.
+- **`HasSmite`** : camp à smiter (re-cliquer un camp dans l'éditeur bascule le drapeau).
+- **Coordonnées normalisées 0–1** du fond `map11` **16.20.1**, identique au SHA-256 côté site
+  (`public/icons/maps/summoners_rift.png`) et côté app (`JunglePathService.MapVersion`). La
+  carte n'est **jamais** retournée selon `side`. Le site dessine en 0–100 % : il convertit à
+  l'écriture et à la lecture, et arrondit à 4 décimales.
+
+> 🔴 **Pourquoi la forme est vérifiée EN BASE (contraintes `jungle_paths_elements_shape` /
+> `jungle_paths_strokes_shape`).** L'app relit son fichier en un seul
+> `Deserialize<List<JunglePath>>`. Mesuré : un seul `"Type": "Ward"` (chaîne) lève une
+> `JsonException` sur la liste ENTIÈRE, et le `catch` de `JunglePathService.Load()` repart d'une
+> liste vide. Une ligne distante mal formée, fusionnée puis sauvegardée par la synchro,
+> ferait donc disparaître **tous** les paths locaux au démarrage suivant. Une clé en camelCase
+> est, elle, ignorée **sans erreur** (`x` lu comme 0) : d'où le PascalCase obligatoire.
+> La base refuse (`23514`) : élément non objet ; `Type`/`X`/`Y` absents ou non numériques ;
+> `Type` non entier ou hors 0–255 ; `Order` non entier ou hors −1–1000 ; `Label` non chaîne
+> (`null` compris) ; `HasSmite` non booléen ; `Points` absent ou non tableau ; point sans
+> `X`/`Y` numériques ; `Color` hors `#RRGGBB` / `#AARRGGBB` (`ColorConverter` lèverait au
+> dessin) ; `Thickness` hors 0–100.
+> - **Bornes LÂCHES sur X/Y** (−1 à 2, pas 0 à 1) : l'éditeur de l'app capture la souris
+>   pendant un tracé, un point glissé hors du canvas sort légèrement de [0, 1]. Le refuser
+>   bloquerait la synchro de ce path à vie, sans message.
+> - **`Type` accepte 0–255**, pas 0–6 : un futur type d'élément ne demandera pas de migration.
+>   C'est l'app qui ignore les types qu'elle ne connaît pas (défense en profondeur : elle
+>   valide aussi chaque ligne à la lecture, une par une).
+
+### RLS jungle_paths — calquée sur `scenarios`, PAS sur `item_builds`
+- SELECT / INSERT / UPDATE / DELETE : `authenticated` uniquement, `(select auth.uid()) = user_id`,
+  avec `WITH CHECK` sur INSERT et UPDATE (pas de réassignation de `user_id`). L'upsert de l'app
+  (`resolution=merge-duplicates`) sur l'id d'un path d'autrui part en `ON CONFLICT DO UPDATE`,
+  que `USING` refuse : `42501`.
+- `REVOKE ALL FROM anon, authenticated` **avant** `GRANT SELECT, INSERT, UPDATE, DELETE TO authenticated`.
+  `anon` : aucun privilège (`42501`), TRUNCATE/REFERENCES/TRIGGER retirés à `authenticated`.
+- La migration **se vérifie elle-même** (bloc `DO` : privilèges réels dans les deux sens, RLS
+  active, exactement 4 policies toutes `TO authenticated`, 4 contraintes de forme/taille).
+- ⚠️ Une écriture refusée par la RLS sur une ligne qu'on ne voit pas (UPDATE/DELETE du path
+  d'un autre) renvoie **0 ligne, sans erreur** : le site doit faire `.select()` après
+  l'écriture et vérifier qu'une ligne est revenue.
+
+> 🔴 **AUCUN flag dans la RLS — décision HORTAL du 2026-10-18.** Contrairement à `scenarios`,
+> la table ne relit pas `launch_flag_on('jungle_path_web_enabled')`. Ce flag ne cache que
+> l'**onglet du site** ; l'éditeur de l'app est livré, ouvert à tous, et sa synchro doit
+> fonctionner flag fermé. Conséquence assumée : **tout compte connecté peut lire, créer,
+> modifier et supprimer SES PROPRES paths via l'API, flag fermé** (au `curl` comme depuis
+> l'app). Ce n'est pas une fuite : la propriété reste exigée sur les quatre opérations.
+
+### Tests et état d'application
+- `supabase/tests/20261018000001_jungle_paths_test.sql` — 25 lignes (T24 : le kill switch `jungle_path_sync_enabled`, ajouté à la même migration), `ROLLBACK` final :
+  CRUD propriétaire, défaut `user_id`, path réel de l'app accepté, accès à la ligne d'autrui
+  refusé (lecture 0, écriture 0 ligne, réassignation / insert au nom d'autrui / upsert sur
+  son id en `42501`), 17 cas de forme refusés en `23514` (dont `"Type":"Ward"`), un type
+  inconnu bien formé accepté, `anon` en `42501`, privilèges réels, policies, FK CASCADE.
+- **TEST : appliquée le 2026-10-18, 25/25** (rejouée après l'ajout du kill switch), **hors historique** (`supabase db query -f`,
+  comme les autres migrations récentes sur TEST — voir la dette d'alignement de TEST).
+- **PROD : appliquée le 2026-10-18** par `supabase db push` (project-ref
+  `cuscgmgqakxnfwnsrhhv` vérifié, seule migration en attente au `--dry-run`), **inscrite dans
+  l'historique**. Le bloc `DO` d'auto-vérification n'a rien levé. Contrôlé ensuite par lecture
+  du catalogue (`supabase db query --linked`) : 11 colonnes, 4 contraintes de forme/taille
+  (plus longueurs, `side`, PK, FK), `idx_jungle_paths_user_time`, `trg_jungle_paths_updated_at`
+  → `fn_set_updated_at`, RLS active, exactement 4 policies `TO authenticated` à prédicat
+  `(select auth.uid())`, `anon` sans aucun privilège, `authenticated` limité à S/I/U/D,
+  `jungle_path_sync_enabled = 'true'` (`kind = 'kill'`), `jungle_path_web_enabled` toujours
+  `'false'`. Le script de test n'a **pas** été joué en PROD (il écrit : TEST seulement).
+  Elle devait passer **avant** la release de l'app qui embarque `JunglePathSyncService`
+  (sans la table, chaque upsert de l'app échoue et les paths restent `IsSynced=false`, sans
+  dégât mais sans synchro).
+
+### Consommateurs
+- **Site React** : `src/components/dashboard/tabs/JunglePathTab.tsx`, CRUD direct sous RLS,
+  derrière `jungle_path_web_enabled`. Toute la logique est dans le module PUR
+  **`src/lib/jungle-path.ts`** (`jungle-path.test.ts`) — format, conversion, positions des
+  camps, édition, verdict d'écriture. À tenir :
+  - **Aller-retour sans perte** : un path de l'app rouvert puis resauvegardé sur le site
+    garde à l'identique ce que le site ne sait ni afficher ni éditer — sorts
+    (`Spell:…`), éléments de type Stroke, types inconnus, coordonnées hors cadre, clés
+    inconnues, `creator`, `is_from_workshop`, `created_at`. La lecture ne normalise rien ;
+    le bornage 0–1 et l'arrondi à 4 décimales ne touchent que les coordonnées que le site
+    produit. Verrouillé par un test sur l'extrait réel Bel'Veth. « Tout effacer » et la
+    gomme ne retirent que camps, marqueurs et tracés.
+  - **Numérotation** : seuls les camps reçoivent un `Order` (ordre des clics) ; retirer un
+    camp (bouton ✕ ou gomme) renumérote les autres. Re-cliquer un camp bascule
+    `HasSmite`, comme dans l'app.
+  - **Camps** : `CAMP_POSITIONS` est une COPIE de `CampPositionService.EditorPositions`,
+    figée par test. Modifier l'une sans l'autre décale les camps en jeu, sans erreur.
+  - **Carte** : conteneur `.jungle-map` (`globals.css`), toujours carré, image et SVG calés
+    dessus — le repère 0–1 est celui de l'app à toutes les largeurs.
+  - **Écritures** : INSERT (id généré par le client, `crypto.randomUUID()`) si le path n'a
+    jamais été écrit, UPDATE sinon, DELETE après confirmation — chacun suivi de
+    `.select()` ; 0 ligne = erreur affichée (`writeErrorKey`, messages dans
+    `locales/dashboard/strategie.ts` › `jungle.errors`).
+  - **Une suppression faite sur le site atteint l'app à sa prochaine connexion** (règle
+    HORTAL du 2026-10-18, `JunglePathSyncService`) : un path local synchronisé pour le
+    compte connecté et absent de la base y est supprimé, après copie dans
+    `junglepaths.deleted.backup.json`. Exceptions, voulues : un path modifié dans l'app
+    hors ligne depuis (`IsSynced=false`) y est **repoussé** ; une lecture distante qui
+    échoue ne supprime rien. Nécessite la release de l'app qui embarque ce service — une
+    app antérieure repousse le path supprimé. La confirmation du site l'annonce.
+  - **Une modification faite sur le site atteint aussi l'app** à sa prochaine connexion
+    (même règle, même release) : l'app compare le `updated_at` de la ligne au dernier
+    qu'elle a reçu du serveur, prend la version de la base et garde son activation
+    locale. En cas de conflit (path modifié aussi dans l'app avant synchro), **la version
+    de l'app gagne** et écrase celle du site. `updated_at` est donc un CONTRAT : il doit
+    rester posé par le trigger `trg_jungle_paths_updated_at`, jamais par un client.
+- **App WPF** : `Services/JunglePathSyncService.cs` (lot 3 du chantier, calqué sur
+  `ItemBuildSyncService`) — voir l'`AGENTS.md` de `Logiciel-Assistant-LOL`.
 
 ---
 
@@ -1406,7 +1564,7 @@ AND (NOT (EXISTS ( SELECT 1
 | Accueil | UI placeholder (pas de vraies données Riot) |
 | To-Do Lists | Fonctionnel (Supabase, Realtime actif) |
 | Stats | UI placeholder |
-| Jungle Path | **Maquette** — parcours de démonstration en dur, dessin en mémoire perdu au rechargement, « Sauvegarder » sans action. Masquée par `jungle_path_web_enabled` (fermé) ; le vrai éditeur est celui de l'app |
+| Jungle Path | Fonctionnel (Supabase, table `jungle_paths` partagée avec l'app WPF) — Mes paths, création, rechargement, modification, suppression, 14 camps numérotés, marqueurs, tracés ; aller-retour sans perte avec les paths de l'app. Toujours masqué par `jungle_path_web_enabled` (fermé) jusqu'au lancement par HORTAL. Voir § table `jungle_paths` |
 | Builds Items | Fonctionnel (données locales) |
 | Workshop Builds | Fonctionnel (données Supabase) |
 | Workshop Jungle | Fonctionnel (données Supabase) |
@@ -3312,6 +3470,33 @@ Pas urgent — la section Pricing est actuellement masquée sur la vitrine.
 Quand on la réactivera, on cadrera l'enforcement.
 
 ---
+
+### 🟡 Dette RLS : `item_builds` — policy `TO public`, `anon` avec tous les droits (relevé PROD du 2026-10-18)
+
+Relevé par une lecture du catalogue, **sur la PROD** (`supabase db query --linked`, project-ref
+`cuscgmgqakxnfwnsrhhv` vérifié), pendant le diagnostic du chantier `jungle_paths` :
+
+| Objet | État réel en PROD |
+|---|---|
+| Policy | une seule, `"Users manage own builds"`, `cmd = ALL`, **`roles = {public}`**, `USING (auth.uid() = user_id)`, `WITH CHECK (auth.uid() = user_id)` |
+| Privilèges `anon` | **`DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE`** |
+| Privilèges `authenticated` | les mêmes sept |
+| Index | `item_builds_pkey` seul — aucun index sur `user_id` |
+
+- **Même classe de trou que `scenarios` avant `20260901000003`** : le refus fait à `anon` ne
+  tient qu'au prédicat `auth.uid() = user_id` s'évaluant à NULL, pas à un privilège. Et
+  **`TRUNCATE` ne passe pas par la RLS** : seul le fait que PostgREST n'expose pas TRUNCATE
+  empêche aujourd'hui un `anon` de vider la table. Moindre privilège non tenu, pas porte ouverte.
+- ⚠️ Le commentaire de `20260530000005_rls_workshop_harden.sql` (« item_builds : RLS correcte,
+  ALL TO authenticated ») est **faux** : la policy vise `public`. Ne pas s'y fier.
+- Prédicat `auth.uid()` non enveloppé dans `(select …)` : réévalué à chaque ligne (perf).
+- **NON corrigé, volontairement** (décision HORTAL, 2026-10-18) : hors périmètre du chantier
+  `jungle_paths`, dont la table, elle, suit le patron de `scenarios`. Correction prévue dans
+  une migration dédiée : `REVOKE ALL … FROM anon, authenticated`, `GRANT S/I/U/D TO
+  authenticated`, remplacement de la policy par 4 policies `TO authenticated` à prédicat
+  `(select auth.uid())`, index `(user_id, created_at DESC)`, bloc `DO` d'auto-vérification.
+  ⚠️ Vérifier avant que ni le site (`BuildsTab.tsx`) ni l'app (`ItemBuildSyncService`)
+  n'accèdent à la table sans JWT utilisateur — les deux passent aujourd'hui sous JWT.
 
 ### Dette RLS : workshop_junglepaths sans propriétaire
 `workshop_junglepaths` n'a pas de colonne `creator_id` — seulement `creator_name`
