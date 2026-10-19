@@ -474,6 +474,7 @@ const fr: GuideDict = {
         'Crée un parcours : un nom, un champion et un côté (bleu ou rouge).',
         'Trace ton chemin sur la carte, clique les camps dans l’ordre voulu et place des éléments (Smite, Ward, Invade, Gank).',
         'Sauvegarde, puis clique sur « ⭐ Activer pour ce champion » (un seul parcours actif par champion).',
+        "Connecté à ton compte Wyrm Forge, tes parcours sont sauvegardés sur ton compte et te suivent sur tes autres PC. Hors connexion, ils restent sur ce PC et partent à la connexion suivante. Le parcours activé, lui, se choisit sur chaque PC.",
         "Dans l'onglet « Overlay », choisis l'affichage : sur la minimap, en liste texte, ou les deux.",
       ],
       inGame:
@@ -958,6 +959,7 @@ const en: GuideDict = {
         'Create a path: a name, a champion and a side (blue or red).',
         'Draw your route on the map, click the camps in the order you want and place elements (Smite, Ward, Invade, Gank).',
         'Save, then click “⭐ Set active for this champion” (one active path per champion).',
+        'When you’re signed in to your Wyrm Forge account, your paths are saved to your account and follow you to your other PCs. Offline, they stay on this PC and sync the next time you sign in. The active path is chosen on each PC.',
         'In the “Overlay” tab, pick the display: on the minimap, as a text list, or both.',
       ],
       inGame:
