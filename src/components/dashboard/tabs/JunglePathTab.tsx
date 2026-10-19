@@ -347,8 +347,9 @@ export default function JunglePathTab() {
           })}
         </div>
 
-        {/* Carte — conteneur CARRÉ (`.jungle-map`) : même repère 0–1 que l'app */}
-        <div style={{
+        {/* Carte — conteneur CARRÉ (`.jungle-map`) : même repère 0–1 que l'app ;
+            `.jungle-map-frame` plafonne et centre le carré dans la colonne */}
+        <div className="jungle-map-frame" style={{
           background: '#0d1015',
           border: `1px solid ${c ? 'rgba(186,117,23,0.25)' : '#27272A'}`,
           borderRadius: 6, overflow: 'hidden', alignSelf: 'start',
@@ -371,14 +372,18 @@ export default function JunglePathTab() {
               onPointerCancel={onPointerUp}
             >
               <rect width="100" height="100" fill="rgba(0,0,0,0.15)" />
+              {/* `Thickness` = des PIXELS ÉCRAN, comme dans l'app (`StrokeThickness`) :
+                  `non-scaling-stroke` rend l'épaisseur indépendante de l'échelle du viewBox
+                  0–100, quelle que soit la taille de la carte. Les données enregistrées
+                  ne changent pas. */}
               {draft.strokes.map((s, i) => (
                 <path key={i}
                   d={pointsToD(s.Points.map(pt => ({ x: toPercent(pt.X), y: toPercent(pt.Y) })))}
-                  stroke={s.Color ?? '#FF0000'} strokeWidth={(s.Thickness ?? 3) * 0.3}
+                  stroke={s.Color ?? '#FF0000'} strokeWidth={s.Thickness ?? 3} vectorEffect="non-scaling-stroke"
                   fill="none" strokeLinecap="round" strokeLinejoin="round" />
               ))}
               {stroke && stroke.length > 1 && (
-                <path d={pointsToD(stroke)} stroke={color} strokeWidth={thickness * 0.3}
+                <path d={pointsToD(stroke)} stroke={color} strokeWidth={thickness} vectorEffect="non-scaling-stroke"
                   fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
               )}
               {draft.elements.filter(isDisplayable).map((el, i) => {

@@ -292,7 +292,12 @@ textarea.wf-input { resize: vertical; min-height: 80px; }
    carré. C'est ce qui fait coïncider le repère 0–1 du site avec celui de l'app à toutes
    les largeurs, mobile compris : l'ancien couple `object-fit: cover` + `minHeight` rognait
    l'image dès que la colonne passait sous 480 px, et les tracés glissaient par rapport au
-   fond. `min-width: 0` laisse la colonne `1fr` rétrécir sous la largeur de l'image. */
+   fond. `min-width: 0` laisse la colonne `1fr` rétrécir sous la largeur de l'image.
+   `.jungle-map-frame` (le cadre bordé autour) plafonne le carré à 640 px et le centre
+   dans la colonne : sans lui, la carte montait à 1 230 px de haut sur un écran de
+   2 000 px. 640 px met les camps (r = 2,4 % du repère) à ~31 px de diamètre, la
+   taille des cercles de l'éditeur de l'app (32 px). */
+.jungle-map-frame  { width: min(100%, 640px); justify-self: center; min-width: 0; }
 .jungle-map        { position: relative; width: 100%; aspect-ratio: 1; min-width: 0; }
 .jungle-map > img,
 .jungle-map > svg  { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
