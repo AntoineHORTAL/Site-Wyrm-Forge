@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { landingFr, landingEn, landingDicts, formatPrice } from './landing'
-import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
+import { NAV_SECTION_IDS, PLAYER_SEARCH_FLAG, PLAYER_SEARCH_HREF, withoutPlayerSearch } from '@/lib/nav-links'
 import { PRICING_TIERS, FREE_MONTHS_ON_ANNUAL, freeMonthsOnAnnual } from '@/lib/pricing-tiers'
 import { TIER_BY_PLAN, isPlanKey } from '@/lib/stripe/plans'
 
@@ -341,5 +341,70 @@ describe('la vitrine n\'annonce aucune fonctionnalité pas encore lancée', () =
   it.each([['FR', landingFr], ['EN', landingEn]] as const)('%s', (_, dict) => {
     const texte = JSON.stringify(dict)
     for (const motif of INTERDITS) expect(texte, String(motif)).not.toMatch(motif)
+  })
+})
+
+/**
+ * `player_search_enabled` coupé, /matches, /summoner et /live répondent
+ * « Temporairement indisponible » et le guide retire `recherche-joueur`. Les
+ * trois entrées qui y mènent (header, drawer, footer) doivent disparaître avec
+ * eux, libellé ET destination ensemble.
+ */
+describe('recherche de joueur masquée quand son flag est coupé', () => {
+  const src = (p: string) => readFileSync(path.resolve(__dirname, p), 'utf8')
+  // Les commentaires citent les appels qu'on cherche : on les retire avant.
+  const code = (p: string) =>
+    src(p).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ').replace(/\{\s*\}/g, '')
+
+  // Colonne « Ressources » telle que Footer.tsx l'apparie : libellés du dico + href.
+  const RESOURCES_HREFS = ['/guide', PLAYER_SEARCH_HREF, '/champions', '/patch-notes', '/#communaute']
+  const column = (labels: readonly string[]) =>
+    labels.map((label, i) => ({ label, href: RESOURCES_HREFS[i] }))
+
+  it('vise le même flag que les layouts des routes gardées', () => {
+    expect(PLAYER_SEARCH_FLAG).toBe('player_search_enabled')
+    for (const route of ['matches', 'summoner', 'live']) {
+      expect(src(`../app/${route}/layout.tsx`)).toContain(`isPublicFlagEnabled('${PLAYER_SEARCH_FLAG}')`)
+    }
+  })
+
+  it.each([['FR', landingFr], ['EN', landingEn]] as const)(
+    '%s — flag coupé : l’entrée part avec son libellé, les autres restent appariées',
+    (_, dict) => {
+      const labels = dict.footer.columns[1].links
+      const kept = withoutPlayerSearch(column(labels), false)
+
+      expect(kept.map(l => l.href)).not.toContain(PLAYER_SEARCH_HREF)
+      expect(kept.map(l => l.label)).not.toContain(labels[1])
+      expect(kept).toEqual(column(labels).filter((_, i) => i !== 1))
+    },
+  )
+
+  it('flag actif : liste inchangée, dans le même ordre', () => {
+    const all = column(landingFr.footer.columns[1].links)
+    expect(withoutPlayerSearch(all, true)).toEqual(all)
+  })
+
+  it('ne touche pas une colonne sans recherche de joueur', () => {
+    const produit = [{ href: '/#features' }, { href: '/#tarifs' }]
+    expect(withoutPlayerSearch(produit, false)).toEqual(produit)
+  })
+
+  it('le footer pointe vers PLAYER_SEARCH_HREF et filtre par le flag', () => {
+    const footer = code('../components/landing/Footer.tsx')
+    expect(footer).toContain('{ href: PLAYER_SEARCH_HREF }')
+    expect(footer).not.toContain("'/matches'")
+    expect(footer).toContain('useFlag(PLAYER_SEARCH_FLAG)')
+    expect(footer).toMatch(/withoutPlayerSearch\([\s\S]*?playerSearchEnabled,?\s*\)/)
+  })
+
+  it('le header ET le drawer ne rendent « Joueurs » que flag actif', () => {
+    const nav = code('../components/nav/Nav.tsx')
+    expect(nav).toContain('useFlag(PLAYER_SEARCH_FLAG)')
+    // Chaque rendu du libellé est précédé de la garde, sans exception.
+    const rendus = nav.match(/t\.nav\.players/g) ?? []
+    expect(rendus).toHaveLength(2)
+    expect(nav.match(/playerSearchEnabled && \(\s*<(button|DrawerLink)[\s\S]*?t\.nav\.players/g) ?? [])
+      .toHaveLength(2)
   })
 })

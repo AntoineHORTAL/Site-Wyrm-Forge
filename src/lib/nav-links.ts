@@ -45,3 +45,27 @@ export const NAV_SECTION_IDS = [
  * libellé, lui, vient de `nav.players` du dictionnaire.
  */
 export const PLAYER_SEARCH_HREF = '/matches'
+
+/**
+ * Kill switch qui garde la recherche de joueur : les layouts de `/matches`,
+ * `/summoner` et `/live` rendent « Temporairement indisponible » quand il est
+ * coupé, et la sous-section `recherche-joueur` du guide disparaît.
+ *
+ * Les entrées qui y mènent (header, drawer, footer) s'effacent avec lui : un
+ * lien vers une page fermée est un lien mort. Repli d'un kill switch = `true`,
+ * donc flag actif, rien ne bouge au premier rendu ; flag coupé, l'entrée peut
+ * apparaître le temps que le catalogue arrive (affichage furtif accepté).
+ */
+export const PLAYER_SEARCH_FLAG = 'player_search_enabled'
+
+/**
+ * Retire l'entrée de recherche de joueur d'une liste de liens quand le flag est
+ * coupé. Filtre sur la DESTINATION, pas sur une position : le libellé et le
+ * `href` partent ensemble, et l'appariement des autres entrées n'est pas décalé.
+ */
+export function withoutPlayerSearch<T extends { href: string }>(
+  links: readonly T[],
+  playerSearchEnabled: boolean,
+): T[] {
+  return playerSearchEnabled ? [...links] : links.filter(l => l.href !== PLAYER_SEARCH_HREF)
+}

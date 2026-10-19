@@ -6,6 +6,8 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import ManageCookiesButton from '@/components/ads/ManageCookiesButton'
+import { useFlag } from '@/components/providers/FeatureFlagsProvider'
+import { PLAYER_SEARCH_FLAG, PLAYER_SEARCH_HREF, withoutPlayerSearch } from '@/lib/nav-links'
 
 /* Destinations seules — les libellés vivent dans src/locales/landing.ts
    (`footer.legalLinks` et `footer.columns`, même ordre). */
@@ -35,7 +37,7 @@ const columnHrefs: { href: string; download?: boolean }[][] = [
   // Ressources : Guide · Rechercher un joueur · Champions · Patch notes · Communauté
   [
     { href: '/guide' },
-    { href: '/matches' },
+    { href: PLAYER_SEARCH_HREF },   // retiré quand `player_search_enabled` est coupé
     { href: '/champions' },
     { href: '/patch-notes' },
     { href: '/#communaute' },
@@ -66,6 +68,7 @@ export default function Footer() {
   const c = theme === 'mythic'
   const { t } = useLanguage()
   const f = t.footer
+  const playerSearchEnabled = useFlag(PLAYER_SEARCH_FLAG)
 
   return (
     // Marges latérales en CSS (`.land-footer`) et non en inline : /guide doit
@@ -105,12 +108,17 @@ export default function Footer() {
             }}>
               {col.title}
             </h3>
-            {col.links.map((label, li) => (
+            {/* Libellé et destination appariés AVANT le filtre : retirer la
+                recherche de joueur ne décale aucune autre entrée. */}
+            {withoutPlayerSearch(
+              col.links.map((label, li) => ({ label, ...columnHrefs[ci][li] })),
+              playerSearchEnabled,
+            ).map(link => (
               <FooterLink
-                key={label}
-                label={label}
-                href={columnHrefs[ci][li].href}
-                download={columnHrefs[ci][li].download}
+                key={link.label}
+                label={link.label}
+                href={link.href}
+                download={link.download}
                 c={c}
               />
             ))}
