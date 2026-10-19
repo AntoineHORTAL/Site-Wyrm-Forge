@@ -138,14 +138,44 @@ describe('🔴 les défauts Consent Mode précèdent tout script Google', () => 
     }
   })
 
-  it('le bloc de défauts est placé AVANT la CMP et avant la régie', () => {
+  it('le bloc de défauts est placé AVANT la CMP', () => {
     // L'ordre est la seule chose qui rende ces défauts utiles : posés après un
-    // tag Google, ils arriveraient trop tard.
+    // tag Google, ils arriveraient trop tard. La régie, elle, n'est plus dans ce
+    // layout (voir le bloc suivant) : elle monte après, par construction.
     const defauts = layout.indexOf('consent-mode-default')
     const cmp = layout.indexOf('<ConsentManager')
-    const regie = layout.indexOf('<AdSenseScript')
     expect(defauts).toBeGreaterThan(-1)
     expect(defauts).toBeLessThan(cmp)
-    expect(cmp).toBeLessThan(regie)
+  })
+})
+
+describe('🔴 adsbygoogle.js ne se charge que sur le dashboard', () => {
+  // Décision du 2026-10-19 : la publicité ne vit que dans la colonne du
+  // dashboard (palier Apprenti). Un script chargé par le layout racine serait
+  // présent sur toutes les pages, et les annonces automatiques d'AdSense
+  // pourraient s'y placer sans aucun emplacement côté code.
+  // `read` retire déjà les commentaires : ceux du layout NOMMENT AdSenseScript.
+  const code = (src: string) => src
+  const layout = read('../../app/layout.tsx')
+  const rail = read('DashboardAdRail.tsx')
+
+  it('le layout racine ne monte plus la régie', () => {
+    expect(code(layout)).not.toContain('AdSenseScript')
+    expect(code(layout)).not.toContain('ADSENSE_SCRIPT_SRC')
+  })
+
+  it('… mais garde la balise de validation du compte sur toutes les pages', () => {
+    expect(code(layout)).toMatch(/'google-adsense-account':\s*ADSENSE_CLIENT_ID/)
+  })
+
+  it('la colonne du dashboard est le seul endroit qui la monte', () => {
+    expect(code(rail)).toContain('<AdSenseScript />')
+    const monteurs = ['../../app/layout.tsx', '../dashboard/Dashboard.tsx', 'AdSlot.tsx', 'HouseAdSlot.tsx']
+      .filter(p => code(read(p)).includes('<AdSenseScript'))
+    expect(monteurs).toEqual([])
+  })
+
+  it('le script reste derrière le consentement', () => {
+    expect(read('AdSenseScript.tsx')).toContain('if (!granted) return null')
   })
 })

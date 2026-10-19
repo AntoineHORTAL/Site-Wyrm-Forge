@@ -35,6 +35,7 @@
  * venir recouvrir le 300×250 en fin de scroll (cf. globals.css).
  */
 
+import AdSenseScript from './AdSenseScript'
 import AdSlot from './AdSlot'
 import HouseAdSlot from './HouseAdSlot'
 
@@ -50,6 +51,10 @@ interface DashboardAdRailProps {
 export default function DashboardAdRail({ onSeePricing }: DashboardAdRailProps) {
   return (
     <aside className="dash-adrail" aria-label="Publicité">
+      {/* Script de régie : chargé ICI et nulle part ailleurs, donc seulement là
+          où il y a des emplacements, et toujours derrière le consentement
+          (`AdSenseScript` ne rend rien tant que `useAdConsent()` est faux). */}
+      <AdSenseScript />
       {/* Piste collante — voir `.dash-adrail-track` dans globals.css : elle prend
           toute la hauteur restante de la colonne et sert de butée basse au
           collant. */}

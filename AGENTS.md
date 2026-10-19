@@ -3272,11 +3272,12 @@ ont été supprimés ; la prop `footer` de `ChampionsExplorer`, qui ne servait q
 l'emplacement, aussi. Garde : `public-pages.test.ts` (« aucune publicité sur les pages
 publiques »). Le code d'avant se relit dans l'historique git (PR du 2026-10-19).
 
-> ⚠️ **Non traité, à trancher** : `AdSenseScript` (layout racine) charge toujours
-> `adsbygoogle.js` pour TOUT visiteur qui consent, page publique et visiteur anonyme
-> compris, et la bannière CMP leur est toujours présentée. Si les **annonces
-> automatiques** (Auto ads) sont activées dans la console AdSense, Google peut placer
-> des annonces sur les pages publiques sans aucun emplacement côté code.
+> ✅ **Script de régie limité au dashboard (2026-10-19)** : `<AdSenseScript />` n'est plus
+> monté par le layout racine mais par `DashboardAdRail`, donc `adsbygoogle.js` ne se charge
+> que là où il y a des emplacements (palier Apprenti, `ads_enabled` ouvert), après
+> consentement. La balise `google-adsense-account` reste dans le `metadata` du layout
+> racine, sur toutes les pages, pour la validation du site. Annonces automatiques
+> désactivées dans la console AdSense (décision HORTAL). Garde : `consent-wiring.test.tsx`.
 
 ### Ce qui reste à faire
 
