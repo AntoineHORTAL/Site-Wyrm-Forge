@@ -685,7 +685,9 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
   - **Camps** : `CAMP_POSITIONS` est une COPIE de `CampPositionService.EditorPositions`,
     figée par test. Modifier l'une sans l'autre décale les camps en jeu, sans erreur.
   - **Carte** : conteneur `.jungle-map` (`globals.css`), toujours carré, image et SVG calés
-    dessus — le repère 0–1 est celui de l'app à toutes les largeurs.
+    dessus — le repère 0–1 est celui de l'app à toutes les largeurs. Le cadre
+    `.jungle-map-frame` plafonne ce carré à `min(100 %, 640 px)`, centré dans la
+    colonne. `JunglePathTab.test.tsx` verrouille les deux.
   - **Écritures** : INSERT (id généré par le client, `crypto.randomUUID()`) si le path n'a
     jamais été écrit, UPDATE sinon, DELETE après confirmation — chacun suivi de
     `.select()` ; 0 ligne = erreur affichée (`writeErrorKey`, messages dans
@@ -1554,6 +1556,20 @@ AND (NOT (EXISTS ( SELECT 1
   corrigées le 2026-10-15). Babel/esbuild n'ont pas le défaut : un test de rendu
   vitest ne le voit pas. Garde : `src/lib/jsx-whitespace.test.ts`, qui compile avec
   le SWC de Next.
+
+---
+
+## 🪤 Pièges connus
+
+- **`globals.css` périmé servi par `npm run dev` après un `git pull` ou un changement
+  de branche.** Si le serveur tourne pendant l'opération, Turbopack peut servir un
+  `globals.css` périmé : le nouveau markup avec l'ancien CSS. Symptôme : mise en page
+  cassée, sans aucune erreur. Remède : arrêter le serveur, supprimer `.next/dev`,
+  relancer. **Vérifier ce point avant de diagnostiquer un bug de CSS.** Constaté le
+  2026-10-19 sur la carte Jungle Path : le chunk `.next/dev/static/chunks/src_app_globals_*.css`
+  avait été écrit 0,4 s après le `pull`, mais sans les règles `.jungle-map` que ce
+  `pull` venait d'ajouter. Contrôle rapide : chercher la classe en cause dans ce chunk
+  (`grep -c <classe> .next/dev/static/chunks/src_app_globals_*.css`).
 
 ---
 

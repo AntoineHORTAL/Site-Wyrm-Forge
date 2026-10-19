@@ -347,8 +347,9 @@ export default function JunglePathTab() {
           })}
         </div>
 
-        {/* Carte — conteneur CARRÉ (`.jungle-map`) : même repère 0–1 que l'app */}
-        <div style={{
+        {/* Carte — conteneur CARRÉ (`.jungle-map`) : même repère 0–1 que l'app ;
+            `.jungle-map-frame` plafonne et centre le carré dans la colonne */}
+        <div className="jungle-map-frame" style={{
           background: '#0d1015',
           border: `1px solid ${c ? 'rgba(186,117,23,0.25)' : '#27272A'}`,
           borderRadius: 6, overflow: 'hidden', alignSelf: 'start',
