@@ -67,10 +67,6 @@ describe('/champions — la liste est dans le HTML servi', () => {
     expect(html).not.toContain('sur 3')
   })
 
-  it('rend l’emplacement passé par le serveur APRÈS la grille', () => {
-    const html = render({ footer: <div id="pub-fin" /> })
-    expect(html.indexOf('pub-fin')).toBeGreaterThan(html.lastIndexOf('href="/champion/'))
-  })
 
   it('reste utilisable sans JavaScript : les filtres n’effacent pas la liste', () => {
     // Les contrôles sont rendus, mais l'état initial n'en applique aucun — un

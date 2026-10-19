@@ -101,14 +101,16 @@ Trois `next dev` avec variables surchargées par le shell : URL test + clé test
 
 ### Emplacements publicitaires (dashboard)
 
-> Les pages PUBLIQUES en portent aussi depuis le 2026-09-12 (`/patch-notes`,
-> `/champions`) — voir § Pages publiques et examen AdSense. Les deux verrous de
-> `lib/ads.ts` y sont les mêmes ; seule la lecture du palier change pour un
-> visiteur anonyme (`shouldShowPublicAds`).
+> 🔴 **Le dashboard est le SEUL endroit du site qui porte de la publicité** (décision HORTAL
+> du 2026-10-19, palier Apprenti uniquement). Les emplacements des pages publiques
+> (`/patch-notes`, `/champions`, `/matches`, résultats) ont été retirés avec
+> `PublicAdSlot` et `shouldShowPublicAds` ; `public-pages.test.ts` échoue si l'un d'eux
+> réapparaît. ⚠️ `ads_enabled` est COUPÉ en PROD depuis le 2026-10-14 : aujourd'hui,
+> aucune publicité ne s'affiche nulle part.
 
 - **Point d'intégration UNIQUE côté dashboard** : `src/components/dashboard/Dashboard.tsx`, troisième piste de la grille `.dash-layout`. Pas de logement par fonctionnalité (rien dans le Builder, rien dans MatchUp) — tout ce qui vit derrière le dashboard hérite de la colonne sans rien déclarer. **La vitrine (`/`) n'est toujours PAS concernée** : décision du chantier AdSense, pas de publicité sur la page qui doit convaincre.
 - **Trois verrous indépendants**, qui doivent TOUS être ouverts. Les deux premiers vivent dans `src/lib/ads.ts` (module pur), le kill switch reste en dehors — y injecter un état React lui ferait perdre la propriété qui le rend testable :
-  - `ads_enabled` (`useFlag`, catégorie `site`) — kill switch d'exploitation. ⚠️ **Appliqué des DEUX côtés depuis le 2026-09-12** : `Dashboard.tsx` ET `PublicAdSlot.tsx`. Il ne l'était que sur le dashboard, ce qui laissait les 5 emplacements des pages publiques allumés quand on coupait le flag — un kill switch à moitié efficace, et le seul moyen d'éteindre la publicité en urgence depuis que la CMP peut ouvrir le consentement. Repli d'un kill switch = `true`, donc aucune disparition le temps du premier chargement.
+  - `ads_enabled` (`useFlag`, catégorie `site`) — kill switch d'exploitation. Lu par `Dashboard.tsx`, seul porteur d'emplacements depuis le 2026-10-19 : c'est le moyen d'éteindre la publicité en urgence depuis que la CMP peut ouvrir le consentement. Repli d'un kill switch = `true`, donc aucune disparition le temps du premier chargement.
   - les deux suivants :
   - `shouldShowAds(tier, isAdmin)` — **seul `apprenti` voit des pubs**. C'est une LISTE BLANCHE d'un élément, jamais une liste noire des paliers payants : un palier ajouté demain n'affiche rien par défaut. Palier inconnu ou profil non chargé ⇒ pas de pub.
   - `hasAdConsent()` — **alimenté par la Google CMP depuis le 2026-09-12** (§ CMP). Reste le point d'entrée UNIQUE du consentement : rien ne charge de script tiers sans passer par lui. ⚠️ Les COMPOSANTS ne l'appellent plus directement — ils passent par `useAdConsent()`, seul chemin qui les re-rend quand le visiteur change d'avis.
@@ -1598,7 +1600,7 @@ AND (NOT (EXISTS ( SELECT 1
 
 | Route | État |
 |---|---|
-| `/patch-notes` | Fonctionnel — liste publique SSR. **2 emplacements publicitaires entre les patchs** depuis le 2026-09-12 (§ Pages publiques et examen AdSense) |
+| `/patch-notes` | Fonctionnel — liste publique SSR. Aucune publicité (retirée le 2026-10-19) |
 | `/match/[platform]/[matchId]` | Fonctionnel — vue détail avec Impact d'items (Vue 1 stats + Vue 2 Meraki) |
 | `/summoner/[region]/[gameName]/[tagLine]` | Fonctionnel — historique joueur public, autocomplete `searched_summoners`, comparaison de rang (Vue A percentile + Vue B vs avg) |
 | ~~`/tournois*`~~ | **SUPPRIMÉ le 2026-09-03** (décision HORTAL) — front retiré en entier : 11 routes, 19 composants, `lib/tournois*`, le bloc CSS XV2 et le routage de sous-domaine du proxy. Suppression **nette**, sans redirection : le sous-domaine et `wyrm-forge.com/tournois*` renvoient 404. La BASE et les Edge Functions sont intactes — voir § Base de données — module Tournois. |
@@ -3188,8 +3190,8 @@ robot d'examen :
 |---|---|---|
 | `/` | **« Chargement... » et rien d'autre** — `page.tsx` court-circuitait sur `loading`, qui vaut `true` au rendu serveur | vitrine complète + section éditoriale · **62 Ko** |
 | `/champions` | barre de filtres vide, liste chargée dans un `useEffect` | **173 champions, 173 liens, 175 `alt`** · **232 Ko** |
-| `/matches` | outil de recherche, vide par nature | inchangé, mais **`noindex, follow`** (+ 1 emplacement pub depuis la révision du 2026-09-12) |
-| `/patch-notes` | déjà solide (SSR, contenu statique riche) | inchangé, + 2 emplacements pub |
+| `/matches` | outil de recherche, vide par nature | inchangé, mais **`noindex, follow`** (emplacement pub retiré le 2026-10-19) |
+| `/patch-notes` | déjà solide (SSR, contenu statique riche) | inchangé (emplacements pub retirés le 2026-10-19) |
 
 ### 🔴 La règle générale que ce chantier installe
 
@@ -3261,53 +3263,20 @@ accessible et utilisable ; seule son indexation est retirée.
 > demanderait de lire le flag côté serveur dans le layout racine. Verrouillé par
 > `landing.test.ts`.
 
-### Emplacements publicitaires sur les pages PUBLIQUES
+### ~~Emplacements publicitaires sur les pages PUBLIQUES~~ — RETIRÉS le 2026-10-19
 
-`src/components/ads/PublicAdSlot.tsx` — pendant de `DashboardAdRail` hors dashboard.
-Il n'ajoute **aucun mécanisme de consentement** : `AdSlot` garde `hasAdConsent()`, qui
-reste `false` tant qu'aucune CMP n'existe.
+Décision HORTAL : la publicité ne vit que dans le dashboard, pour le palier Apprenti.
+Les 6 emplacements (`/patch-notes` ×2, `/champions`, `/matches`,
+`/matches/[region]/[riotId]` ×2), `PublicAdSlot`, `shouldShowPublicAds` et leurs tests
+ont été supprimés ; la prop `footer` de `ChampionsExplorer`, qui ne servait qu'à
+l'emplacement, aussi. Garde : `public-pages.test.ts` (« aucune publicité sur les pages
+publiques »). Le code d'avant se relit dans l'historique git (PR du 2026-10-19).
 
-- **`shouldShowPublicAds()`** (`lib/ads.ts`) — le verrou COMMERCIAL, adapté au public :
-  session non résolue ⇒ **rien** (sinon 250 px réservés puis retirés = le CLS
-  qu'`AdSlot` existe pour éviter) ; visiteur **anonyme** ⇒ **oui**, il est par
-  définition sur l'offre gratuite ; visiteur connecté ⇒ `shouldShowAds()` habituel.
-  C'est la seule différence avec le rail, et elle est nécessaire : `shouldShowAds(null)`
-  vaut `false`, donc appliquer la règle du dashboard n'afficherait **jamais** le
-  moindre emplacement là où le site en a besoin.
-- **Placement** — format `rectangle-300` (300×250), qui ne touche ni `AD_FORMATS` ni
-  `--ad-slot-w` (la variable CSS n'est posée que dans `.dash-adrail`) :
-
-> ⚠️ **Les cinq emplacements du site s'éteignent d'un seul coup** avec `ads_enabled` :
-> la colonne du dashboard et les emplacements de `/patch-notes`, `/champions`,
-> `/matches` et `/matches/[region]/[riotId]`. Vérifié par test, des deux côtés.
-
-| Page | Emplacements | Où |
-|---|---|---|
-| `/patch-notes` | 2 | **entre** les patchs, après le 2ᵉ et le 5ᵉ (`AD_AFTER_INDEX`) — jamais à l'intérieur d'un `<article>`, jamais avant le premier |
-| `/champions` | 1 | **en fin** de grille (prop `footer`) — la grille n'est jamais coupée en deux |
-| `/matches` (état vide) | 1 | **sous** le champ de recherche ET son exemple (`matches-search`) |
-| `/matches/[region]/[riotId]` | 2 | après le **3ᵉ** match (`AD_AFTER_MATCH_INDEX`, `matches-inline`) et **après la sentinelle** de défilement infini (`matches-end`) |
-| `/` | **0** | pas de publicité sur la page qui doit convaincre |
-
-> ⚠️ **Sur `/matches`, l'ORDRE est la décision** (révision HORTAL du 2026-09-12 — la
-> page portait 0 emplacement à l'origine). Au-dessus du champ, la publicité serait le
-> premier élément d'une page dont l'unique raison d'être est de chercher un joueur :
-> on ferait payer l'attention avant de rendre le service. Sous l'exemple, elle n'a
-> rien coupé.
->
-> ⚠️ **Publicité et indexation sont deux décisions INDÉPENDANTES.** `/matches` reste
-> `noindex, follow` : recevoir de la publicité ne la rend pas indexable, et la
-> désindexer ne lui interdit pas la publicité. La confusion serait facile — un test
-> vérifie les deux séparément.
->
-> ⚠️ **Sur les pages de résultats, le second emplacement est HORS de la liste**, après
-> la sentinelle. Le défilement infini déplace la « fin de liste » à chaque
-> chargement : un emplacement calé dessus sauterait sous le curseur du lecteur. Le
-> premier, lui, est stable — les trois premiers matchs ne bougent jamais.
->
-> ⚠️ Chaque `name` est UNIQUE sur tout le site (`matches-search`, `matches-inline`,
-> `matches-end`, `champions-end`, `patch-notes-…`) : c'est l'identifiant de
-> l'emplacement pour la régie et au débogage. Vérifié par test.
+> ⚠️ **Non traité, à trancher** : `AdSenseScript` (layout racine) charge toujours
+> `adsbygoogle.js` pour TOUT visiteur qui consent, page publique et visiteur anonyme
+> compris, et la bannière CMP leur est toujours présentée. Si les **annonces
+> automatiques** (Auto ads) sont activées dans la console AdSense, Google peut placer
+> des annonces sur les pages publiques sans aucun emplacement côté code.
 
 ### Ce qui reste à faire
 

@@ -54,12 +54,10 @@ const DIFFICULTY_FILTERS: { key: DifficultyRange; label: string }[] = [
 ]
 
 export default function ChampionsExplorer({
-  champions, version, footer,
+  champions, version,
 }: {
   champions: ChampionSummary[]
   version: string
-  /** Rendu sous la grille — l'emplacement publicitaire, passé par le serveur. */
-  footer?: React.ReactNode
 }) {
   const [query,      setQuery]      = useState(NO_FILTERS.query)
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set())
@@ -177,7 +175,6 @@ export default function ChampionsExplorer({
         </div>
       )}
 
-      {footer}
     </>
   )
 }

@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import ChampionsExplorer from '@/components/champions/ChampionsExplorer'
-import PublicAdSlot from '@/components/ads/PublicAdSlot'
 import { fetchChampionCatalog, ALL_TAGS } from '@/lib/champions-catalog'
 
 /* Explorateur de tous les champions League : /champions
@@ -101,13 +100,6 @@ export default async function ChampionsPage() {
         <ChampionsExplorer
           champions={champions}
           version={version}
-          // UN emplacement, EN FIN de liste : la grille n'est jamais coupée en
-          // deux, et rien ne s'intercale entre le chapô et le contenu.
-          footer={
-            <div style={{ marginTop: 32 }}>
-              <PublicAdSlot name="champions-end" />
-            </div>
-          }
         />
       )}
     </main>
