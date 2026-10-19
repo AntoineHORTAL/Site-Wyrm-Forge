@@ -15,6 +15,10 @@
  * en amont : aucune publicité n'était servie, et pourtant Google était appelé
  * dès le premier octet. C'est ce contournement que ce composant ferme.
  *
+ * 🔴 Monté par `DashboardAdRail` UNIQUEMENT (2026-10-19), jamais par le layout
+ * racine : les emplacements ne vivent que dans le dashboard, et un script chargé
+ * sur toutes les pages laisserait les annonces automatiques s'y placer.
+ *
  * ⚠️ La vérification du compte AdSense NE dépend PAS de ce script : elle passe
  * par la balise `<meta name="google-adsense-account">` du layout racine, rendue
  * dans le `<head>` au build/SSR. C'est explicitement ce que dit le commentaire

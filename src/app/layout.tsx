@@ -8,7 +8,6 @@ import { DashboardNavProvider } from '@/components/providers/DashboardNavProvide
 import SiteHeader from '@/components/nav/SiteHeader'
 import Footer from '@/components/landing/Footer'
 import TestDbBanner from '@/components/dev/TestDbBanner'
-import AdSenseScript from '@/components/ads/AdSenseScript'
 import ConsentManager from '@/components/ads/ConsentManager'
 import { ADSENSE_CLIENT_ID } from '@/lib/adsense'
 import { CANONICAL_ORIGIN } from '@/lib/site-url'
@@ -43,8 +42,9 @@ export const metadata: Metadata = {
   // sur le HTML servi).
   //
   // ⚠️ C'est précisément ce qui permet de conditionner le SCRIPT de régie au
-  // consentement (voir <AdSenseScript /> plus bas) sans rien casser côté
-  // vérification : la balise reste servie à tout le monde, le script non.
+  // consentement, et de ne le charger QUE sur le dashboard (voir
+  // `DashboardAdRail`), sans rien casser côté vérification : la balise reste
+  // servie sur toutes les pages, à tout le monde ; le script, non.
   other: {
     'google-adsense-account': ADSENSE_CLIENT_ID,
   },
@@ -87,15 +87,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             c'est elle qui recueille le choix, elle ne peut pas être derrière le
             choix. Tout le raisonnement est en tête de `ConsentManager`. */}
         <ConsentManager />
-        {/* Script de régie AdSense — chargé UNIQUEMENT avec le consentement.
-            Il vivait ici en `beforeInteractive`, donc sur toutes les pages, pour
-            tous les visiteurs, avant toute interaction et sans consentement : un
-            dépôt d'identifiants non strictement nécessaire, que l'article 82 de
-            la loi Informatique et Libertés soumet à un consentement préalable.
-            ⚠️ ORDRE VOULU : il vient APRÈS les défauts Consent Mode et après la
-            CMP — il ne monte de toute façon rien tant que `hasAdConsent()` est
-            faux. Tout le raisonnement est dans <AdSenseScript />. */}
-        <AdSenseScript />
+        {/* ⚠️ Pas de script de régie ici. `<AdSenseScript />` est monté par
+            `DashboardAdRail`, seul porteur d'emplacements (décision du
+            2026-10-19) : `adsbygoogle.js` ne se charge que sur le dashboard,
+            pour le palier Apprenti, après consentement. Le remettre dans ce
+            layout le chargerait sur toutes les pages, et les annonces
+            automatiques d'AdSense pourraient alors s'y placer seules. */}
         {/* Avant le ThemeProvider et dans le flux : le bandeau doit coiffer la page,
             pas se superposer à un en-tête. Il ne rend rien quand le site parle à la
             production, donc zéro impact de mise en page dans le cas nominal. */}

@@ -96,76 +96,20 @@ describe('🔴 /matches n’est plus proposée à l’indexation', () => {
   })
 })
 
-describe('🔴 emplacements publicitaires — où, et dans quel ordre', () => {
-  const uses = (src: string) => src.includes('<PublicAdSlot')
-
-  it('/patch-notes et /champions en portent', () => {
-    expect(uses(PATCHES), '/patch-notes').toBe(true)
-    expect(uses(CHAMPIONS), '/champions').toBe(true)
-  })
-
-  it('la vitrine n’en porte AUCUN', () => {
-    // Décision inchangée : pas de publicité sur la page qui doit convaincre.
-    expect(uses(HOME), '/').toBe(false)
-  })
-
-  it('/matches en porte UN, et SOUS le champ de recherche', () => {
-    // Décision HORTAL révisée le 2026-09-12 : /matches reçoit de la publicité,
-    // en état vide comme en état résultats. Ce qui reste interdit, c'est de la
-    // placer AVANT le champ — la page n'a pas d'autre raison d'être que de
-    // chercher un joueur, et on ne fait pas payer l'attention avant le service.
-    const code = withoutComments(MATCHES)
-    expect(code.match(/<PublicAdSlot/g) ?? []).toHaveLength(1)
-    expect(code.indexOf('<PublicAdSlot'))
-      .toBeGreaterThan(code.indexOf('<PlayerSearchBar'))
-    expect(code.indexOf('<PublicAdSlot')).toBeGreaterThan(code.indexOf('Faker#KR1'))
-  })
-
-  it('/matches reste désindexée : la pub ne change rien à l’indexation', () => {
-    // Les deux décisions sont indépendantes, et leur confusion serait facile.
-    expect(MATCHES).toMatch(/robots:\s*\{[^}]*index:\s*false/)
-  })
-
-  it('les pages de RÉSULTATS en portent deux, jamais avant le premier match', () => {
-    const code = withoutComments(RESULTS)
-    expect(code.match(/<PublicAdSlot/g) ?? []).toHaveLength(2)
-
-    // Le premier s'intercale après le 3ᵉ match ; « 0 » le mettrait après le
-    // premier, une valeur négative avant toute ligne.
-    const after = code.match(/const AD_AFTER_MATCH_INDEX = (\d+)/)
-    expect(after, 'AD_AFTER_MATCH_INDEX introuvable').toBeTruthy()
-    expect(Number(after![1])).toBeGreaterThanOrEqual(1)
-
-    // Et le second vient bien APRÈS le premier dans le flux de la page.
-    const [premier, second] = [...code.matchAll(/<PublicAdSlot[^>]*name="([^"]+)"/g)]
-      .map(m => m[1])
-    expect(premier).toBe('matches-inline')
-    expect(second).toBe('matches-end')
-  })
-
-  it('chaque emplacement porte un nom distinct', () => {
-    // `name` identifie l'emplacement pour la régie et au débogage : deux
-    // emplacements homonymes seraient indiscernables dans les rapports.
-    const noms = [MATCHES, RESULTS, PATCHES, CHAMPIONS]
-      .flatMap(src => [...withoutComments(src).matchAll(/<PublicAdSlot[^>]*name=[{"]([^"}`]+)/g)]
-        .map(m => m[1]))
-      .filter(n => !n.includes('$'))   // `patch-notes-${…}` est construit, pas littéral
-    expect(new Set(noms).size).toBe(noms.length)
-  })
-
-  it('/patch-notes en place deux au maximum, et jamais avant le premier patch', () => {
-    const indexes = PATCHES.match(/const AD_AFTER_INDEX = \[([^\]]*)\]/)
-    expect(indexes, 'AD_AFTER_INDEX introuvable').toBeTruthy()
-    const values = indexes![1].split(',').map(v => Number(v.trim()))
-    expect(values.length).toBeLessThanOrEqual(2)
-    // Index 0 = après le premier patch seulement ; une valeur négative, ou un
-    // emplacement rendu AVANT la boucle, ouvrirait la page sur une publicité.
-    for (const v of values) expect(v).toBeGreaterThanOrEqual(1)
-  })
-
-  it('/champions n’en place qu’un, en fin de liste', () => {
-    expect(CHAMPIONS.match(/<PublicAdSlot/g) ?? []).toHaveLength(1)
-    expect(CHAMPIONS).toContain('footer={')
+describe('🔴 aucune publicité sur les pages publiques', () => {
+  // Décision HORTAL du 2026-10-19 : la publicité ne vit que dans le dashboard,
+  // pour le palier Apprenti (colonne `DashboardAdRail`). Les emplacements de
+  // /patch-notes, /champions, /matches et des pages de résultats ont été
+  // retirés avec `PublicAdSlot` et `shouldShowPublicAds`.
+  it.each([
+    ['/', () => HOME],
+    ['/patch-notes', () => PATCHES],
+    ['/champions', () => CHAMPIONS],
+    ['/matches', () => MATCHES],
+    ['/matches/[region]/[riotId]', () => RESULTS],
+    ['/guide', () => GUIDE],
+  ])('%s ne porte aucun emplacement', (_, src) => {
+    expect(withoutComments(src())).not.toMatch(/AdSlot|AdRail|adsbygoogle/)
   })
 })
 
