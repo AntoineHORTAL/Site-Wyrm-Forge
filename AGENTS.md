@@ -688,6 +688,10 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
     dessus — le repère 0–1 est celui de l'app à toutes les largeurs. Le cadre
     `.jungle-map-frame` plafonne ce carré à `min(100 %, 640 px)`, centré dans la
     colonne. `JunglePathTab.test.tsx` verrouille les deux.
+  - **Tracés** : `Thickness` est une épaisseur en **pixels écran**, comme le
+    `StrokeThickness` de l'app (`vector-effect="non-scaling-stroke"` sur les tracés
+    enregistrés et sur le tracé en cours). 3 donne 3 px à toutes les largeurs (mesuré à
+    375, 1 280 et 2 000 px). Ne pas la remettre à l'échelle du viewBox.
   - **Écritures** : INSERT (id généré par le client, `crypto.randomUUID()`) si le path n'a
     jamais été écrit, UPDATE sinon, DELETE après confirmation — chacun suivi de
     `.select()` ; 0 ligne = erreur affichée (`writeErrorKey`, messages dans

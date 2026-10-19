@@ -59,6 +59,21 @@ describe('JunglePathTab — rendu', () => {
     expect(html).toMatch(/<div class="jungle-map-frame"[^>]*><div class="jungle-map"/)
   })
 
+  it('dessine les tracés en pixels écran, comme l\'app (`non-scaling-stroke`, Thickness tel quel)', () => {
+    // Un path neuf n'a aucun tracé au rendu serveur : on contrôle donc le source des deux
+    // <path> de tracé (enregistrés et en cours). Une épaisseur remise à l'échelle du
+    // viewBox (« × 0.3 ») ferait varier le trait avec la largeur de la carte.
+    const src = readFileSync(join(process.cwd(), 'src/components/dashboard/tabs/JunglePathTab.tsx'), 'utf8')
+    const paths = src.match(/<path [\s\S]*?\/>/g) ?? []
+    expect(paths).toHaveLength(2)
+    for (const p of paths) {
+      expect(p).toContain('vectorEffect="non-scaling-stroke"')
+      expect(p).not.toMatch(/strokeWidth=\{[^}]*\*/)
+    }
+    expect(paths[0]).toContain('strokeWidth={s.Thickness ?? 3}')
+    expect(paths[1]).toContain('strokeWidth={thickness}')
+  })
+
   it('propose les 14 camps de l\'app, et ni Dragon ni Baron', () => {
     const campButtons = html.match(/title="Clic : ajouter au parcours/g) ?? []
     expect(campButtons).toHaveLength(Object.keys(CAMP_POSITIONS).length)
