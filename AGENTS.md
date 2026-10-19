@@ -3251,6 +3251,15 @@ accessible et utilisable ; seule son indexation est retirée.
 > la navigation globale : « Joueurs » dans le header (`PLAYER_SEARCH_HREF`) et
 > « Rechercher un joueur » dans le footer. Ne pas retirer ces liens en croyant « finir
 > le travail » — `noindex, follow` est précisément fait pour cette situation.
+>
+> ⚠️ **Ces trois entrées (header, drawer mobile, footer) suivent `player_search_enabled`**
+> (2026-10-19) : flag coupé, `/matches`, `/summoner` et `/live` rendent « Temporairement
+> indisponible », le guide retire `recherche-joueur`, et les entrées disparaissent aussi
+> (libellé ET destination, `withoutPlayerSearch` dans `lib/nav-links.ts`). Lecture
+> CLIENTE par `useFlag` : repli `true` d'un kill switch, donc flag coupé, l'entrée peut
+> s'afficher le temps du premier chargement du catalogue. Accepté ; la supprimer
+> demanderait de lire le flag côté serveur dans le layout racine. Verrouillé par
+> `landing.test.ts`.
 
 ### Emplacements publicitaires sur les pages PUBLIQUES
 

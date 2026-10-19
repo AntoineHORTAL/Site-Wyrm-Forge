@@ -14,7 +14,7 @@ import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import type { DashTab } from '@/lib/session-types'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
 import { isPaidTier } from '@/lib/subscription'
-import { NAV_SECTION_IDS, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
+import { NAV_SECTION_IDS, PLAYER_SEARCH_FLAG, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
 import { useFlag, useLaunchTabFlags } from '@/components/providers/FeatureFlagsProvider'
 
 function DropdownItem({ label, icon, onClick, danger, hoverBg }: {
@@ -91,6 +91,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
   // hook : le tiroir applique la même règle (isLaunchTabVisible), sinon Kit,
   // Scénarios et l'éditeur Jungle Path y fuitent.
   const launchFlags = useLaunchTabFlags()
+  // `player_search_enabled` coupé : /matches répond « Temporairement
+  // indisponible », donc ni « Joueurs » dans le header ni dans le drawer.
+  const playerSearchEnabled = useFlag(PLAYER_SEARCH_FLAG)
   const c = theme === 'mythic'
   // Deux dicos, un seul état de langue (provider unique du layout racine) :
   // `t` pour la vitrine (mode visiteur), `d.nav` pour la zone connectée.
@@ -256,18 +259,20 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                   bloc d'actions — langue, connexion, téléchargement — sa nature se
                   lit sans ornement. La loupe reste utile : elle dit « recherche »
                   là où le libellé seul dirait juste « joueurs ». */}
-              <button
-                className="nav-players-compact nav-login-link"
-                onClick={goToPlayerSearch}
-                style={{
-                  alignItems: 'center', gap: 6, padding: 0,
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: 14, color: '#fff', whiteSpace: 'nowrap',
-                }}
-              >
-                <SearchIcon />
-                {t.nav.players}
-              </button>
+              {playerSearchEnabled && (
+                <button
+                  className="nav-players-compact nav-login-link"
+                  onClick={goToPlayerSearch}
+                  style={{
+                    alignItems: 'center', gap: 6, padding: 0,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: 14, color: '#fff', whiteSpace: 'nowrap',
+                  }}
+                >
+                  <SearchIcon />
+                  {t.nav.players}
+                </button>
+              )}
               {/* Bascule FR / EN — pendant visiteur du switch du dropdown profil */}
               <LanguageSwitch />
               <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>{t.nav.login}</a>
@@ -525,7 +530,9 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                     contient plus que des ancres, le drawer doit donc la porter en
                     propre. Séparée des ancres par le filet : comme dans le header,
                     elle navigue au lieu de scroller. */}
-                <DrawerLink label={t.nav.players} onClick={goToPlayerSearch} c={c} />
+                {playerSearchEnabled && (
+                  <DrawerLink label={t.nav.players} onClick={goToPlayerSearch} c={c} />
+                )}
                 <DrawerLink label={t.nav.login} onClick={() => { setDrawerOpen(false); onLogin?.() }} c={c} />
               </div>
             )}
