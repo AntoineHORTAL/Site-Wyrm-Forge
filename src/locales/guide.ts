@@ -77,8 +77,16 @@ export interface GuideDict {
     inGame: string
     note: string
     screenshot: string
-    /** Texte réservé aux lecteurs d'écran sur le lien vers la capture en taille réelle. */
+    /** Texte réservé aux lecteurs d'écran sur la vignette : un clic l'agrandit dans la visionneuse. */
     openFull: string
+    /** Visionneuse des captures (`GuideLightbox`). */
+    lightbox: {
+      close: string
+      prevShot: string
+      nextShot: string
+      /** Lien vers le fichier, dans un nouvel onglet — pour zoomer sur mobile. */
+      openFullSize: string
+    }
   }
   defaultTier: string
   entries: Record<GuideEntryId, GuideEntryText>
@@ -140,7 +148,13 @@ const fr: GuideDict = {
     inGame: 'Ce que tu vois en jeu',
     note: 'À savoir :',
     screenshot: "Capture d'écran à venir",
-    openFull: '(ouvre la capture en taille réelle dans un nouvel onglet)',
+    openFull: '(agrandit la capture)',
+    lightbox: {
+      close: 'Fermer',
+      prevShot: 'Image précédente',
+      nextShot: 'Image suivante',
+      openFullSize: 'Ouvrir en taille réelle',
+    },
   },
   defaultTier: 'Gratuit (Apprenti)',
   entries: {
@@ -684,7 +698,13 @@ const en: GuideDict = {
     inGame: 'What you see in game',
     note: 'Good to know:',
     screenshot: 'Screenshot coming',
-    openFull: '(opens the full-size screenshot in a new tab)',
+    openFull: '(enlarges the screenshot)',
+    lightbox: {
+      close: 'Close',
+      prevShot: 'Previous image',
+      nextShot: 'Next image',
+      openFullSize: 'Open full size',
+    },
   },
   defaultTier: 'Free (Apprentice)',
   entries: {

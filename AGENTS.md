@@ -1746,8 +1746,20 @@ sous-section). Conversion : `node scripts/guide-shot-convert.mjs "<source.png>"
   WebP (`scripts/webp-size.mjs`, sans `sharp` : il ne doit pas pouvoir casser le
   build Vercel). Le JSON est **commité** ; `guide-shots.test.ts` échoue s'il ne
   correspond plus au dossier.
-- Rendu (`Shots` dans `GuideContent`) : au moins une image ⇒ les images seules,
-  chacune liée au fichier en taille réelle ; aucune ⇒ encadré « à venir » visible.
+- Rendu (`components/guide/GuideShots.tsx`) : au moins une image ⇒ les images
+  seules, à leur largeur réelle plafonnée à la carte ; aucune ⇒ encadré « à venir »
+  visible.
+- **Visionneuse** (`GuideLightbox.tsx`, décisions pures dans `lib/guide-lightbox.ts`) :
+  le clic SIMPLE sur une vignette l'ouvre en grand (jamais au-delà de sa taille
+  réelle) ; ← → et « 1 / 2 » dans la sous-section, Échap / ✕ / clic sur le fond
+  pour fermer, focus piégé puis rendu à la vignette, défilement bloqué. Chaque
+  vignette reste un `<a href>` vers le fichier : sans JS, Ctrl/Cmd/Maj+clic ou clic
+  molette, le comportement d'avant est intact. Châssis `.pn-modal` repris.
+  ⚠️ **Le portail vise `[data-theme]`, pas `body`** : les tokens (`--text`,
+  `--bg-alt`…) sont posés sur le `<div>` du `ThemeProvider`, pas sur `:root`. Sous
+  `body`, une modale qui les utilise les perd (texte sombre sur fond sombre).
+  Tests d'interaction sous jsdom (`GuideShots.test.tsx`, `// @vitest-environment
+  jsdom`, dépendance de dev `jsdom`) : le seul fichier du dépôt qui en a besoin.
 - Texte alternatif : `shotAlts[i]` (FR **et** EN, même longueur) sinon la
   description `screenshot`, numérotée « (i/n) » s'il y a plusieurs images. Quand
   une capture ne montre pas exactement ce que dit `screenshot`, écrire son
