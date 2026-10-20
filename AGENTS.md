@@ -3496,10 +3496,10 @@ par un client, et n'est comparé qu'à une date serveur déjà reçue, jamais à
 - Tests : `supabase/tests/20261020000001_item_builds_updated_at_test.sql` (8 lignes, `ROLLBACK`).
 - **TEST : appliquée le 2026-10-20, 8/8**, hors historique (`supabase db query -f`, voir la dette
   d'alignement de TEST). État mesuré avant : ni colonne ni trigger, `fn_set_updated_at` présente.
-- **PROD : NON appliquée** — en attente du feu vert HORTAL. État mesuré le 2026-10-20 : identique
-  à TEST (ni colonne ni trigger, 5 lignes, dernière migration inscrite `20261018000001`). À pousser
-  par `db push` **avant** la release de l'app qui lit la colonne (une app qui la lit sans qu'elle
-  existe ne casse rien : elle retombe sur l'ancien merge, sans mise à jour des builds connus).
+- **PROD : appliquée le 2026-10-20 par `db push`, 8/8** (inscrite dans l'historique, dernière
+  migration `20261020000001`). État mesuré avant : identique à TEST (ni colonne ni trigger,
+  5 lignes, dernière migration `20261018000001`) ; après : 5 lignes, aucune sans `updated_at`.
+  Les apps ≤ 1.0.19 ne lisent pas la colonne et ne l'envoient pas : aucun effet sur elles.
 
 ### 🟡 Dette RLS : `item_builds` — policy `TO public`, `anon` avec tous les droits (relevé PROD du 2026-10-18)
 
