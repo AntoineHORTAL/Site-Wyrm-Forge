@@ -1,0 +1,7 @@
+# Fichiers écrits par des outils qui produisent du LF (`scripts/guide-shots.mjs`,
+# npm). Sous Windows, `core.autocrlf=true` (réglage par défaut de Git pour
+# Windows) les extrait en CRLF : chaque `npm run dev` / `build` les réécrit
+# alors en LF, et git les voit modifiés sans aucun changement de contenu.
+# Les fixer en LF au checkout supprime l'écart sur tous les postes.
+package-lock.json                   text eol=lf
+src/lib/guide-shots.generated.json  text eol=lf
