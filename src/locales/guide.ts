@@ -254,6 +254,9 @@ const fr: GuideDict = {
       inGame:
         'Une fois importé et activé pour ton champion, le parcours s’affiche dans l’overlay (voir « Parcours jungle »).',
       screenshot: 'La liste Workshop Jungle avec les badges « Côté Bleu » / « Côté Rouge ».',
+      shotAlts: [
+        'La liste Workshop Jungle avec la recherche et les filtres Bleu / Rouge.',
+      ],
     },
     'historique-parties': {
       name: 'Historique de parties',
@@ -284,6 +287,9 @@ const fr: GuideDict = {
       ],
       note: 'Les Écailles ne s’échangent pas contre de l’argent réel.',
       screenshot: 'La liste des quêtes du jour, avec le compteur d’Écailles et le streak.',
+      shotAlts: [
+        'La liste des quêtes du jour, avec le streak et le compteur d’Écailles.',
+      ],
     },
 
     // ── Site ──────────────────────────────────────────────────────────────
@@ -325,6 +331,7 @@ const fr: GuideDict = {
       screenshot: "L'onglet Stats du site avec les indicateurs du haut et la tendance des 20 parties.",
       shotAlts: [
         "L'onglet Stats du site avec les indicateurs du haut, la tendance des 20 dernières parties et le tableau des champions joués.",
+        "La répartition des parties par rôle et par mode de jeu, avec le winrate de chacun.",
       ],
     },
     'bilan-ia': {
@@ -340,6 +347,10 @@ const fr: GuideDict = {
         'Sans duel de lane (ARAM, Arena…), seul le sujet « Moi » est disponible.',
       ],
       screenshot: 'Le Post Game du site avec une partie sélectionnée, les options de profondeur et de sujet, et un bilan affiché.',
+      shotAlts: [
+        'Le Post Game du site : les 10 dernières parties, une partie sélectionnée et les options de profondeur et de sujet avec leur coût.',
+        'Un bilan Simple sur toi, affiché sous la partie analysée.',
+      ],
     },
     'todo-site': {
       name: 'To-do lists du site',
@@ -382,6 +393,10 @@ const fr: GuideDict = {
       ],
       inGame: 'Une couche transparente posée sur ton écran de jeu, avec les blocs que tu as cochés.',
       screenshot: "L'onglet « Overlay » de l'app avec la liste des blocs à cocher.",
+      shotAlts: [
+        'L’onglet « Overlay » de l’app : timers d’objectifs, tracker de sorts, gold diff et bloc de stats.',
+        'La suite de l’onglet : to-do list, dégâts des sorts, jungle path, build, timers de la minimap, comeback et réglages des blocs.',
+      ],
     },
     'timers-objectifs': {
       name: "Timers d'objectifs",
@@ -395,6 +410,10 @@ const fr: GuideDict = {
       inGame:
         "Dès qu'un objectif est tué, un compte à rebours indique quand il réapparaît. Le score des drakes montre les dragons pris par chaque équipe ; les buffs Baron et Elder montrent quels champions les portent et le temps restant.",
       screenshot: 'Les badges de timers en haut de l’écran pendant une partie, puis la même partie en mode frise.',
+      shotAlts: [
+        'Les badges de timers en haut de l’écran pendant une partie.',
+        'Les mêmes objectifs en mode frise.',
+      ],
     },
     'timers-inhibiteurs': {
       name: "Timers d'inhibiteurs",
@@ -416,6 +435,9 @@ const fr: GuideDict = {
       inGame:
         "Les champions adverses avec leurs sorts d'invocateur ; un sort marqué affiche le temps restant avant qu'il soit de nouveau disponible.",
       screenshot: 'Le tracker en jeu avec un Flash ennemi en recharge.',
+      shotAlts: [
+        'Le tracker en jeu avec les champions adverses et leurs sorts d’invocateur.',
+      ],
     },
     'gold-diff': {
       name: "Différence d'or",
@@ -428,6 +450,10 @@ const fr: GuideDict = {
       inGame:
         "L'écart d'or entre les deux équipes et face à ton adversaire de lane, mis à jour pendant la partie ; touche maintenue, le détail par rôle (TOP, JGL, MID, BOT, SUP).",
       screenshot: 'La gold diff en jeu, puis le détail par rôle affiché avec Tab maintenu.',
+      shotAlts: [
+        'La gold diff en jeu : écart de l’équipe et de ta lane.',
+        'Le détail par rôle, affiché avec Tab maintenu.',
+      ],
     },
     'degats-sorts': {
       name: 'Dégâts des sorts',
@@ -439,6 +465,9 @@ const fr: GuideDict = {
       ],
       inGame: 'Une estimation des dégâts de tes sorts sur les champions ennemis, qui suit la progression de ta partie.',
       screenshot: 'Le bloc Dégâts des sorts en jeu, près de la barre de vie du joueur.',
+      shotAlts: [
+        'Le bloc Dégâts des sorts en jeu, avec les dégâts de chaque sort.',
+      ],
     },
     comeback: {
       name: 'Indicateur de comeback',
@@ -480,6 +509,9 @@ const fr: GuideDict = {
       inGame:
         'Pendant les 4 premières minutes des parties où tu joues ce champion, le tracé apparaît sur ta minimap et les étapes dans une liste que tu peux déplacer.',
       screenshot: "L'éditeur « Jungle Path » avec un tracé, puis le même parcours sur la minimap en début de partie.",
+      shotAlts: [
+        'L’éditeur « Jungle Path » de l’app, avec la carte, les camps à cliquer et les outils de tracé.',
+      ],
     },
     'calibrage-minimap': {
       name: 'Calage de la minimap',
@@ -520,6 +552,10 @@ const fr: GuideDict = {
         'Le bloc STATS affiche tes valeurs en direct et, si la comparaison est cochée, celles de ton adversaire de lane, en couleur selon que tu es devant ou derrière. Tu peux le déplacer.',
       screenshot:
         "La section « Bloc de stats » de l'onglet « Overlay » de l'app avec ses cases cochées, et le bloc STATS en jeu.",
+      shotAlts: [
+        'La section « Bloc de stats » de l’onglet « Overlay » avec ses cases cochées.',
+        'Le bloc STATS en jeu, comparé à l’adversaire de lane.',
+      ],
     },
     'todo-en-jeu': {
       name: 'To-do en jeu',
@@ -535,6 +571,9 @@ const fr: GuideDict = {
         "Non synchronisées entre le site et l'app : seules les listes créées dans l'app apparaissent en jeu.",
       inGame: 'La liste active dans un bloc que tu peux déplacer ; tu peux cocher les éléments au fil de la partie.',
       screenshot: 'Le bloc to-do en jeu avec un élément coché.',
+      shotAlts: [
+        'Le bloc to-do en jeu avec une liste active.',
+      ],
     },
     'conseiller-champ-select': {
       name: 'Conseiller de champion select',
@@ -545,6 +584,9 @@ const fr: GuideDict = {
         'Elle affiche les champions alliés, les « Rôles à pourvoir » avec des suggestions, et le « Profil d’équipe » de ta composition.',
       ],
       screenshot: 'La fenêtre « Conseils champion select » pendant une sélection, avec les rôles à pourvoir.',
+      shotAlts: [
+        'La fenêtre « Conseils équipe » pendant une sélection : champions alliés, rôle à pourvoir et profil d’équipe.',
+      ],
     },
     'runes-auto': {
       name: 'Runes automatiques',
@@ -579,6 +621,10 @@ const fr: GuideDict = {
       ],
       note: "Cette analyse n'utilise pas l'IA et ne consomme pas de braises.",
       screenshot: "L'onglet « Post Game » de l'app avec les « Points clés » d'une partie.",
+      shotAlts: [
+        'L’onglet « Post Game » de l’app avec tes stats, les « Points clés » et les stats de tous les joueurs.',
+        'Les objectifs clés de la partie, minute par minute.',
+      ],
     },
     'mises-a-jour': {
       name: 'Mises à jour automatiques',
@@ -746,6 +792,9 @@ const en: GuideDict = {
       ],
       inGame: 'Once imported and set active for your champion, the path shows in the overlay (see “Jungle path”).',
       screenshot: 'The Workshop Jungle list with the “Blue side” / “Red side” badges.',
+      shotAlts: [
+        'The Workshop Jungle list with the search and the Blue / Red filters.',
+      ],
     },
     'historique-parties': {
       name: 'Match history',
@@ -774,6 +823,9 @@ const en: GuideDict = {
       ],
       note: 'Scales cannot be exchanged for real money.',
       screenshot: 'Today’s quest list, with the Scales counter and the streak.',
+      shotAlts: [
+        'Today’s quest list, with the streak and the Scales counter.',
+      ],
     },
 
     // ── Site ──────────────────────────────────────────────────────────────
@@ -815,6 +867,7 @@ const en: GuideDict = {
       screenshot: 'The site’s Stats tab with the headline figures and the 20-game trend.',
       shotAlts: [
         'The site’s Stats tab with the headline figures, the trend over the last 20 games and the table of champions played.',
+        'Games broken down by role and by game mode, with the winrate of each.',
       ],
     },
     'bilan-ia': {
@@ -830,6 +883,10 @@ const en: GuideDict = {
         'With no lane duel (ARAM, Arena…), only the “Me” subject is available.',
       ],
       screenshot: 'The site’s Post Game with a game selected, the depth and subject options, and a review shown.',
+      shotAlts: [
+        'The site’s Post Game: the last 10 games, one selected, and the depth and subject options with their cost.',
+        'A Simple review about you, shown under the analysed game.',
+      ],
     },
     'todo-site': {
       name: 'Site to-do lists',
@@ -871,6 +928,10 @@ const en: GuideDict = {
       ],
       inGame: 'A transparent layer on top of your game screen, with the blocks you ticked.',
       screenshot: 'The app’s “Overlay” tab with the list of blocks to tick.',
+      shotAlts: [
+        'The app’s “Overlay” tab: objective timers, spell tracker, gold diff and stats block.',
+        'The rest of the tab: to-do list, spell damage, jungle path, build, minimap timers, comeback and block settings.',
+      ],
     },
     'timers-objectifs': {
       name: 'Objective timers',
@@ -884,6 +945,10 @@ const en: GuideDict = {
       inGame:
         'As soon as an objective is taken, a countdown shows when it respawns. The drake score shows the dragons each team has taken; the Baron and Elder buffs show which champions have them and how long is left.',
       screenshot: 'The timer badges at the top of the screen during a game, then the same game in timeline mode.',
+      shotAlts: [
+        'The timer badges at the top of the screen during a game.',
+        'The same objectives in timeline mode.',
+      ],
     },
     'timers-inhibiteurs': {
       name: 'Inhibitor timers',
@@ -905,6 +970,9 @@ const en: GuideDict = {
       inGame:
         'The enemy champions with their summoner spells; a marked spell shows the time left before it is available again.',
       screenshot: 'The tracker in game with an enemy Flash on cooldown.',
+      shotAlts: [
+        'The in-game tracker with the enemy champions and their summoner spells.',
+      ],
     },
     'gold-diff': {
       name: 'Gold difference',
@@ -917,6 +985,10 @@ const en: GuideDict = {
       inGame:
         'The gold gap between both teams and against your lane opponent, updated during the game; with the key held, the breakdown by role (TOP, JGL, MID, BOT, SUP).',
       screenshot: 'The gold diff in game, then the role breakdown shown while Tab is held.',
+      shotAlts: [
+        'The in-game gold diff: team and lane gap.',
+        'The per-role breakdown, shown while Tab is held.',
+      ],
     },
     'degats-sorts': {
       name: 'Spell damage',
@@ -925,6 +997,9 @@ const en: GuideDict = {
       steps: ['Tick “Show spell damage”.', 'The block places itself next to your health bar.'],
       inGame: 'An estimate of your spells’ damage on enemy champions, which follows how your game goes.',
       screenshot: 'The Spell damage block in game, next to the player’s health bar.',
+      shotAlts: [
+        'The in-game Spell damage block, with each spell’s damage.',
+      ],
     },
     comeback: {
       name: 'Comeback indicator',
@@ -965,6 +1040,9 @@ const en: GuideDict = {
       inGame:
         'During the first 4 minutes of games where you play that champion, the route shows on your minimap and the steps in a list you can move.',
       screenshot: 'The “Jungle Path” editor with a route, then the same path on the minimap early in a game.',
+      shotAlts: [
+        'The app’s “Jungle Path” editor, with the map, the camps to click and the drawing tools.',
+      ],
     },
     'calibrage-minimap': {
       name: 'Minimap alignment',
@@ -1004,6 +1082,10 @@ const en: GuideDict = {
         'The STATS block shows your figures live and, if the comparison is ticked, your lane opponent’s, coloured depending on whether you are ahead or behind. You can move it.',
       screenshot:
         'The “Stats block” section of the app’s “Overlay” tab with its ticked boxes, and the STATS block in game.',
+      shotAlts: [
+        'The “Stats block” section of the “Overlay” tab with its boxes ticked.',
+        'The in-game STATS block, compared with the lane opponent.',
+      ],
     },
     'todo-en-jeu': {
       name: 'In-game to-do',
@@ -1017,6 +1099,9 @@ const en: GuideDict = {
       note: 'Not synced between the site and the app: only lists created in the app show in game.',
       inGame: 'The active list in a block you can move; you can tick items off as the game goes.',
       screenshot: 'The to-do block in game with one item ticked.',
+      shotAlts: [
+        'The in-game to-do block with an active list.',
+      ],
     },
     'conseiller-champ-select': {
       name: 'Champion select advisor',
@@ -1027,6 +1112,9 @@ const en: GuideDict = {
         'It shows the allied champions, the “Roles to fill” with suggestions, and the “Team profile” of your composition.',
       ],
       screenshot: 'The “Champion select advice” window during a champion select, with the roles to fill.',
+      shotAlts: [
+        'The “Team advice” window during a champion select: allied champions, role to fill and team profile.',
+      ],
     },
     'runes-auto': {
       name: 'Automatic runes',
@@ -1060,6 +1148,10 @@ const en: GuideDict = {
       ],
       note: 'This analysis does not use AI and does not use any embers.',
       screenshot: 'The app’s “Post Game” tab with a game’s “Key points”.',
+      shotAlts: [
+        'The app’s “Post Game” tab with your stats, the “Key points” and every player’s stats.',
+        'The game’s key objectives, minute by minute.',
+      ],
     },
     'mises-a-jour': {
       name: 'Automatic updates',
