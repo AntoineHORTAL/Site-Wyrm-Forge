@@ -3482,6 +3482,25 @@ Quand on la réactivera, on cadrera l'enforcement.
 
 ---
 
+### `item_builds.updated_at` — migration 20261020000001
+
+Date **serveur** de dernière modification d'un build : `timestamptz NOT NULL DEFAULT now()`,
+posée à chaque UPDATE par `trg_item_builds_updated_at` → `fn_set_updated_at()` (fonction
+partagée, même patron que `jungle_paths`). Lue par l'app de bureau pour réimporter un build
+modifié sur le site, en gardant son activation locale (`ItemBuildSyncService`). Comme pour
+`jungle_paths`, **`updated_at` est un CONTRAT** : il doit rester posé par le trigger, jamais
+par un client, et n'est comparé qu'à une date serveur déjà reçue, jamais à une horloge client.
+- Site : aucun changement de code (`select('*')`, `update(payload)` et `insert` sans la colonne).
+- Toutes les lignes existantes ont reçu la date de la migration : à sa première synchro, l'app
+  pousse ses modifications en attente puis prend la version du site (règle HORTAL du 2026-10-20).
+- Tests : `supabase/tests/20261020000001_item_builds_updated_at_test.sql` (8 lignes, `ROLLBACK`).
+- **TEST : appliquée le 2026-10-20, 8/8**, hors historique (`supabase db query -f`, voir la dette
+  d'alignement de TEST). État mesuré avant : ni colonne ni trigger, `fn_set_updated_at` présente.
+- **PROD : NON appliquée** — en attente du feu vert HORTAL. État mesuré le 2026-10-20 : identique
+  à TEST (ni colonne ni trigger, 5 lignes, dernière migration inscrite `20261018000001`). À pousser
+  par `db push` **avant** la release de l'app qui lit la colonne (une app qui la lit sans qu'elle
+  existe ne casse rien : elle retombe sur l'ancien merge, sans mise à jour des builds connus).
+
 ### 🟡 Dette RLS : `item_builds` — policy `TO public`, `anon` avec tous les droits (relevé PROD du 2026-10-18)
 
 Relevé par une lecture du catalogue, **sur la PROD** (`supabase db query --linked`, project-ref
