@@ -1,4 +1,35 @@
 {
+  "accueil-dashboard": [
+    {
+      "src": "/guide/accueil-dashboard-1.webp",
+      "width": 1600,
+      "height": 668
+    }
+  ],
+  "bilan-ia": [
+    {
+      "src": "/guide/bilan-ia-1.webp",
+      "width": 1600,
+      "height": 577
+    },
+    {
+      "src": "/guide/bilan-ia-2.webp",
+      "width": 1600,
+      "height": 296
+    }
+  ],
+  "bilan-post-game": [
+    {
+      "src": "/guide/bilan-post-game-1.webp",
+      "width": 1600,
+      "height": 899
+    },
+    {
+      "src": "/guide/bilan-post-game-2.webp",
+      "width": 1600,
+      "height": 526
+    }
+  ],
   "builds": [
     {
       "src": "/guide/builds-1.webp",
@@ -33,6 +64,32 @@
       "height": 1169
     }
   ],
+  "conseiller-champ-select": [
+    {
+      "src": "/guide/conseiller-champ-select-1.webp",
+      "width": 334,
+      "height": 401
+    }
+  ],
+  "degats-sorts": [
+    {
+      "src": "/guide/degats-sorts-1.webp",
+      "width": 280,
+      "height": 86
+    }
+  ],
+  "gold-diff": [
+    {
+      "src": "/guide/gold-diff-1.webp",
+      "width": 141,
+      "height": 54
+    },
+    {
+      "src": "/guide/gold-diff-2.webp",
+      "width": 320,
+      "height": 458
+    }
+  ],
   "historique-parties": [
     {
       "src": "/guide/historique-parties-1.webp",
@@ -45,6 +102,18 @@
       "src": "/guide/historique-stats-1.webp",
       "width": 1600,
       "height": 796
+    },
+    {
+      "src": "/guide/historique-stats-2.webp",
+      "width": 1600,
+      "height": 199
+    }
+  ],
+  "liaison-riot": [
+    {
+      "src": "/guide/liaison-riot-1.webp",
+      "width": 414,
+      "height": 295
     }
   ],
   "match-up": [
@@ -54,11 +123,82 @@
       "height": 607
     }
   ],
+  "overlay": [
+    {
+      "src": "/guide/overlay-1.webp",
+      "width": 936,
+      "height": 823
+    },
+    {
+      "src": "/guide/overlay-2.webp",
+      "width": 933,
+      "height": 1094
+    }
+  ],
+  "panneau-stats": [
+    {
+      "src": "/guide/panneau-stats-1.webp",
+      "width": 480,
+      "height": 275
+    },
+    {
+      "src": "/guide/panneau-stats-2.webp",
+      "width": 208,
+      "height": 198
+    }
+  ],
+  "parcours-jungle": [
+    {
+      "src": "/guide/parcours-jungle-1.webp",
+      "width": 1600,
+      "height": 870
+    }
+  ],
   "patch-notes": [
     {
       "src": "/guide/patch-notes-1.webp",
       "width": 1600,
       "height": 830
+    }
+  ],
+  "quetes-ecailles": [
+    {
+      "src": "/guide/quetes-ecailles-1.webp",
+      "width": 1600,
+      "height": 310
+    }
+  ],
+  "sorts-ennemis": [
+    {
+      "src": "/guide/sorts-ennemis-1.webp",
+      "width": 159,
+      "height": 259
+    }
+  ],
+  "timers-objectifs": [
+    {
+      "src": "/guide/timers-objectifs-1.webp",
+      "width": 772,
+      "height": 127
+    },
+    {
+      "src": "/guide/timers-objectifs-2.webp",
+      "width": 1213,
+      "height": 87
+    }
+  ],
+  "todo-en-jeu": [
+    {
+      "src": "/guide/todo-en-jeu-1.webp",
+      "width": 199,
+      "height": 136
+    }
+  ],
+  "workshop-jungle": [
+    {
+      "src": "/guide/workshop-jungle-1.webp",
+      "width": 1600,
+      "height": 329
     }
   ]
 }
