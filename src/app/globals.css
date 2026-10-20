@@ -1088,6 +1088,69 @@ body:has(.guide-main) .land-footer {
 }
 .guide-shot-link:hover .guide-shot-img { border-color: var(--border-h); }
 
+/* Visionneuse des captures (`GuideLightbox`), sur le châssis `.pn-modal` : même
+   fond et même z-index que les autres modales, donc au-dessus du bouton « retour
+   au sommaire » (z-index 40). L'image prend la plus grande taille qui tient dans
+   l'écran sans jamais dépasser sa taille réelle : `width`/`height` auto, bornés
+   par `max-*`, et ses attributs `width`/`height` donnent la taille naturelle.
+   La réserve verticale laisse la place au ✕, aux flèches, à la légende et au
+   lien ; elle grandit sous 600 px, où la légende passe sur plusieurs lignes. */
+.guide-lightbox {
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(64px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  animation: guide-lightbox-fade 0.18s ease-out;
+}
+.guide-lightbox-figure {
+  margin: 0; max-width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: default;
+  animation: guide-lightbox-in 0.2s ease-out;
+}
+.guide-lightbox-img {
+  display: block; width: auto; height: auto; max-width: 100%;
+  max-height: calc(100vh - 230px);
+  max-height: calc(100dvh - 230px);
+  border-radius: 8px; border: 1px solid var(--border-h); background: var(--input-bg);
+}
+.guide-lightbox-caption {
+  display: grid; justify-items: center; gap: 6px; max-width: 70ch;
+  text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.5;
+}
+.guide-lightbox-alt { margin: 0; }
+.guide-lightbox-nav {
+  display: inline-flex; align-items: center; gap: 12px;
+  color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.guide-lightbox-btn {
+  width: 44px; height: 44px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-h); background: var(--bg-alt); color: var(--gold-light);
+  cursor: pointer; transition: border-color 0.2s, color 0.2s;
+}
+.guide-lightbox-btn:hover { border-color: var(--gold-light); color: var(--gold-pale); }
+.guide-lightbox .guide-lightbox-close {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: 44px; height: 44px;
+  border-color: var(--border-h); background: var(--bg-alt); color: var(--text);
+}
+.guide-lightbox .guide-lightbox-close:hover { border-color: var(--gold-light); color: var(--gold-pale); }
+.guide-lightbox-full { color: var(--gold-light); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.guide-lightbox-full:hover { color: var(--gold-pale); }
+.guide-lightbox-btn:focus-visible,
+.guide-lightbox .guide-lightbox-close:focus-visible,
+.guide-lightbox-full:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 3px; }
+@keyframes guide-lightbox-fade { from { opacity: 0; } }
+@keyframes guide-lightbox-in { from { opacity: 0; transform: scale(0.97); } }
+@media (max-width: 600px) {
+  .guide-lightbox-img { max-height: calc(100vh - 280px); max-height: calc(100dvh - 280px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-lightbox, .guide-lightbox-figure { animation: none; }
+}
+
 /* Bouton flottant « retour au sommaire » (`BackToToc`). Visible seulement quand
    le sommaire est hors écran ET que le footer ne l'est pas : il ne recouvre
    jamais le pied de page. 48 px > minimum tactile de 44 px ; décalé de la zone
