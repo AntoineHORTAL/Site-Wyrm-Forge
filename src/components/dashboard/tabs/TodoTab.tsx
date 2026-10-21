@@ -16,6 +16,9 @@ interface TodoList {
   created_at?: string
 }
 
+const MAX_ITEMS = 5
+const EMPTY_FORM = { title: '', description: '', items: Array<string>(MAX_ITEMS).fill('') }
+
 export default function TodoTab() {
   const { theme } = useTheme()
   const c = theme === 'mythic'
@@ -28,9 +31,9 @@ export default function TodoTab() {
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [createError, setCreateError] = useState(false)
-  const [form, setForm] = useState({
-    title: '', description: '', items: ['', '', '', '', ''],
-  })
+  // id de la liste en cours de modification (null = formulaire de création)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState(EMPTY_FORM)
 
   /* ── Chargement ── */
   const load = useCallback(async () => {
@@ -78,8 +81,40 @@ export default function TodoTab() {
       setSaving(false)
       return
     }
-    setForm({ title: '', description: '', items: ['', '', '', '', ''] })
+    setForm(EMPTY_FORM)
     setSaving(false)
+    load()
+  }
+
+  function startEdit(list: TodoList) {
+    const items = [...list.items, ...Array<string>(MAX_ITEMS).fill('')].slice(0, MAX_ITEMS)
+    setForm({ title: list.title, description: list.description ?? '', items })
+    setEditingId(list.id)
+    setCreateError(false)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setCreateError(false)
+  }
+
+  async function saveEdit() {
+    if (!editingId || !form.title.trim()) return
+    setSaving(true)
+    setCreateError(false)
+    const { error } = await supabase.from('todos').update({
+      title:       form.title.trim(),
+      description: form.description.trim(),
+      items:       form.items.filter(i => i.trim()),
+    }).eq('id', editingId)
+    setSaving(false)
+    if (error) {
+      console.error('[TodoTab] update todos', error)
+      setCreateError(true)
+      return
+    }
+    cancelEdit()
     load()
   }
 
@@ -90,6 +125,7 @@ export default function TodoTab() {
   async function deleteList(id: string) {
     await supabase.from('todos').delete().eq('id', id)
     if (selected === id) setSelected(null)
+    if (editingId === id) cancelEdit()
   }
 
   /* ── Styles ── */
@@ -173,6 +209,13 @@ export default function TodoTab() {
               {currentList.active ? tr.deactivate : tr.setActive}
             </button>
             <button
+              onClick={() => startEdit(currentList)}
+              disabled={editingId === currentList.id}
+              style={{ ...btnStyle, opacity: editingId === currentList.id ? 0.5 : 1 }}
+            >
+              {tr.edit}
+            </button>
+            <button
               onClick={() => deleteList(currentList.id)}
               style={{ ...btnStyle, color: '#E24B4A', borderColor: 'rgba(226,75,74,0.4)' }}
             >
@@ -194,10 +237,10 @@ export default function TodoTab() {
         </div>
       </div>
 
-      {/* ── Colonne droite : formulaire de création ── */}
+      {/* ── Colonne droite : formulaire de création / modification ── */}
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#F5F2FA', marginBottom: 14 }}>
-          {tr.newList}
+          {editingId ? tr.editList : tr.newList}
         </div>
 
         <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>{tr.fieldTitle}</label>
@@ -232,7 +275,7 @@ export default function TodoTab() {
         ))}
 
         <button
-          onClick={addList}
+          onClick={editingId ? saveEdit : addList}
           disabled={saving || !form.title.trim()}
           style={{
             marginTop: 16, padding: 12, width: '100%',
@@ -244,11 +287,22 @@ export default function TodoTab() {
             fontFamily: 'inherit', transition: 'opacity 0.15s',
           }}
         >
-          {saving ? tr.creating : tr.create}
+          {editingId
+            ? (saving ? tr.savingEdit : tr.save)
+            : (saving ? tr.creating : tr.create)}
         </button>
+        {editingId && (
+          <button
+            onClick={cancelEdit}
+            disabled={saving}
+            style={{ ...btnStyle, marginTop: 8, color: 'var(--text-muted)' }}
+          >
+            {d.common.cancel}
+          </button>
+        )}
         {createError && (
           <p role="alert" style={{ marginTop: 8, fontSize: 12, color: 'var(--error, #E24B4A)' }}>
-            {tr.createError}
+            {editingId ? tr.saveError : tr.createError}
           </p>
         )}
       </div>
