@@ -65,6 +65,13 @@ export const workshopFr = {
     importing: 'Import…',
     imported: '✓ Importé',
     importSignedOut: 'Connecte-toi pour importer',
+    /* Infobulles et messages du bouton ♥ (un like par compte, retirable). */
+    like: 'Aimer ce build',
+    unlike: 'Retirer ton ♥',
+    likeOwn: 'Tu ne peux pas aimer ton propre build',
+    likeSignedOut: 'Connecte-toi pour aimer ce build',
+    likeError: "Ton ♥ n'a pas pu être enregistré. Réessaie.",
+    likeUnavailable: 'Les ♥ sont momentanément indisponibles.',
     remove: '🗑 Retirer du Workshop',
     removing: 'Retrait…',
     removeConfirm:
@@ -122,6 +129,12 @@ export const workshopEn: WorkshopDict = {
     importing: 'Importing…',
     imported: '✓ Imported',
     importSignedOut: 'Sign in to import',
+    like: 'Like this build',
+    unlike: 'Remove your ♥',
+    likeOwn: "You can't like your own build",
+    likeSignedOut: 'Sign in to like this build',
+    likeError: "Your ♥ couldn't be saved. Try again.",
+    likeUnavailable: 'Likes are temporarily unavailable.',
     remove: '🗑 Remove from the Workshop',
     removing: 'Removing…',
     removeConfirm:
