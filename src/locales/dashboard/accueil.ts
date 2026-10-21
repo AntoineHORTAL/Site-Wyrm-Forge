@@ -73,6 +73,11 @@ export const accueilFr = {
     placeholderItem: 'Élément {n}...',
     creating: 'Création…',
     createError: "La liste n'a pas pu être créée. Réessaie.",
+    edit: 'Modifier',
+    editList: 'Modifier la liste',
+    save: 'Enregistrer',
+    savingEdit: 'Enregistrement…',
+    saveError: "Les modifications n'ont pas pu être enregistrées. Réessaie.",
     create: 'Créer la liste',
   },
 
@@ -179,6 +184,11 @@ export const accueilEn: AccueilDict = {
     placeholderItem: 'Item {n}...',
     creating: 'Creating…',
     createError: 'The list could not be created. Please try again.',
+    edit: 'Edit',
+    editList: 'Edit list',
+    save: 'Save',
+    savingEdit: 'Saving…',
+    saveError: 'Your changes could not be saved. Please try again.',
     create: 'Create list',
   },
 
