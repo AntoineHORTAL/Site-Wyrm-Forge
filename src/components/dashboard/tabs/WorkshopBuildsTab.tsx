@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
 import { removeWorkshopBuild } from '@/lib/workshop-builds'
+import {
+  likeAvailability, parseToggleResult, likeErrorKind, likedSetFromRows, withLikeState,
+} from '@/lib/workshop-likes'
 import { useDashboard } from '@/locales/dashboard'
 import type { WorkshopRoleKey } from '@/locales/dashboard/workshop'
 
@@ -67,6 +70,13 @@ export default function WorkshopBuildsTab() {
   const [userId, setUserId]     = useState<string | null>(null)
   const [importing, setImporting] = useState<string | null>(null)
   const [liking, setLiking]     = useState<string | null>(null)
+  // Builds likés par l'utilisateur (lecture RLS de SES likes) + message d'échec du
+  // dernier clic, porté par la carte concernée.
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
+  const [likeError, setLikeError] = useState<{ id: string; text: string } | null>(null)
+  // Vrai si la RPC est absente de la base (site déployé avant la migration) :
+  // les boutons se désactivent au lieu de renvoyer une erreur à chaque clic.
+  const [likesUnavailable, setLikesUnavailable] = useState(false)
   const [imported, setImported] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState<string | null>(null)
 
@@ -108,6 +118,16 @@ export default function WorkshopBuildsTab() {
           })))
         }
 
+        // Builds déjà likés : la RLS ne renvoie que les lignes de l'utilisateur.
+        // Un échec (table absente avant la migration) laisse l'ensemble vide.
+        if (user) {
+          const { data: likeRows, error: likeErr } = await supabase
+            .from('workshop_build_likes')
+            .select('build_id')
+          if (likeErr) console.error('[Workshop] liked builds load error', likeErr.message)
+          else setLikedIds(likedSetFromRows(likeRows))
+        }
+
         // Vérifier quels builds sont déjà importés (item_builds)
         if (user) {
           const { data: myBuilds } = await supabase
@@ -125,12 +145,31 @@ export default function WorkshopBuildsTab() {
   }, [])
 
   // ── Like ──────────────────────────────────────────────────────────────────
+  // Un clic = like, le suivant = retrait. Le serveur fait foi : on affiche l'état
+  // et le compteur qu'il RENVOIE, jamais un ±1 calculé ici. La règle (connecté,
+  // pas son propre build, un seul like) est garantie par toggle_build_like ;
+  // la désactivation du bouton n'est que de l'affichage.
   async function handleLike(build: WorkshopBuild) {
-    if (liking) return
+    if (liking || likesUnavailable) return
+    if (likeAvailability(userId, build.creator_id) !== 'ok') return
     setLiking(build.id)
-    const { error } = await supabase.rpc('increment_likes', { build_id: build.id })
-    if (!error) {
-      setBuilds(prev => prev.map(b => b.id === build.id ? { ...b, likes: b.likes + 1 } : b))
+    setLikeError(null)
+    const { data, error } = await supabase.rpc('toggle_build_like', { p_build_id: build.id })
+    const result = error ? null : parseToggleResult(data)
+    if (result) {
+      setBuilds(prev => prev.map(b => b.id === build.id ? { ...b, likes: result.likeCount } : b))
+      setLikedIds(prev => withLikeState(prev, build.id, result.liked))
+    } else {
+      const kind = likeErrorKind(error)
+      if (kind === 'unavailable') setLikesUnavailable(true)
+      setLikeError({
+        id: build.id,
+        text: kind === 'unavailable' ? W.likeUnavailable
+            : kind === 'own'         ? W.likeOwn
+            : kind === 'signedOut'   ? W.likeSignedOut
+            :                          W.likeError,
+      })
+      if (error) console.error('[Workshop] toggle_build_like error', error.message)
     }
     setLiking(null)
   }
@@ -275,6 +314,15 @@ export default function WorkshopBuildsTab() {
             // stricte l'exclut, et c'est voulu — la RLS refuserait la suppression de toute façon.
             const isMine = !!userId && build.creator_id === userId
             const isDeletingThis = deleting === build.id
+            const likeAvail = likeAvailability(userId, build.creator_id)
+            const isLiked = likedIds.has(build.id)
+            const likeDisabled = likesUnavailable || likeAvail !== 'ok'
+            const likeTitle = likesUnavailable    ? W.likeUnavailable
+                            : likeAvail === 'own'       ? W.likeOwn
+                            : likeAvail === 'signedOut' ? W.likeSignedOut
+                            : isLiked                   ? W.unlike
+                            :                             W.like
+            const cardLikeError = likeError?.id === build.id ? likeError.text : null
 
             return (
               <div key={build.id} style={{
@@ -361,16 +409,26 @@ export default function WorkshopBuildsTab() {
                     {/* Like */}
                     <button
                       onClick={() => handleLike(build)}
-                      disabled={!!isLikingThis}
+                      // aria-disabled et non `disabled` pour l'état « pas disponible » :
+                      // un bouton `disabled` n'affiche pas son infobulle partout.
+                      // handleLike ignore de toute façon le clic dans ce cas.
+                      aria-disabled={likeDisabled}
+                      disabled={isLikingThis}
+                      title={likeTitle}
+                      aria-label={`${likeTitle} (${build.likes})`}
+                      aria-pressed={likeDisabled ? undefined : isLiked}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 4,
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: c ? '#BA7517' : '#7F77DD',
+                        background: 'none', border: 'none',
+                        cursor: likeDisabled ? 'default' : 'pointer',
+                        // ♥ plein et coloré quand c'est liké ; ♡ neutre sinon.
+                        color: isLiked ? '#E5484D' : 'var(--text-muted)',
                         fontSize: 12, fontFamily: 'inherit', padding: '2px 6px',
-                        opacity: isLikingThis ? 0.5 : 1, transition: 'opacity 0.15s',
+                        opacity: isLikingThis ? 0.5 : likeDisabled ? 0.6 : 1,
+                        transition: 'opacity 0.15s, color 0.15s',
                       }}
                     >
-                      ♥ {build.likes}
+                      <span aria-hidden="true">{isLiked ? '♥' : '♡'}</span> {build.likes}
                     </button>
                     {/* Saves */}
                     <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
@@ -378,6 +436,12 @@ export default function WorkshopBuildsTab() {
                     </span>
                   </div>
                 </div>
+
+                {cardLikeError && (
+                  <div role="status" style={{ fontSize: 11, color: '#E5484D', textAlign: 'right', marginTop: -6 }}>
+                    {cardLikeError}
+                  </div>
+                )}
 
                 {/* ── Import ── */}
                 <button
