@@ -716,6 +716,121 @@ clés en **PascalCase**, enum en **entier**, `System.Windows.Point` en `{"X","Y"
 
 ---
 
+## 🟡 Base de données — likes du Workshop Builds (migration 20261021000001)
+
+Décision HORTAL du 2026-10-21 : **un like par compte et par build, retirable, jamais sur
+son propre build, impossible hors connexion. Le serveur fait foi.**
+
+> 🔴 **Avant** : `increment_likes(build_id)` (SECURITY DEFINER, exécutable par `anon`)
+> faisait `likes = likes + 1` sans savoir qui likait — likes infinis au `curl`, même
+> déconnecté, aucun retrait possible. Et `wb_update_owner` laissait l'auteur écrire
+> `likes`/`saves` en direct. Les likes comptés avant la migration n'ont pas d'auteur
+> connu : ils **restent dans le compteur**.
+
+### Table `workshop_build_likes`
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `build_id` | `uuid` | FK → `workshop_builds(id)` **ON DELETE CASCADE** |
+| `user_id` | `uuid` | FK → `auth.users(id)` **ON DELETE CASCADE**, défaut `auth.uid()` |
+| `created_at` | `timestamptz` | défaut `now()` |
+
+PK `(build_id, user_id)` — **un like max par couple, garanti par la base**. Index
+`workshop_build_likes_user_idx (user_id)` (« quels builds ai-je likés ? »).
+
+- RLS : une seule policy, `wbl_select_own` — SELECT `TO authenticated`,
+  `user_id = (select auth.uid())`. **On ne lit que SES likes.**
+- `REVOKE ALL FROM PUBLIC, anon, authenticated` puis `GRANT SELECT TO authenticated`.
+  **Aucune écriture directe** (`42501`) : le toggle est le seul chemin.
+
+### Compteur `workshop_builds.likes` — tenu par la table, pas par la RPC
+
+Trigger `wbl_sync_like_count` (AFTER INSERT/DELETE sur `workshop_build_likes`) → +1 / −1,
+`GREATEST(…, 0)`. **SECURITY DEFINER, `search_path = public`, propriétaire `postgres`.**
+Ainsi TOUTE disparition d'un like décompte, y compris la **cascade d'une suppression de
+compte**, que la RPC ne voit pas. Sur la cascade d'une suppression de BUILD, l'UPDATE
+touche 0 ligne, sans erreur.
+
+> 🔴 **Ne jamais repasser `wbl_sync_like_count` en SECURITY INVOKER.** La suppression
+> d'un compte se déclenche côté Auth ; si la fonction s'exécutait sous un rôle sans droit
+> sur `workshop_builds`, l'UPDATE serait refusé et **ferait échouer toute suppression de
+> compte ayant liké quelque chose**. Le test T14 le prouve dans les deux sens (contrôle
+> négatif joué le 2026-10-21 : en INVOKER, T13 et T14 passent au rouge, le DELETE est refusé
+> en `42501`).
+
+Suppression de l'**auteur** d'un build liké : `creator_id` passe à NULL (`ON DELETE SET
+NULL`, inchangé), le build et ses likes restent, et il reste likable par tous (T16).
+
+### RPC `toggle_build_like(p_build_id uuid) → TABLE(liked boolean, like_count integer)`
+
+SECURITY DEFINER, `search_path = public`, EXECUTE **`authenticated` seul** (règle des trois
+instructions). Dans l'ordre : `auth.uid()` nul → `not_authenticated` (42501) ;
+`SELECT … FOR UPDATE` sur le build (deux clics simultanés se sérialisent) ; build absent →
+`build_not_found` (P0002) ; `creator_id = auth.uid()` → **`own_build`** (42501) ; DELETE du
+like s'il existe, INSERT sinon ; relit le compteur et renvoie l'**état final**. PostgREST
+renvoie un **tableau** `[{ liked, like_count }]`.
+
+> ⚠️ Les clients affichent l'état et le compteur **renvoyés**, jamais un ±1 calculé
+> localement. Site : `src/lib/workshop-likes.ts` (pur, testé) ; app : `Services/WorkshopLikes.cs`
+> (pur, testé). Mêmes règles, mêmes cas d'erreur, dont **`unavailable`** (RPC absente,
+> `PGRST202`) : le bouton se désactive avec « Les ♥ sont momentanément indisponibles »,
+> jamais d'erreur brute.
+
+### `increment_likes` révoqué, compteurs protégés
+
+- `REVOKE EXECUTE ON increment_likes FROM PUBLIC, anon, authenticated` : la fonction reste
+  en place, **inerte** pour les clients (`42501`). Ne pas la ré-accorder : elle
+  contournerait tout ce qui précède.
+- Trigger **`wb_protect_counters`** (BEFORE INSERT OR UPDATE sur `workshop_builds`) : sous
+  `anon`/`authenticated`, `likes` et `saves` sont **forcés à 0 à l'INSERT et recopiés depuis
+  OLD à l'UPDATE**. Neutralisation silencieuse, pas une erreur : un client qui renvoie la
+  ligne entière continue de fonctionner. Les fonctions SECURITY DEFINER (synchro des likes,
+  `increment_saves`) s'exécutent sous `postgres` et passent.
+- `set_updated_at` bumpe toujours `updated_at` à chaque like/retrait, comme avant (et comme
+  `increment_saves`). **Laissé tel quel, décision HORTAL** : aucun client ne lit
+  `workshop_builds.updated_at`.
+- La migration **se vérifie elle-même** (bloc `DO` : EXECUTE dans les deux sens, privilèges
+  de la table, une seule policy).
+
+### Tests et état d'application
+- `supabase/tests/20261021000001_workshop_build_likes_test.sql` — **21 lignes**, `ROLLBACK`
+  final : like/retrait, double toggle, propre build refusé, anon refusé (toggle,
+  `increment_likes`, lecture), écritures directes refusées, lecture des likes d'autrui
+  refusée, compteurs neutralisés à l'UPDATE et à l'INSERT, `increment_saves` intact, plancher
+  à 0, build inexistant, suppression de compte (liker et AUTEUR), suppression de build,
+  privilèges et policies réels.
+  - ⚠️ **`SET LOCAL ROLE supabase_auth_admin` est impossible** depuis le SQL Editor ou la
+    CLI : `postgres` n'est pas superuser et l'adhésion à ce rôle est réservée aux
+    superusers (mesuré le 2026-10-21). La cascade est donc simulée sous un **rôle temporaire
+    sans aucun droit sur `workshop_builds`** (T14), plus un vrai DELETE dans `auth.users`
+    (T15/T16).
+  - Le script crée des comptes dans `auth.users` et un rôle temporaire : **TEST seulement**.
+- **TEST : appliquée le 2026-10-21, 21/21**, hors historique (`supabase db query -f`, voir
+  la dette d'alignement de TEST).
+- **PROD : NON appliquée** à la rédaction. Ordre de mise en production : voir ci-dessous.
+
+### Ordre de mise en production
+1. **Publier d'abord la release de l'app** qui embarque `ToggleLikeAsync`. Tant que la
+   migration n'est pas en PROD, son bouton se désactive au premier clic avec « Les ♥ sont
+   momentanément indisponibles » (`PGRST202` → `unavailable`), sans erreur brute ; le reste
+   du Workshop fonctionne.
+2. **Appliquer la migration en PROD**, puis **déployer le site dans la foulée**. Entre les
+   deux, l'ancien site voit son `increment_likes` refusé (pas de +1 affiché, il vérifie
+   l'erreur) ; le nouveau site déployé avant la migration afficherait « indisponible ».
+3. Les apps **antérieures** à la release : leur bouton appelle `increment_likes` sans
+   regarder la réponse et affiche un **+1 local faux**, effacé au rechargement. Rien n'est
+   écrit en base. Disparaît avec la mise à jour.
+
+### Consommateurs
+- **Site** : `WorkshopBuildsTab.tsx` — lit `workshop_build_likes.build_id` au chargement,
+  appelle `rpc('toggle_build_like', { p_build_id })`. ♡ par défaut, ♥ plein rouge quand liké ;
+  `aria-disabled` + infobulle sur ses propres builds et hors connexion (pas `disabled` : un
+  bouton désactivé n'affiche pas son `title` partout). Chaînes `workshop.builds.like*`.
+- **App WPF** : `WorkshopService.LoadLikedAsync` / `ToggleLikeAsync` sous JWT — voir
+  l'`AGENTS.md` de `Logiciel-Assistant-LOL`.
+
+---
+
 ## 🟡 Base de données — table `rank_stat_samples`
 
 | Colonne | Type | Nullable | Notes |
@@ -3508,6 +3623,23 @@ Relevé par une lecture du catalogue, **sur la PROD** (`supabase db query --link
   `(select auth.uid())`, index `(user_id, created_at DESC)`, bloc `DO` d'auto-vérification.
   ⚠️ Vérifier avant que ni le site (`BuildsTab.tsx`) ni l'app (`ItemBuildSyncService`)
   n'accèdent à la table sans JWT utilisateur — les deux passent aujourd'hui sous JWT.
+
+### 🟡 Dette : `increment_saves` et `increment_jp_likes` ouverts à `anon` (relevé TEST du 2026-10-21)
+
+Même défaut que l'ancien `increment_likes`, **hors périmètre** du chantier des likes de
+builds (décision HORTAL, 2026-10-21) — à traiter dans un chantier séparé :
+- **`increment_saves(build_id)`** : SECURITY DEFINER, EXECUTE `anon` + `authenticated`,
+  `saves = saves + 1` sans auteur ni limite. Appelé par le site (sous JWT) et par l'app (clé
+  anon) à l'import d'un build. Le compteur ↓ est donc gonflable au `curl`. Seule protection
+  ajoutée par `20261021000001` : un client ne peut plus ÉCRIRE `saves` en direct
+  (`wb_protect_counters`).
+- **`increment_jp_likes(path_id)`** (jungle paths : `WorkshopJungleTab`, app
+  `JungleWorkshopListView`) : exactement l'ancien `increment_likes` — likes infinis, même
+  déconnecté, aucun retrait, aucun auteur. `workshop_junglepaths` n'ayant pas de
+  `creator_id` (dette ci-dessous), la règle « pas sur son propre path » demandera d'abord
+  cette colonne.
+- Piste : le patron de `20261021000001` (table de likes à PK composite, toggle SECURITY
+  DEFINER, compteur tenu par trigger, protection des compteurs).
 
 ### Dette RLS : workshop_junglepaths sans propriétaire
 `workshop_junglepaths` n'a pas de colonne `creator_id` — seulement `creator_name`
