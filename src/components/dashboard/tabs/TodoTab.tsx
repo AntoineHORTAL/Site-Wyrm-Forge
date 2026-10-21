@@ -27,6 +27,7 @@ export default function TodoTab() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
+  const [createError, setCreateError] = useState(false)
   const [form, setForm] = useState({
     title: '', description: '', items: ['', '', '', '', ''],
   })
@@ -58,14 +59,28 @@ export default function TodoTab() {
     const items = form.items.filter(i => i.trim())
     if (!form.title.trim()) return
     setSaving(true)
-    await supabase.from('todos').insert({
+    setCreateError(false)
+    // user_id est NOT NULL sans défaut et la policy RLS "own todos" exige
+    // auth.uid() = user_id : sans lui, l'insert est rejeté.
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setCreateError(true); setSaving(false); return }
+    const { error } = await supabase.from('todos').insert({
+      user_id:     user.id,
       title:       form.title.trim(),
       description: form.description.trim(),
       items,
       active:      false,
     })
+    if (error) {
+      // On garde la saisie pour que l'utilisateur ne perde rien.
+      console.error('[TodoTab] insert todos', error)
+      setCreateError(true)
+      setSaving(false)
+      return
+    }
     setForm({ title: '', description: '', items: ['', '', '', '', ''] })
     setSaving(false)
+    load()
   }
 
   async function toggleActive(list: TodoList) {
@@ -231,6 +246,11 @@ export default function TodoTab() {
         >
           {saving ? tr.creating : tr.create}
         </button>
+        {createError && (
+          <p role="alert" style={{ marginTop: 8, fontSize: 12, color: 'var(--error, #E24B4A)' }}>
+            {tr.createError}
+          </p>
+        )}
       </div>
     </div>
   )

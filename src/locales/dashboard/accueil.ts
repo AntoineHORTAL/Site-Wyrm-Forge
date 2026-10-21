@@ -72,6 +72,7 @@ export const accueilFr = {
     placeholderDescription: 'Description optionnelle...',
     placeholderItem: 'Élément {n}...',
     creating: 'Création…',
+    createError: "La liste n'a pas pu être créée. Réessaie.",
     create: 'Créer la liste',
   },
 
@@ -177,6 +178,7 @@ export const accueilEn: AccueilDict = {
     placeholderDescription: 'Optional description...',
     placeholderItem: 'Item {n}...',
     creating: 'Creating…',
+    createError: 'The list could not be created. Please try again.',
     create: 'Create list',
   },
 
