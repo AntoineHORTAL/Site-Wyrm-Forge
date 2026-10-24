@@ -431,10 +431,14 @@ const fr: GuideDict = {
     },
     'timers-inhibiteurs': {
       name: "Timers d'inhibiteurs",
-      purpose: 'Sache quand un inhibiteur détruit réapparaît.',
+      purpose: 'Sache quand un inhibiteur ou une tourelle du nexus détruits réapparaissent.',
       where: "Onglet « Overlay » → « Timers minimap ».",
-      steps: ['Coche « Afficher les timers d’inhibiteurs ».'],
-      inGame: "Un compte à rebours s'affiche sur la minimap, à l'emplacement de l'inhibiteur détruit.",
+      steps: [
+        'Coche « Afficher les timers d’inhibiteurs » et, si tu veux, « Afficher les timers des tourelles du nexus ».',
+        "« Couleurs » : « Automatiques » (bleu = alliés, rouge = adverses) ou « Par côté de la carte », avec une couleur et une taille au choix pour chaque côté (Order en bas à gauche, Chaos en haut à droite). « Couleurs par défaut » et « Tailles par défaut » reviennent au réglage d'origine.",
+        'Les 30 dernières secondes restent en jaune, quelle que soit la couleur choisie.',
+      ],
+      inGame: "Un compte à rebours s'affiche sur la minimap, à l'emplacement de l'inhibiteur ou de la tourelle détruits.",
       screenshot: 'La minimap en jeu avec un timer sur un inhibiteur détruit.',
     },
     'sorts-ennemis': {
@@ -475,7 +479,8 @@ const fr: GuideDict = {
       where: "Onglet « Overlay » → « Dégâts des sorts ».",
       steps: [
         'Coche « Afficher les dégâts des sorts ».',
-        'Le bloc se place tout seul près de ta barre de vie.',
+        'En partie, les dégâts s’affichent tout seuls sous chaque icône de ta barre de sorts (passif, Q, W, E, R).',
+        '« Taille des dégâts de sorts » règle la taille du texte.',
       ],
       inGame: 'Une estimation des dégâts de tes sorts sur les champions ennemis, qui suit la progression de ta partie.',
       screenshot: 'Le bloc Dégâts des sorts en jeu, près de la barre de vie du joueur.',
@@ -561,6 +566,7 @@ const fr: GuideDict = {
         "Juste en dessous, sous « Stats à afficher », coche celles que tu veux voir : CS, CS/min, Gold/min, KDA, Niveau, Score de vision.",
         "Coche « Comparer avec l'adversaire de lane » pour afficher ses valeurs à côté des tiennes.",
         "Ces options sont grisées tant que le bloc lui-même n'est pas affiché.",
+        "En partie, la pastille ✎ du bloc STATS ouvre le même choix sans quitter le jeu : clique sur une stat pour l'afficher ou la masquer, puis sur ✎ pour finir. Le réglage est le même que dans l'onglet « Overlay ».",
       ],
       inGame:
         'Le bloc STATS affiche tes valeurs en direct et, si la comparaison est cochée, celles de ton adversaire de lane, en couleur selon que tu es devant ou derrière. Tu peux le déplacer.',
@@ -972,10 +978,14 @@ const en: GuideDict = {
     },
     'timers-inhibiteurs': {
       name: 'Inhibitor timers',
-      purpose: 'Know when a destroyed inhibitor comes back.',
+      purpose: 'Know when a destroyed inhibitor or nexus turret comes back.',
       where: '“Overlay” tab → “Minimap timers”.',
-      steps: ['Tick “Show inhibitor timers”.'],
-      inGame: 'A countdown shows on the minimap, where the destroyed inhibitor stands.',
+      steps: [
+        'Tick “Show inhibitor timers” and, if you like, “Show nexus turret timers”.',
+        '“Colors”: “Automatic” (blue = allies, red = enemies) or “By map side”, with a color and a size of your choice for each side (Order bottom-left, Chaos top-right). “Default colors” and “Default sizes” go back to the original settings.',
+        'The last 30 seconds stay yellow, whatever the color you picked.',
+      ],
+      inGame: 'A countdown shows on the minimap, where the destroyed inhibitor or turret stands.',
       screenshot: 'The in-game minimap with a timer on a destroyed inhibitor.',
     },
     'sorts-ennemis': {
@@ -1014,7 +1024,11 @@ const en: GuideDict = {
       name: 'Spell damage',
       purpose: 'Estimate what your spells deal to enemy champions.',
       where: '“Overlay” tab → “Spell damage”.',
-      steps: ['Tick “Show spell damage”.', 'The block places itself next to your health bar.'],
+      steps: [
+        'Tick “Show spell damage”.',
+        'In game, the damage shows up on its own under each icon of your spell bar (passive, Q, W, E, R).',
+        '“Spell damage size” sets the size of the text.',
+      ],
       inGame: 'An estimate of your spells’ damage on enemy champions, which follows how your game goes.',
       screenshot: 'The Spell damage block in game, next to the player’s health bar.',
       shotAlts: [
@@ -1097,6 +1111,7 @@ const en: GuideDict = {
         'Just below, under “Stats to display”, tick the ones you want to see: CS, CS/min, Gold/min, KDA, Level, Vision score.',
         'Tick “Compare with the lane opponent” to show their figures next to yours.',
         'These options are greyed out as long as the block itself is not shown.',
+        'In game, the ✎ badge of the STATS block opens the same choice without leaving the game: click a stat to show or hide it, then ✎ to finish. It is the same setting as in the “Overlay” tab.',
       ],
       inGame:
         'The STATS block shows your figures live and, if the comparison is ticked, your lane opponent’s, coloured depending on whether you are ahead or behind. You can move it.',
