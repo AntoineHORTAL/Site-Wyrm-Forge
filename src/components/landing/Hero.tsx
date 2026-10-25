@@ -3,7 +3,7 @@
 import { Fragment } from 'react'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 
 /* Icône Windows stylisée (4 carreaux) — réutilisée sur les CTA de la home */
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
@@ -112,6 +112,7 @@ function OverlayMock({ c }: { c: boolean }) {
 // La connexion est portée par le header (monté dans le layout racine, qui rend
 // lui-même la modale) : le Hero n'a plus de `onLogin` à recevoir.
 export default function Hero() {
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const { t } = useLanguage()
@@ -201,7 +202,7 @@ export default function Hero() {
           </p>
 
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 26 }}>
-            <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold">
+            <a href={downloadUrl} download className="wf-btn-gold">
               <WindowsIcon />
               {h.ctaDownload}
             </a>

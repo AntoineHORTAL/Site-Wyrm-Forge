@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 import ManageCookiesButton from '@/components/ads/ManageCookiesButton'
 import { useFlag } from '@/components/providers/FeatureFlagsProvider'
 import { PLAYER_SEARCH_FLAG, PLAYER_SEARCH_HREF, withoutPlayerSearch } from '@/lib/nav-links'
@@ -64,6 +65,7 @@ function FooterLink({ label, href, download, c }: { label: string; href: string;
 }
 
 export default function Footer() {
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const { t } = useLanguage()
@@ -117,7 +119,7 @@ export default function Footer() {
               <FooterLink
                 key={link.label}
                 label={link.label}
-                href={link.href}
+                href={link.download ? downloadUrl : link.href}
                 download={link.download}
                 c={c}
               />

@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 
 export default function AboutPage() {
+  const downloadUrl = useWindowsDownloadUrl()
   const router = useRouter()
   const { theme } = useTheme()
   const c = theme === 'mythic'
@@ -55,7 +56,7 @@ export default function AboutPage() {
         </p>
         <a
           className="wf-btn-primary"
-          href={WINDOWS_DOWNLOAD_URL}
+          href={downloadUrl}
           download
         >
           Télécharger l’application

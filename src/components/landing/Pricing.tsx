@@ -6,7 +6,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { useSession } from '@/components/providers/SessionProvider'
 import { formatPrice } from '@/locales/landing'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 import { PRICING_TIERS } from '@/lib/pricing-tiers'
 import type { BillingPeriod, PlanKey } from '@/lib/stripe/plans'
 import {
@@ -54,6 +54,7 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 // deux points de montage, et aucun des deux n'a a savoir lequel s'applique.
 
 export default function Pricing() {
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const { t, lang } = useLanguage()
@@ -370,7 +371,7 @@ export default function Pricing() {
 
               {/* CTA — trois formes : téléchargement, abonnement Stripe, ou « bientôt » */}
               {tier.cta === 'download' ? (
-                <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold" style={{ justifyContent: 'center' }}>
+                <a href={downloadUrl} download className="wf-btn-gold" style={{ justifyContent: 'center' }}>
                   <WindowsIcon />
                   {p.ctaDownload}
                 </a>

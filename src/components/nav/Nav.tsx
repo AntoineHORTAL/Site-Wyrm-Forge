@@ -12,7 +12,7 @@ import { useDashboard, useLang } from '@/locales/dashboard'
 import { formatNumber } from '@/lib/intl'
 import { subscriptionTierLabel } from '@/locales/dashboard/nav'
 import type { DashTab } from '@/lib/session-types'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 import { isPaidTier } from '@/lib/subscription'
 import { NAV_SECTION_IDS, PLAYER_SEARCH_FLAG, PLAYER_SEARCH_HREF } from '@/lib/nav-links'
 import { useFlag, useLaunchTabFlags } from '@/components/providers/FeatureFlagsProvider'
@@ -77,6 +77,7 @@ interface NavProps {
    runner sans jsdom. */
 
 export default function Nav({ mode, username, tier, isAdmin, certified, onLogin, onLogout, activeTab, onTabChange, balance, balanceLoading, onNavigateToForge }: NavProps) {
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   // `ecailles_enabled` (off_behavior 'hidden', kill switch depuis son lancement le
   // 2026-10-17) : coupé, ni chip de solde ni entrée « Écailles » dans la navigation.
@@ -277,7 +278,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
               <LanguageSwitch />
               <a onClick={onLogin} className="nav-login-link" style={{ color: '#fff', textDecoration: 'none', cursor: 'pointer' }}>{t.nav.login}</a>
               <a
-                href={WINDOWS_DOWNLOAD_URL}
+                href={downloadUrl}
                 download
                 className="wf-btn-gold"
                 style={{ padding: '8px 18px', fontSize: 14, fontWeight: 500 }}
@@ -544,7 +545,7 @@ export default function Nav({ mode, username, tier, isAdmin, certified, onLogin,
                   {/* Bascule FR / EN — pleine largeur, le drawer n'a pas de barre latérale */}
                   <LanguageSwitch full />
                   <a
-                    href={WINDOWS_DOWNLOAD_URL}
+                    href={downloadUrl}
                     download
                     onClick={() => setDrawerOpen(false)}
                     className="wf-btn-gold"
