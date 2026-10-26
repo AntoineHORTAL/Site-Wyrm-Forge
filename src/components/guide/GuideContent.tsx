@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useLanguage } from '@/components/providers/LanguageProvider'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 import { GUIDE_APP_VERSION, GUIDE_UPDATED } from '@/lib/guide-release'
 import { GUIDE_TOC_ID, type VisibleGuideEntry, type VisibleGuideSection } from '@/lib/guide'
 import { guideShots } from '@/lib/guide-shots'
@@ -32,6 +32,7 @@ export default function GuideContent({ serverLang, sections }: {
   sections: VisibleGuideSection[]
 }) {
   const { lang } = useLanguage()
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   const c = theme === 'mythic'
 
@@ -101,7 +102,7 @@ export default function GuideContent({ serverLang, sections }: {
 
           {s.id === 'app' && (
             <p className="guide-download">
-              <a className="wf-btn-primary" href={WINDOWS_DOWNLOAD_URL} download>{d.downloadCta}</a>
+              <a className="wf-btn-primary" href={downloadUrl} download>{d.downloadCta}</a>
             </p>
           )}
 

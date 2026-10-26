@@ -2,7 +2,7 @@
 
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { useLanguage } from '@/components/providers/LanguageProvider'
-import { WINDOWS_DOWNLOAD_URL } from '@/lib/download'
+import { useWindowsDownloadUrl } from '@/lib/use-windows-download-url'
 
 const WindowsIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -14,6 +14,7 @@ const WindowsIcon = ({ size = 16 }: { size?: number }) => (
 )
 
 export default function FinalCTA() {
+  const downloadUrl = useWindowsDownloadUrl()
   const { theme } = useTheme()
   const c = theme === 'mythic'
   const { t } = useLanguage()
@@ -73,7 +74,7 @@ export default function FinalCTA() {
           </p>
 
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-            <a href={WINDOWS_DOWNLOAD_URL} download className="wf-btn-gold">
+            <a href={downloadUrl} download className="wf-btn-gold">
               <WindowsIcon />
               {f.ctaDownload}
             </a>
