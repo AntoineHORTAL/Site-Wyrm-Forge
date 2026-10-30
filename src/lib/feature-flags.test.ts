@@ -137,26 +137,28 @@ describe('politique de repli asymétrique', () => {
 
   it('la liste des flags fermés est celle du catalogue de lancement', () => {
     // ⚠️ Doit rester alignée sur les lignes kind='launch' des migrations de
-    // catalogue (20260905000001, 20260908000002, 20261012000001, 20261013000001, puis 20261017000001), et — pour
+    // catalogue (20260905000001, 20260908000002, 20261012000001, 20261013000001, 20261017000001, puis 20261030000001), et — pour
     // les seules clés `surface` 'shared'/'app' — sur `ColdStartClosed` de
     // `Services/FeatureFlagService.cs` (app WPF). Sans ce test, les listes
     // divergeraient en silence.
     //
     // `kit_sur_mesure_enabled` et `jungle_path_web_enabled` sont `surface='web'` : ils n'ont PAS de pendant côté
     // WPF, et c'est correct — l'app n'embarque pas la feature, elle ne peut donc
-    // pas la laisser fuir. Les sept autres restent la liste partagée, dont
-    // `minimap_structure_detection_enabled` et `overlay_show_nexus_turret_timers`
-    // (`surface='app'`).
+    // pas la laisser fuir. Les six autres restent la liste partagée, dont
+    // `minimap_structure_detection_enabled`, `overlay_show_nexus_turret_timers` et
+    // `overlay_interactive_mode_enabled` (`surface='app'`).
     // `ecailles_enabled` et `quests_enabled` en sont sortis le 2026-10-17 : lancés,
     // passés kill switches en PROD, et retirés de `ColdStartClosed` côté app.
     expect([...LAUNCH_FLAG_KEYS].sort()).toEqual([
       'cosmetics_enabled', 'jungle_path_web_enabled', 'kit_sur_mesure_enabled',
-      'minimap_structure_detection_enabled', 'overlay_show_nexus_turret_timers',
-      'scenarios_enabled', 'shop_enabled',
+      'minimap_structure_detection_enabled', 'overlay_interactive_mode_enabled',
+      'overlay_show_nexus_turret_timers', 'scenarios_enabled', 'shop_enabled',
     ])
     // Premier flag de LANCEMENT parmi les enfants d'overlay_enabled : fermé par défaut,
     // contrairement à ses 18 frères, kill switches ouverts.
     expect(flagFallback('overlay_show_nexus_turret_timers')).toBe(false)
+    // Mode interactif de l'overlay : second flag de lancement parmi les enfants d'overlay_enabled.
+    expect(flagFallback('overlay_interactive_mode_enabled')).toBe(false)
     expect(flagFallback('overlay_show_inhib_timers')).toBe(true)
     expect(flagFallback('ecailles_enabled')).toBe(true)
     expect(flagFallback('quests_enabled')).toBe(true)
