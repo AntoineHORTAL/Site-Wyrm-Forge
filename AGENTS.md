@@ -338,7 +338,7 @@ future par RPC ou Edge Function.
 > migration P2 `20260606000013`, atteint pour ce rôle ; l'étendre à `authenticated`
 > reste bloqué par la même raison qu'alors (AdminTab lit la table côté client).
 
-#### Catalogue de flags — 45 lignes
+#### Catalogue de flags — 46 lignes
 
 > ✅ **`ecailles_enabled` et `quests_enabled` sont LANCÉS** : passés `kind = 'kill'` en
 > PROD le 2026-10-17 (ouverts depuis juin 2026, décision HORTAL : les joueurs accumulent des
@@ -352,7 +352,7 @@ future par RPC ou Edge Function.
 > Ne jamais déduire l'état d'un flag de ce catalogue ni de TEST : **interroger la PROD**
 > (connexion PROD explicite, voir § Quelle base).
 
-**Catégorie 1, lancement (7)** — `off_behavior = 'hidden'`, valeur `'false'` :
+**Catégorie 1, lancement (8)** — `off_behavior = 'hidden'`, valeur `'false'` :
 `shop_enabled` et `cosmetics_enabled`, enfants du kill switch `ecailles_enabled` ;
 `scenarios_enabled` (lu par le site ET l'app, et par la RLS de `scenarios` depuis
 `20261017000002`, voir § table `scenarios`) ; `kit_sur_mesure_enabled` (migration `20260908000002`,
@@ -367,7 +367,13 @@ capture d'écran de l'app, celle-ci comprise) ; et `overlay_show_nexus_turret_ti
 (migration `20261013000001`, `surface = 'app'`, `group_key = 'overlay'`,
 `sort_order = 975`, 19ᵉ enfant d'`overlay_enabled` et SEUL flag de lancement parmi eux :
 timers de réapparition des tourelles du nexus ; dans l'onglet Overlay de l'app, sa case
-est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé).
+est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill switch coupé ;
+⚠️ depuis **lancé en PROD**, voir plus bas) ; et `overlay_interactive_mode_enabled`
+(migration `20261030000001`, `surface = 'app'`, `group_key = 'overlay'`, `sort_order = 995`,
+enfant d'`overlay_enabled` qui n'est PAS un bloc, comme `overlay_game_window_follow_enabled` :
+mode interactif de l'overlay de l'app ; fermé, la section « Mode interactif » de l'onglet
+Overlay est cachée et l'overlay garde ses blocs cliquables ; pendant dans `ColdStartClosed`
+côté app).
 
 > ✅ **Historique PROD aligné sur le dépôt au 2026-10-18** (`supabase migration list
 > --linked` : 105 migrations, aucun écart). Le 2026-10-18, `20261018000001` (table
@@ -409,7 +415,10 @@ est CACHÉE tant que le flag est fermé, au lieu d'être grisée comme un kill s
 >   query -f`, pas de `db push`) : les lignes `minimap_structure_detection_enabled`,
 >   `overlay_show_nexus_turret_timers` et `overlay_game_window_follow_enabled` existent
 >   sur TEST, mais ces migrations ne sont pas inscrites dans
->   `supabase_migrations.schema_migrations`. Un futur push les rejouera (sans effet :
+>   `supabase_migrations.schema_migrations`. Idem pour `20261030000001`
+>   (`overlay_interactive_mode_enabled`, `launch`, `'false'`), exécutée sur TEST seulement le
+>   2026-10-30 par `supabase db query --linked -f` depuis un worktree lié à TEST ; PROD à
+>   pousser avant la release de l'app qui branche le mode. Un futur push les rejouera (sans effet :
 >   elles sont rejouables). Dernière version inscrite relevée le 2026-10-13 :
 >   `20260911000003`.
 > - Conséquence : tant que ce n'est pas rattrapé, on ne lit pas l'historique des
