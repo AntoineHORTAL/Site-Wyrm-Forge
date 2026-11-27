@@ -1089,6 +1089,35 @@ passe la relecture de code mais pas la sonde.
 > rattrapée par 20260731000002 / 20260614000003 / 20260901000002. Toutes gardent
 > une garde applicative interne — érosion de la défense en profondeur, pas porte
 > ouverte. **Audit dédié à planifier.**
+>
+> ✅ **Audit fait le 2026-11-27** (`SECURITY_AUDIT.md`, S1) — et il y avait bien une
+> porte ouverte, SANS garde interne : `fn_riot_quota_increment`, `fn_riot_quota_check`
+> et `fn_riot_rate_increment` (révoquées de PUBLIC et `authenticated` par
+> 20260606000010, jamais de `anon`). Un POST anonyme `{"p_calls":100000}` ouvrait le
+> disjoncteur Riot pour tout le monde jusqu'à minuit UTC. Corrigé par
+> **`20261127000001_s1_revoke_riot_quota_anon.sql`** (service_role seul, bloc `DO`
+> d'auto-vérification dans les deux sens).
+> - **TEST : appliquée le 2026-11-27**, hors historique (`supabase db query -f`). Sonde
+>   anon passée de `200` à `42501` sur les trois ; Edge Functions Riot vérifiées
+>   (réponses inchangées, lignes `riot_rate_limits` écrites en service_role).
+> - **PROD : appliquée le 2026-11-27** par `supabase db push` (project-ref
+>   `cuscgmgqakxnfwnsrhhv` vérifié, seule migration en attente au `--dry-run`), inscrite
+>   dans l'historique. Mêmes contrôles qu'en TEST : sonde anon `42501` sur les trois, ACL
+>   `{postgres, service_role}`, `riot-rotation` en 200 et ligne `riot_rate_limits` écrite
+>   après la migration. Le script de test n'a pas été joué en PROD.
+> - Test : `supabase/tests/20261127000001_s1_revoke_riot_quota_anon_test.sql` (13/13
+>   sur TEST, contre-épreuve faite : rouvrir `anon` fait échouer T1, T10 et T12).
+>   **T12 est le garde-fou général** : il échoue dès qu'une fonction SECURITY DEFINER
+>   de `public` est exécutable par `anon` hors d'une liste blanche documentée dans le
+>   fichier. Toute nouvelle fonction publique pour `anon` = l'ajouter à la liste, en le
+>   justifiant. `is_admin()` y figure et ne doit pas être révoquée à `anon` : des
+>   policies sans clause `TO` l'évaluent aussi pour ce rôle.
+>
+> ⚠️ **Appliquer sur TEST sans viser la PROD** : le dépôt est lié à la PROD
+> (`supabase/.temp/project-ref` = `cuscgmgqakxnfwnsrhhv`). Le dossier parent
+> `C:\Users\revan\source\repos` est lié à TEST : `supabase db query --linked
+> --workdir C:/Users/revan/source/repos -f <fichier>`. Vérifier avant chaque écriture
+> avec `supabase projects list --workdir <dossier>` (● = projet lié).
 
 > 💡 La migration 20260909000002 se **vérifie elle-même** : un bloc `DO` final
 > interroge `has_function_privilege` et fait ÉCHOUER le `db push` si l'état visé
