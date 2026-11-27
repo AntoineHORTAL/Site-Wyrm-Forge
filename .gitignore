@@ -47,3 +47,7 @@ supabase/.branches/
 # Worktrees internes de Claude Code
 .claude/worktrees/
 graphify-out/
+
+# Rapports d'audit de sécurité : décrivent des failles possiblement non corrigées.
+# Dépôt PUBLIC — ne jamais les versionner.
+SECURITY_AUDIT.md
